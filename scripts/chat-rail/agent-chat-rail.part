@@ -1,0 +1,62 @@
+export type AgentChatRailScreenProps = Omit<AppShellProps, "children" | "panel" | "panelTitle" | "onOpenChat" | "onNewChat"> & {
+  messages?: AgentMessage[];
+  defaultMessages?: AgentMessage[];
+  onMessagesChange?: (messages: AgentMessage[]) => void;
+  onSend?: (message: string, options: ChatComposerSendOptions) => void;
+  onStop?: () => void;
+  onRetry?: (id: string) => void;
+  onOpenChat?: (id: string) => void;
+  onNewChat?: () => void;
+  files?: ArtifactFile[];
+  defaultFiles?: ArtifactFile[];
+  onFilesChange?: (files: ArtifactFile[]) => void;
+  openFiles?: string[];
+  defaultOpenFiles?: string[];
+  onOpenFilesChange?: (names: string[]) => void;
+  activeFile?: string;
+  defaultActiveFile?: string;
+  onActiveFileChange?: (name: string) => void;
+  onOpenFile?: (name: string) => void;
+  composerProps?: Omit<ChatComposerProps, "onSend">;
+  assistantName?: string;
+  /** Set false to supply responses exclusively through messages/onMessagesChange. */
+  simulate?: boolean;
+};
+
+/** The complete double-sidebar chat screen, with all its components and styles embedded in this file. */
+export function AgentChatRailScreen({ chats: chatsProp, defaultChats: initialChats = defaultChats, onChatsChange, activeChat: activeChatProp, defaultActiveChat = "fabric", onOpenChat, onNewChat, project: projectProp, defaultProject = "", onProjectChange, messages: messagesProp, defaultMessages = defaultAgentMessages, onMessagesChange, onSend, onStop, onRetry, files: filesProp, defaultFiles = defaultArtifacts, onFilesChange, openFiles: openFilesProp, defaultOpenFiles, onOpenFilesChange, activeFile: activeFileProp, defaultActiveFile, onActiveFileChange, onOpenFile, panelOpen: panelOpenProp, defaultPanelOpen = true, onPanelOpenChange, composerProps, assistantName, simulate = onSend === undefined && messagesProp === undefined, rail = defaultChatRail, onNavigate, className, ...rest }: AgentChatRailScreenProps) {
+  const [chats, setChats] = useControllable(chatsProp, initialChats, onChatsChange);
+  const [activeChat, setActiveChat] = useControllable(activeChatProp, defaultActiveChat, onOpenChat);
+  const [project, setProject] = useControllable(projectProp, defaultProject, onProjectChange);
+  const [conversations, setConversations] = useState<Record<string, AgentMessage[]>>(() => ({ [defaultActiveChat]: defaultMessages }));
+  const [files, setFiles] = useControllable(filesProp, defaultFiles, onFilesChange);
+  const [opened, setOpened] = useControllable(openFilesProp, defaultOpenFiles ?? (filesProp ?? defaultFiles).map(file => file.name), onOpenFilesChange);
+  const [activeFile, setActiveFile] = useControllable(activeFileProp, defaultActiveFile ?? (filesProp ?? defaultFiles)[0]?.name ?? "", onActiveFileChange);
+  const [panelOpen, setPanelOpen] = useControllable(panelOpenProp, defaultPanelOpen, onPanelOpenChange);
+  const newChatSequence = useRef(0);
+  const current = chats.find(chat => chat.id === activeChat);
+  const messages = messagesProp ?? conversations[activeChat] ?? [];
+  const openFile = (name: string) => { if (!files.some(file => file.name === name)) { onOpenFile?.(name); return; } if (!opened.includes(name)) setOpened([...opened, name]); setActiveFile(name); setPanelOpen(true); onOpenFile?.(name); };
+  const newChat = () => {
+    const id = `chat-${Date.now()}-${++newChatSequence.current}`;
+    setChats([...chats, { id, title: "New chat", project: project || undefined }]);
+    setConversations(previous => ({ ...previous, [id]: [] })); setActiveChat(id); onNewChat?.();
+  };
+  const composerAction = (action: string) => {
+    composerProps?.onAction?.(action);
+    if (action === "document") {
+      let index = 1; while (files.some(file => file.name === `Untitled ${index}.md`)) index++;
+      const name = `Untitled ${index}.md`;
+      setFiles([...files, { kind: "document", name, content: "# Untitled\n\n", updated: "Just now" }]);
+      setOpened([...opened, name]); setActiveFile(name); setPanelOpen(true);
+    } else onNavigate?.(action);
+  };
+  return <AppShell {...rest} className={["ui-acr", className].filter(Boolean).join(" ")} rail={rail} project={project} onProjectChange={setProject} chats={chats} onChatsChange={setChats} activeChat={activeChat} onOpenChat={setActiveChat} onNewChat={newChat} onNavigate={onNavigate} panelOpen={panelOpen} onPanelOpenChange={setPanelOpen} panelTitle="Artifacts" panel={<ArtifactWorkspace files={files} onFilesChange={setFiles} openFiles={opened} onOpenFilesChange={setOpened} activeFile={activeFile} onActiveFileChange={setActiveFile} onClose={() => setPanelOpen(false)}/>}>
+    <style href="ui-agent-chat-rail" precedence="default">{css}</style>
+    <AgentThread key={activeChat} title={current?.title ?? "New chat"} assistantName={assistantName} messages={messages} onMessagesChange={next => { setConversations(previous => ({ ...previous, [activeChat]: next })); onMessagesChange?.(next); }} onSend={(text, options) => { if (current?.title === "New chat" && text.trim()) setChats(chats.map(chat => chat.id === activeChat ? { ...chat, title: text.trim().slice(0, 60) } : chat)); onSend?.(text, options); }} onStop={onStop} onRetry={onRetry} onOpenFile={openFile} simulate={simulate} composerProps={{ ...composerProps, onAction: composerAction }}/>
+  </AppShell>;
+}
+
+/* ---------- Styles ---------- */
+.ui-acr{min-height:480px}
+@media(prefers-reduced-motion:reduce){.ui-acr{scroll-behavior:auto}}

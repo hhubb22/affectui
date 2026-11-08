@@ -1,0 +1,46 @@
+export type TaskDraft = { title: string; project: string };
+export type TaskCreateProps = {
+  projects?: string[];
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  project?: string;
+  defaultProject?: string;
+  onProjectChange?: (project: string) => void;
+  onCreate?: (draft: TaskDraft) => void;
+  onClose?: () => void;
+  placeholder?: string;
+  createLabel?: string;
+  autoFocus?: boolean;
+  className?: string;
+};
+
+/** Inline task creation with a keyboard project picker; Enter creates and keeps the field ready. */
+export function TaskCreate({ projects: rawProjects = ["Northwind","Platform","Evalkit"], value: valueProp, defaultValue = "", onValueChange, project: projectProp, defaultProject, onProjectChange, onCreate, onClose, placeholder = "Describe what you want done…", createLabel = "Create", autoFocus = true, className }: TaskCreateProps) {
+  const projects = [...new Set(rawProjects.filter(Boolean))];
+  const [value,setValue] = useControllable(valueProp,defaultValue,onValueChange);
+  const [project,setProject] = useControllable(projectProp,defaultProject ?? projects[0] ?? "",onProjectChange);
+  const [menu,setMenu] = useState(false);
+  const root = useRef<HTMLFormElement>(null), input = useRef<HTMLTextAreaElement>(null), anchor = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(()=>{if(autoFocus)input.current?.focus({preventScroll:true});},[autoFocus]);
+  useLayoutEffect(()=>{const el=input.current;if(!el)return;el.style.height="auto";el.style.height=`${Math.min(168,Math.max(32,el.scrollHeight))}px`;},[value]);
+  const submit=()=>{const title=value.trim();if(!title || !onCreate)return;onCreate({title,project:project || projects[0] || "Workspace"});setValue("");input.current?.focus({preventScroll:true});};
+  return <form ref={root} className={["ui-tcr",className].filter(Boolean).join(" ")} aria-label="Create a task" onSubmit={event=>{event.preventDefault();submit();}} onKeyDown={event=>{if(event.key==="Escape"&&!menu){event.preventDefault();event.stopPropagation();onClose?.();}}}>
+    <style href="ui-task-create" precedence="default">{css}</style>
+    <TaskProgressRing status="planning"/>
+    <label className="ui-tcr__sr" htmlFor={`${id}-input`}>Describe what you want done</label><textarea id={`${id}-input`} ref={input} aria-describedby={`${id}-hint`} placeholder={placeholder} rows={1} value={value} onChange={event=>setValue(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();submit();}}}/><span className="ui-tcr__sr" id={`${id}-hint`}>Enter creates the task, Shift+Enter starts a new line</span>
+    <button ref={anchor} type="button" className="ui-tcr__project" aria-label={`Project: ${project}`} aria-haspopup="menu" aria-expanded={menu} aria-controls={menu?`${id}-projects`:undefined} onClick={()=>setMenu(!menu)}><Icon name="folder" size={14}/><span title={project}>{project || "Project"}</span><Icon name="chevron" size={12}/></button>
+    <button type="submit" className="ui-tcr__submit" disabled={!value.trim()||!onCreate}>{createLabel}</button>
+    {menu && <FloatingMenu anchor={anchor} root={root} id={`${id}-projects`} label="Project" className="ui-tcr__menu" align="end" onClose={()=>setMenu(false)}><span className="ui-tcr__menu-label">Project</span>{projects.map(name=><button type="button" role="menuitemradio" aria-checked={project===name} key={name} onClick={()=>{setProject(name);setMenu(false);input.current?.focus({preventScroll:true});}}><Icon name="folder" size={14}/><span>{name}</span>{project===name&&<Icon name="check" size={13}/>}</button>)}</FloatingMenu>}
+  </form>;
+}
+
+/* ---------- Styles ---------- */
+.ui-tcr{--ui-tcr-card:#fff;--ui-tcr-ink:rgba(0,0,0,.88);--ui-tcr-text:rgba(0,0,0,.61);--ui-tcr-muted:rgba(0,0,0,.45);--ui-tcr-faint:rgba(0,0,0,.27);--ui-tcr-line:rgba(0,0,0,.06);--ui-tcr-fill:rgba(0,0,0,.04);--ui-tcr-focus:rgba(0,96,226,.35);--ui-tcr-shadow:0 0 0 .5px var(--ui-tcr-line),0 1px 2px rgba(0,0,0,.05);display:flex;align-items:flex-start;gap:8px;position:relative;width:100%;min-height:48px;padding:8px 6px 8px 12px;border-radius:8px;background:var(--ui-tcr-card);box-shadow:var(--ui-tcr-shadow);font:13px/20px "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-tcr-ink);container:ui-tcr / inline-size;-webkit-font-smoothing:antialiased;animation:ui-tcr-drop 240ms cubic-bezier(.22,1,.36,1) both}
+.ui-tcr,.ui-tcr *,.ui-tcr *::before,.ui-tcr *::after{box-sizing:border-box}.ui-tcr>.ui-tpr{margin:9px 4px 0 0}.ui-tcr textarea{flex:1;min-width:0;min-height:32px;max-height:168px;padding:6px 0;overflow-y:auto;border:0;background:none;font:inherit;color:inherit;outline:none;resize:none;overscroll-behavior:contain}.ui-tcr textarea::placeholder{color:var(--ui-tcr-faint)}.ui-tcr:has(textarea:focus){box-shadow:0 0 0 .5px rgba(0,0,0,.16),0 1px 2px rgba(0,0,0,.05)}.ui-tcr button{font:inherit;border:0;background:none;color:inherit;cursor:pointer;flex:none}.ui-tcr button:focus-visible{outline:2px solid var(--ui-tcr-focus);outline-offset:-2px}.ui-tcr button:active:not(:disabled){transform:scale(.97)}.ui-tcr__project,.ui-tcr__submit{display:flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 8px;margin-top:2px;border-radius:6px}.ui-tcr__project{max-width:160px;color:var(--ui-tcr-text)!important}.ui-tcr__project>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.ui-tcr__project:hover{background:var(--ui-tcr-fill)}.ui-tcr__submit{background:var(--ui-tcr-ink)!important;color:var(--ui-tcr-card)!important;font-weight:500!important}.ui-tcr__submit:disabled{opacity:.4;cursor:default}.ui-tcr__menu{width:208px;max-width:calc(100vw - 24px);overflow:auto;padding:5px;border-radius:10px;background:var(--ui-tcr-card);box-shadow:0 0 0 .5px var(--ui-tcr-line),0 6px 20px rgba(0,0,0,.12);animation:ui-tcr-drop 180ms both}.ui-tcr__menu-label{display:block;padding:6px 9px;color:var(--ui-tcr-muted);font-size:11px}.ui-tcr__menu>button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:6px 9px;text-align:left;border-radius:5px}.ui-tcr__menu>button>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-tcr__menu>button:hover{background:var(--ui-tcr-fill)}.ui-tcr__menu>button>svg{color:var(--ui-tcr-muted)}.ui-tcr__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@keyframes ui-tcr-drop{from{opacity:0;transform:translateY(-6px)}}
+@container ui-tcr (max-width:460px){.ui-tcr__project{max-width:110px}.ui-tcr__project>svg:first-child{display:none}.ui-tcr>.ui-tpr{margin-right:0}.ui-tcr{gap:5px}.ui-tcr__submit{padding-inline:7px}}
+@media(pointer:coarse){.ui-tcr__project,.ui-tcr__submit{min-height:36px}.ui-tcr__menu>button{min-height:36px}.ui-tcr textarea{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.ui-tcr,.ui-tcr *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-tcr{--ui-tcr-card:#1c1c1e;--ui-tcr-ink:rgba(255,255,255,.9);--ui-tcr-text:rgba(255,255,255,.62);--ui-tcr-muted:rgba(255,255,255,.46);--ui-tcr-faint:rgba(255,255,255,.3);--ui-tcr-line:rgba(255,255,255,.08);--ui-tcr-fill:rgba(255,255,255,.06);--ui-tcr-focus:rgba(77,141,255,.5)}

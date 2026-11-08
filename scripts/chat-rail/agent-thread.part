@@ -1,0 +1,323 @@
+export type ThreadPreset = "live" | "decision" | "scrolled" | "offline" | "uploading" | "dictating" | "away" | "error";
+export type AgentMessagePart =
+  | { kind: "text"; text: string }
+  | { kind: "tools"; id: string; tools: (ToolActivityItem & { ms?: number })[] }
+  | { kind: "task"; task: ThreadTask }
+  | { kind: "decision"; ask: { id: string; question: string; task?: string; kind?: string } }
+  | { kind: "artifacts"; names: string[] }
+  | { kind: "error"; text: string; retry?: boolean };
+export type AgentMessage = {
+  id: string;
+  role: "user" | "assistant" | "agent";
+  text?: string;
+  at?: number;
+  parts?: AgentMessagePart[];
+  tools?: ToolActivityItem[];
+  files?: string[];
+  attachments?: { name: string; size?: number }[];
+  streaming?: boolean;
+  stopped?: boolean;
+  status?: "sent" | "sending" | "queued" | "failed";
+  answer?: { id: string; question: string };
+};
+export type AgentThreadProps = {
+  messages?: AgentMessage[];
+  defaultMessages?: AgentMessage[];
+  onMessagesChange?: (messages: AgentMessage[]) => void;
+  title?: string;
+  assistantName?: string;
+  mode?: "chat" | "orchestrator";
+  onSend?: (message: string, options: ChatComposerSendOptions) => void;
+  onStop?: () => void;
+  onRetry?: (id: string) => void;
+  onOpenFile?: (name: string) => void;
+  onNavigate?: (label: string) => void;
+  onOpenTask?: (id: string) => void;
+  onOpenInbox?: (id?: string) => void;
+  running?: { running: number; needs: number };
+  decisions?: ThreadDecision[];
+  defaultDecisions?: ThreadDecision[];
+  onDecisionsChange?: (decisions: ThreadDecision[]) => void;
+  onDecide?: (id: string, answer: ThreadDecisionAnswer) => void;
+  onLater?: (id: string) => void;
+  decisionRequest?: { id: string; sequence: number };
+  folded?: boolean;
+  defaultFolded?: boolean;
+  onFoldedChange?: (folded: boolean) => void;
+  connection?: ThreadConnection;
+  defaultConnection?: ThreadConnection;
+  onConnectionChange?: (connection: ThreadConnection) => void;
+  onReconnect?: () => void | Promise<void>;
+  lastSeen?: number;
+  defaultLastSeen?: number;
+  onLastSeenChange?: (at: number | undefined) => void;
+  awayAfter?: number;
+  onMarkRead?: () => void;
+  uploads?: ThreadUpload[];
+  defaultUploads?: ThreadUpload[];
+  onUploadsChange?: (uploads: ThreadUpload[]) => void;
+  upload?: (file: File, progress: (progress: number) => void, signal: AbortSignal) => Promise<void>;
+  transcribe?: (clip: ThreadAttachment) => Promise<string>;
+  composerProps?: Omit<ChatComposerProps, "onSend">;
+  composer?: ReactNode;
+  simulate?: boolean | ThreadPreset;
+  className?: string;
+};
+
+export const defaultAgentMessages: AgentMessage[] = [
+  { id: "fabric-question", role: "user", text: "What's the best fabric for a summer overshirt – linen, cotton or a blend?" },
+  { id: "fabric-answer", role: "assistant", at: Date.UTC(2026, 10, 8, 10, 48), tools: [
+    { id: "web", label: "Searched the web for “linen vs cotton breathability”", status: "done", duration: 1400 },
+    { id: "read", label: "Read 6 pages", status: "done", duration: 3100 },
+    { id: "compare", label: "Compared weights, creasing and price", status: "done", duration: 900 },
+  ], text: "Linen breathes best – it pulls moisture off the skin and dries fast, which is why it feels cool on a hot day. The trade-off is creasing: a pure linen overshirt looks lived-in after an hour.\n\nFor an overshirt I'd take a linen-cotton blend around 55/45 at 160–180 gsm: it keeps most of the coolness, creases far less and is soft from the first wear. Pure linen if the relaxed look is the point; seersucker if it has to look sharp all day.", files: ["fabric-comparison.csv", "sources.md"] },
+  { id: "weight-question", role: "user", text: "Which weight for a shirt you can wear open over a T-shirt?" },
+  { id: "weight-answer", role: "assistant", at: Date.UTC(2026, 10, 8, 10, 52), tools: [{ id: "weight", label: "Searched the web for “overshirt fabric weight gsm”", status: "done", duration: 1200 }], text: "Go a little heavier than a shirt: 180–200 gsm. It hangs straight when it's open, doesn't cling to the T-shirt underneath and still breathes – under 160 gsm it starts to look like a shirt you forgot to button." },
+];
+
+/** A conversation that preserves decisions, uploads and queued messages across interrupted connections. */
+export function AgentThread({ messages: messagesProp, defaultMessages = defaultAgentMessages, onMessagesChange, title = "Best fabric for a summer overshirt", assistantName = "Assistant", mode = "chat", onSend, onStop, onRetry, onOpenFile, onNavigate, onOpenTask, onOpenInbox, running, decisions: decisionsProp, defaultDecisions = [], onDecisionsChange, onDecide, onLater, decisionRequest, folded: foldedProp, defaultFolded = false, onFoldedChange, connection, defaultConnection, onConnectionChange, onReconnect, lastSeen: lastSeenProp, defaultLastSeen, onLastSeenChange, awayAfter = 5, onMarkRead, uploads: uploadsProp, defaultUploads = [], onUploadsChange, upload, transcribe, composerProps, composer, simulate = messagesProp === undefined && onSend === undefined, className }: AgentThreadProps) {
+  const [messages, setMessages] = useControllable(messagesProp, defaultMessages, onMessagesChange);
+  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
+  const [uploads, setUploads] = useControllable(uploadsProp, defaultUploads, onUploadsChange);
+  const [draft, setDraft] = useControllable(composerProps?.value, composerProps?.defaultValue ?? "", composerProps?.onValueChange);
+  const [lastSeen, setLastSeen] = useControllable<number | undefined>(lastSeenProp, defaultLastSeen, onLastSeenChange);
+  const [readReceipt, setReadReceipt] = useState<number | undefined>();
+  const [localRunning, setLocalRunning] = useState(false), [away, setAway] = useState(false), [newCount, setNewCount] = useState(0), [announcement, setAnnouncement] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({}), [activeDecision, setActiveDecision] = useState(""), [focusRequest, setFocusRequest] = useState(0);
+  const [voicePreview, setVoicePreview] = useState(simulate === "dictating"), [voiceSeconds, setVoiceSeconds] = useState(0);
+  const root = useRef<HTMLElement>(null), scroll = useRef<HTMLDivElement>(null), column = useRef<HTMLDivElement>(null), unreadBoundary = useRef<HTMLDivElement>(null), follow = useRef(simulate !== "scrolled");
+  const messageRef = useRef(messages), decisionsRef = useRef(decisions), uploadsRef = useRef(uploads), draftRef = useRef(draft);
+  messageRef.current = messages; decisionsRef.current = decisions; uploadsRef.current = uploads; draftRef.current = draft;
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()), generation = useRef(0), sequence = useRef(0), mounted = useRef(true);
+  const deliveryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const controllers = useRef<Map<string, AbortController>>(new Map()), transcribing = useRef<Set<string>>(new Set()), delivered = useRef<Set<string>>(new Set());
+  const connectionState = useThreadConnection({ connection, defaultConnection, onConnectionChange, onReconnect });
+  const connectionRef = useRef(connectionState.status); connectionRef.current = connectionState.status;
+  const reduced = useReducedMotion();
+  const list = (Array.isArray(messages) ? messages : []).filter(Boolean);
+  const streaming = localRunning || list.some(message => message.streaming || message.tools?.some(tool => tool.status === "running") || message.parts?.some(part => part.kind === "tools" && part.tools.some(tool => tool.status === "running")));
+  const update = (fn: (messages: AgentMessage[]) => AgentMessage[]) => { const next = fn(messageRef.current); messageRef.current = next; setMessages(next); };
+  const updateUploads = (fn: (uploads: ThreadUpload[]) => ThreadUpload[]) => { const next = fn(uploadsRef.current); uploadsRef.current = next; setUploads(next); };
+  const updateDecisions = (next: ThreadDecision[]) => { decisionsRef.current = next; setDecisions(next); };
+  const schedule = (callback: () => void, ms: number) => { const timer = setTimeout(() => { timers.current.delete(timer); if (mounted.current) callback(); }, ms); timers.current.add(timer); return timer; };
+  const clearTimers = () => { timers.current.forEach(timer => clearTimeout(timer)); timers.current.clear(); };
+  const pause = (ms: number, token: number) => new Promise<boolean>(resolve => {
+    let remaining = ms;
+    const tick = () => { if (!mounted.current || token !== generation.current) { resolve(false); return; } if (connectionRef.current === "online") remaining -= 50; if (remaining <= 0) resolve(true); else schedule(tick, 50); }; schedule(tick, Math.min(50, ms));
+  });
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; clearTimers(); deliveryTimers.current.forEach(timer => clearTimeout(timer)); controllers.current.forEach(controller => controller.abort()); }; }, []);
+  useLayoutEffect(() => { const el = scroll.current; if (!el) return; if (follow.current) el.scrollTop = el.scrollHeight; else setNewCount(count => count + 1); }, [messages]);
+  useEffect(() => { const el = scroll.current, content = column.current; if (!el || !content) return; const observer = new ResizeObserver(() => { if (follow.current) el.scrollTop = el.scrollHeight; }); observer.observe(content); observer.observe(el); return () => observer.disconnect(); }, []);
+  const latest = () => { follow.current = true; setAway(false); setNewCount(0); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: reduced ? "auto" : "smooth" }); };
+  const stop = () => {
+    generation.current++; clearTimers(); setLocalRunning(false);
+    const stoppedTool = (tool: ToolActivityItem) => tool.status === "running" ? { ...tool, status: "stopped" as const, duration: Math.max(0, Date.now() - (tool.startedAt ?? Date.now())) } : tool;
+    update(messages => messages.map(message => message.role !== "user" && (message.streaming || message.tools?.some(tool => tool.status === "running") || message.parts?.some(part => part.kind === "tools" && part.tools.some(tool => tool.status === "running"))) ? { ...message, streaming: false, stopped: true, tools: message.tools?.map(stoppedTool), parts: message.parts?.map(part => part.kind === "tools" ? { ...part, tools: part.tools.map(stoppedTool) } : part) } : message));
+    onStop?.(); setAnnouncement("Response stopped");
+  };
+  const streamText = async (id: string, text: string, token: number, append = false) => {
+    const words = text.match(/\S+\s*/g) ?? [];
+    const initial = append ? messageRef.current.find(message => message.id === id)?.text ?? "" : "";
+    for (let count = 0; count < words.length;) {
+      if (!await pause(reduced ? 20 : 60, token)) return false;
+      count += reduced ? 4 : 2;
+      update(messages => messages.map(message => message.id === id ? { ...message, text: initial + words.slice(0, count).join(""), streaming: true } : message));
+    }
+    return true;
+  };
+  const reply = async (text: string) => {
+    const token = generation.current, id = `reply-${Date.now()}-${++sequence.current}`; setLocalRunning(true);
+    if (!await pause(550, token)) return;
+    update(messages => [...messages, { id, role: "assistant", at: Date.now(), streaming: true, tools: [{ id: `${id}-search`, label: mode === "orchestrator" ? "Checked the current tasks and project notes" : `Searched the web for “${text.slice(0, 48)}${text.length > 48 ? "…" : ""}”`, status: "running", startedAt: Date.now() }] }]);
+    if (!await pause(1300, token)) return;
+    update(messages => messages.map(message => message.id === id ? { ...message, tools: message.tools?.map(tool => ({ ...tool, status: "done", duration: 1300 })) } : message));
+    const response = mode === "orchestrator" ? "I've checked the project notes and the current tasks. I'll keep the work moving and bring the next decision back here when I need your input." : "Here's what I found: the sources agree on the main point, and the comparison sheet has the numbers side by side. Want me to turn it into a short brief for the supplier?";
+    if (!await streamText(id, response, token)) return;
+    update(messages => messages.map(message => message.id === id ? { ...message, streaming: false } : message)); setLocalRunning(false); setAnnouncement("Response complete");
+  };
+  const defaults = (): ChatComposerSendOptions => ({ model: composerProps?.model ?? "auto", approval: composerProps?.approval ?? "request", planMode: composerProps?.planMode ?? false, attachments: [] });
+  const pending = useRef<Map<string, ChatComposerSendOptions>>(new Map());
+  const send = (text: string, options: ChatComposerSendOptions) => {
+    const id = `message-${Date.now()}-${++sequence.current}`;
+    const online = connectionRef.current === "online";
+    update(messages => [...messages, { id, role: "user", text, at: Date.now(), status: online ? "sent" : "queued", attachments: options.attachments.map(file => ({ name: file.name, size: file.size })) }]);
+    updateUploads(uploads => uploads.filter(file => file.kind === "voice" && file.state !== "done")); latest();
+    if (!online) { pending.current.set(id, options); setAnnouncement("Waiting to send – it goes out when you're back online"); return; }
+    delivered.current.add(id); onSend?.(text, options);
+    if (simulate) { if (streaming) stop(); void reply(text); }
+  };
+  const deliveryRef = useRef({ onSend, simulate }); deliveryRef.current = { onSend, simulate };
+  useEffect(() => {
+    if (connectionState.status !== "online") return;
+    const queued = messageRef.current.filter(message => message.role === "user" && message.status === "queued" && !delivered.current.has(message.id));
+    queued.forEach(message => delivered.current.add(message.id));
+    if (!queued.length) return;
+    update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "sending" } : message));
+    const deliveryTimer = setTimeout(() => { deliveryTimers.current.delete(deliveryTimer); if (!mounted.current) return; if (connectionRef.current !== "online") { queued.forEach(message => delivered.current.delete(message.id)); update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "queued" } : message)); return; } update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "sent" } : message)); queued.forEach(message => { const options = pending.current.get(message.id) ?? defaults(); pending.current.delete(message.id); if (!message.answer) deliveryRef.current.onSend?.(message.text ?? "", options); }); if (deliveryRef.current.simulate && queued.some(message => !message.answer)) { update(messages => messages.map(message => message.streaming ? { ...message, streaming: false } : message)); void reply(queued.at(-1)?.text ?? ""); } }, 600); deliveryTimers.current.add(deliveryTimer);
+  }, [connectionState.status]);
+  const startUpload = (item: ThreadUpload) => {
+    if (!upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online") return;
+    const controller = new AbortController(); controllers.current.set(item.id, controller);
+    Promise.resolve().then(() => { if (controller.signal.aborted) return; return upload(item.file!, progress => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, progress: clamp(safeNumber(progress, 0), 0, 1), state: "uploading" } : file)); }, controller.signal); }).then(() => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "done", progress: 1 } : file)); }).catch(() => { if (!controller.signal.aborted && mounted.current) { updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "failed" } : file)); setAnnouncement(`Upload failed: ${item.name}`); } }).finally(() => { if (controllers.current.get(item.id) === controller) controllers.current.delete(item.id); });
+  };
+  const attach = (files: ChatComposerAttachment[]) => {
+    const added: ThreadUpload[] = files.filter(file => !uploadsRef.current.some(item => item.id === file.id)).map(file => ({ ...file, kind: "file", progress: 0, state: connectionRef.current === "online" ? "uploading" : "paused" }));
+    if (added.length) { updateUploads(files => [...files, ...added]); added.forEach(startUpload); }
+    composerProps?.onAttachmentsChange?.(files);
+  };
+  const removeUpload = (id: string) => { controllers.current.get(id)?.abort(); controllers.current.delete(id); updateUploads(files => files.filter(file => file.id !== id)); };
+  const retryUpload = (id: string) => { const file = uploadsRef.current.find(file => file.id === id); if (!file) return; if (file.kind === "voice") { updateUploads(files => files.map(file => file.id === id ? { ...file, state: "waiting" } : file)); return; } const next: ThreadUpload = { ...file, progress: 0, state: connectionRef.current === "online" ? "uploading" : "paused" }; updateUploads(files => files.map(file => file.id === id ? next : file)); startUpload(next); };
+  const uploading = uploads.some(file => file.state === "uploading" || file.state === "paused");
+  useEffect(() => {
+    if (!uploading || upload) return;
+    const interval = setInterval(() => updateUploads(files => files.map(file => { if (file.state !== "uploading" && file.state !== "paused") return file; if (connectionRef.current !== "online") return { ...file, state: "paused" }; const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size)); return { ...file, progress, state: progress >= 1 ? "done" : "uploading" }; })), 200);
+    return () => clearInterval(interval);
+  }, [uploading, upload]);
+  useEffect(() => {
+    if (!upload) return;
+    if (connectionState.status === "online") { uploadsRef.current.filter(file => file.kind !== "voice" && (file.state === "paused" || file.state === "uploading")).forEach(startUpload); return; }
+    controllers.current.forEach(controller => controller.abort()); controllers.current.clear();
+    if (uploadsRef.current.some(file => file.kind !== "voice" && file.state === "uploading")) updateUploads(files => files.map(file => file.kind !== "voice" && file.state === "uploading" ? { ...file, state: "paused" } : file));
+  }, [connectionState.status, upload]);
+  const transcribeClip = async (clip: ThreadAttachment) => {
+    if (transcribe) return transcribe(clip);
+    if (!simulate) throw new Error("Provide a transcribe callback to process saved voice notes.");
+    await new Promise(resolve => setTimeout(resolve, 800)); return "Also send Dana the load test numbers.";
+  };
+  const voice = async (blob: Blob, signal: AbortSignal) => {
+    const clip: ThreadUpload = { id: `voice-${Date.now()}`, name: "Voice note", size: blob.size, kind: "voice", file: new File([blob], "Voice note.webm", { type: blob.type }), progress: 1, seconds: Math.max(1, voiceSeconds), state: "waiting" };
+    if (connectionRef.current !== "online") { updateUploads(files => [...files, clip]); setAnnouncement("Voice note saved – it will transcribe when you're back online"); return ""; }
+    const text = await transcribeClip(clip); return signal.aborted ? "" : text;
+  };
+  useEffect(() => {
+    if (connectionState.status !== "online") return;
+    uploads.filter(file => file.kind === "voice" && file.state === "waiting" && !transcribing.current.has(file.id)).forEach(clip => {
+      transcribing.current.add(clip.id); updateUploads(files => files.map(file => file.id === clip.id ? { ...file, state: "transcribing" } : file));
+      transcribeClip(clip).then(text => { if (!mounted.current || !uploadsRef.current.some(file => file.id === clip.id)) return; setDraft(`${draftRef.current.trimEnd()}${draftRef.current.trim() ? " " : ""}${text}`); updateUploads(files => files.filter(file => file.id !== clip.id)); }).catch(() => { if (mounted.current) updateUploads(files => files.map(file => file.id === clip.id ? { ...file, state: "failed" } : file)); }).finally(() => transcribing.current.delete(clip.id));
+    });
+  }, [connectionState.status, uploads]);
+  useEffect(() => { if (!voicePreview) return; const timer = setInterval(() => setVoiceSeconds(value => value + 1), 1000); return () => clearInterval(timer); }, [voicePreview]);
+  const finishVoicePreview = () => {
+    setVoicePreview(false);
+    const clip: ThreadUpload = { id: `voice-preview-${Date.now()}`, name: "Voice note", kind: "voice", seconds: Math.max(1, voiceSeconds), size: Math.max(1, voiceSeconds) * 16000, progress: 1, state: "waiting" };
+    updateUploads(files => [...files, clip]);
+  };
+  const openInbox = (id?: string) => onOpenInbox ? onOpenInbox(id) : onNavigate?.("Inbox");
+  const showDecision = (id?: string) => {
+    if (id && answers[id]) { root.current?.querySelector(`[data-answer="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" }); return; }
+    if (!decisionsRef.current.length || id && !decisionsRef.current.some(decision => decision.id === id)) { openInbox(id); return; }
+    if (id) setActiveDecision(id); setFolded(false); setFocusRequest(value => value + 1);
+  };
+  useEffect(() => { if (decisionRequest) showDecision(decisionRequest.id); }, [decisionRequest]);
+  const answered = (id: string, answer: ThreadDecisionAnswer) => {
+    const decision = decisionsRef.current.find(item => item.id === id); if (!decision) return;
+    const text = answer === "approve" ? "Approved" : answer === "decline" ? "Declined" : answer.text ?? decision.options?.find(option => option.id === answer.option)?.title ?? "Answered";
+    setAnswers(previous => ({ ...previous, [id]: text }));
+    update(messages => [...messages, { id: `answer-${Date.now()}-${++sequence.current}`, role: "user", at: Date.now(), text, answer: { id, question: decision.question }, status: connectionRef.current === "online" ? "sent" : "queued" }]);
+    latest(); onDecide?.(id, answer); setAnnouncement(`Answered: ${text}`);
+    requestAnimationFrame(() => root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }));
+    if (simulate && connectionRef.current === "online") {
+      schedule(() => { update(messages => [...messages, { id: `ack-${Date.now()}`, role: "agent", at: Date.now(), parts: [{ kind: "text", text: answer === "decline" ? "Understood. I'll keep the draft here until you're ready." : `Got it – ${text}. I'll take it from here.` }] }]); }, 450);
+      if (decision.taskId === "ingest") schedule(() => update(messages => messages.map(message => ({ ...message, parts: message.parts?.map(part => part.kind === "task" && part.task.id === "ingest" ? { ...part, task: { ...part.task, status: "Deployed to staging · smoke test passed", done: true, steps: { done: 4, total: 4 } } } : part) }))), 1800);
+    }
+  };
+  const later = (id: string) => { onLater?.(id); setAnnouncement("Later – the decision waits above the composer"); requestAnimationFrame(() => root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true })); };
+  const read = () => { setReadReceipt(lastSeen); setLastSeen(undefined); onMarkRead?.(); setAnnouncement("Marked as read"); };
+  const boundaryIndex = lastSeen != null && lastSeen !== readReceipt ? list.findIndex(message => (message.at ?? 0) > lastSeen) : -1;
+  const after = boundaryIndex >= 0 ? list.slice(boundaryIndex) : [];
+  const completedTasks = new Map<string, ThreadTask>();
+  after.forEach(message => message.parts?.forEach(part => { if (part.kind === "task" && part.task.done) completedTasks.set(part.task.id, part.task); }));
+  const awayDecisions = after.flatMap(message => message.parts?.filter((part): part is Extract<AgentMessagePart, { kind: "decision" }> => part.kind === "decision").map(part => part.ask) ?? []).filter((decision, index, all) => !answers[decision.id] && all.findIndex(item => item.id === decision.id) === index);
+  useLayoutEffect(() => {
+    if (boundaryIndex < 0) return;
+    let disposed = false;
+    const position = () => { if (disposed || !unreadBoundary.current || !scroll.current) return; follow.current = false; const viewport = scroll.current; const top = unreadBoundary.current.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop; viewport.scrollTop = Math.max(0, top - 20); setAway(true); };
+    position(); void document.fonts?.ready.then(position);
+    return () => { disposed = true; };
+  }, [lastSeen]);
+  useEffect(() => { let hiddenAt = 0; const visibility = () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt >= Math.max(0, awayAfter) * 60000) setLastSeen(hiddenAt); }; document.addEventListener("visibilitychange", visibility); return () => document.removeEventListener("visibilitychange", visibility); }, [awayAfter]);
+  const shortcutActions = useRef({ latest, streaming, stop, voicePreview }); shortcutActions.current = { latest, streaming, stop, voicePreview };
+  useEffect(() => { const key = (event: globalThis.KeyboardEvent) => { if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isEditing(event.target)) return; if (document.activeElement !== document.body && !root.current?.contains(document.activeElement)) return; if (event.key === "End") { event.preventDefault(); shortcutActions.current.latest(); } if (event.key === "/") { event.preventDefault(); root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); } }; document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, []);
+  const liveStory = async () => {
+    const token = generation.current, id = "ingest-story"; setLocalRunning(true);
+    if (!await pause(900, token)) return;
+    update(messages => [...messages, { id: "staging-question", role: "user", at: Date.now(), text: "Good. Get ingest onto staging today – and tell me what you need from me." }]);
+    if (!await pause(450, token)) return;
+    const toolLabels = ["Read ingest-design.md", "Checked the staging cluster", "Compared Kafka, SQS and a Postgres queue"];
+    update(messages => [...messages, { id, role: "agent", at: Date.now(), streaming: true, parts: [{ kind: "tools", id: "stage-tools", tools: toolLabels.map((label, index) => ({ id: `stage-${index}`, label, status: "running", startedAt: Date.now() })) }] }]);
+    for (const [index, wait, duration] of [[0,1200,1200],[1,1400,2600],[2,1600,4200]]) {
+      if (!await pause(wait, token)) return;
+      update(messages => messages.map(message => message.id === id ? { ...message, parts: message.parts?.map(part => part.kind === "tools" ? { ...part, tools: part.tools.map((tool, position) => position === index ? { ...tool, status: "done", duration } : tool) } : part) } : message));
+    }
+    if (!await pause(700, token)) return;
+    if (!await streamText(id, "Staging is ready and the load test holds. One thing I can't decide for you: which queue the service runs on. Kafka keeps a day of events to replay after a bad deploy; SQS is less to run but can't replay. I'd pick Kafka.", token)) return;
+    update(messages => messages.map(message => message.id === id ? { ...message, streaming: false, parts: [...message.parts ?? [], { kind: "task", task: { id: "ingest", title: "Ingest pipeline", status: "Picking a queue", steps: { done: 2, total: 4 } } }, { kind: "decision", ask: { id: "queue", question: defaultThreadDecisions[0].question, task: "Ingest pipeline" } }, { kind: "text", text: "Once you've picked, I'll deploy to staging and run the smoke test. The deploy plan is ready:" }, { kind: "artifacts", names: ["deploy.yaml", "ingest-design.md"] }] } : message));
+    if (!decisionsRef.current.some(decision => decision.id === "queue")) updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]]);
+    setFolded(false); setLocalRunning(false);
+  };
+  useEffect(() => {
+    if (simulate === "live") void liveStory();
+    if (simulate === "scrolled") { follow.current = false; const frame = requestAnimationFrame(() => { if (scroll.current) scroll.current.scrollTop = Math.max(0, scroll.current.scrollHeight - scroll.current.clientHeight - 280); setAway(true); setNewCount(12); }); return () => cancelAnimationFrame(frame); }
+  }, []);
+  const retry = (id: string) => {
+    onRetry?.(id); if (!simulate) return;
+    const failed = messageRef.current.find(message => message.id === id); if (!failed) return;
+    if (failed.role === "user") { const options = defaults(); update(messages => messages.map(message => message.id === id ? { ...message, status: connectionRef.current === "online" ? "sent" : "queued" } : message)); if (connectionRef.current === "online") { onSend?.(failed.text ?? "", options); void reply(failed.text ?? ""); } return; }
+    update(messages => messages.map(message => message.id === id ? { ...message, streaming: true, parts: message.parts?.filter(part => part.kind !== "error").map(part => part.kind === "tools" ? { ...part, tools: part.tools.map(tool => tool.status === "failed" ? { ...tool, status: "running", startedAt: Date.now() } : tool) } : part) } : message));
+    const token = generation.current;
+    void (async () => { if (!await pause(1600, token)) return; update(messages => messages.map(message => message.id === id ? { ...message, streaming: false, parts: [...(message.parts?.map(part => part.kind === "tools" ? { ...part, tools: part.tools.map(tool => tool.status === "running" ? { ...tool, status: "done" as const, duration: 1600 } : tool) } : part) ?? []), { kind: "text", text: "The staging cluster answers again – the check passed, so we're good to deploy once you've picked a queue." }] } : message)); })();
+  };
+  const needsBaseline = useRef({ needs: running?.needs, answered: 0 });
+  if (needsBaseline.current.needs !== running?.needs) needsBaseline.current = { needs: running?.needs, answered: Object.keys(answers).length };
+  const needs = Math.max(0, safeNumber(running?.needs, decisions.length) - (Object.keys(answers).length - needsBaseline.current.answered));
+  const time = (at: number) => new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
+  const fileChips = (names: string[]) => <div className="ui-th__files" aria-label="Created files">{names.map(name => <button type="button" key={name} className="ui-th__file" title={name} onClick={() => onOpenFile?.(name)}><span data-kind={name.endsWith(".csv") ? "table" : /\.(ya?ml|json|tsx?|js)$/.test(name) ? "code" : "document"}><Icon name={name.endsWith(".csv") ? "table" : "document"} size={12}/></span><span>{name}</span></button>)}</div>;
+  const textPart = (text: string, caret: boolean) => <div className="ui-th__text" dir="auto">{text.split(/\n{2,}/).map((paragraph, index, paragraphs) => <p key={index}>{paragraph}{caret && index === paragraphs.length - 1 && <span className="ui-th__caret" aria-hidden="true"/>}</p>)}</div>;
+  const completedUploads = uploads.filter(file => file.state === "done" && file.kind !== "voice");
+  const blockedUpload = uploads.some(file => file.kind !== "voice" && file.state !== "done");
+  return <section ref={root} data-thread-shortcuts="" className={["ui-th", className].filter(Boolean).join(" ")} data-orchestrator={mode === "orchestrator" || undefined} aria-label={title} onKeyDown={event => { if (event.defaultPrevented) return; if (event.key === "Escape" && voicePreview) { event.preventDefault(); setVoicePreview(false); } else if (event.key === "Escape" && streaming) { event.preventDefault(); stop(); } }}>
+    <style href="ui-agent-thread" precedence="default">{css}</style>
+    <header className="ui-th__head"><h1 className="ui-th__sr">{title}</h1>{running && <div className="ui-th__summary"><button type="button" aria-label={`${running.running} tasks running – open Tasks`} onClick={() => onNavigate?.("Tasks")}><i className="ui-th__running-dot"/>{Math.max(0, safeNumber(running.running, 0))}<span>running</span></button>{needs > 0 && <><span className="ui-th__summary-separator">·</span><button type="button" aria-label={`${needs} questions waiting – ${decisions.length ? "show the decision" : "open Inbox"}`} onClick={() => showDecision()}><i className="ui-th__needs-dot"/>{needs}<span>need{needs === 1 ? "s" : ""} you</span></button></>}</div>}</header>
+    <ConnectionBanner managed connection={connectionState.status} retryIn={connectionState.retryIn} backOnline={connectionState.backOnline} onReconnect={connectionState.reconnect}/>
+    <div className="ui-th__body"><div ref={scroll} className="ui-th__scroll" onScroll={() => { const el = scroll.current; if (!el) return; const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40; follow.current = pinned; setAway(!pinned); if (pinned) setNewCount(0); }}><div ref={column} className="ui-th__column" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions" aria-busy={streaming}>
+      {!list.length && <div className="ui-th__empty"><span className="ui-th__empty-icon"><Icon name="spark" size={26}/></span><h2>What can I help you with?</h2><p>Ask a question, explore an idea, or bring a file.</p></div>}
+      {list.map((message, messageIndex) => <div className="ui-th__message" key={message.id}>
+        {messageIndex === boundaryIndex && <div ref={unreadBoundary} className="ui-th__unread-boundary"><AwaySummary tasks={[...completedTasks.values()]} decisions={awayDecisions} since={lastSeen} onOpenTask={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")} onOpenDecision={showDecision} onOpenTasks={() => onNavigate?.("Tasks")} onOpenInbox={() => openInbox()} onMarkRead={read}/></div>}
+        {message.role === "user" ? <div className="ui-th__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}><span className="ui-th__sr">{message.answer ? "You answered:" : "You said:"}</span>{message.answer && <span className="ui-th__answer-context" title={message.answer.question}>Answered: {message.answer.question}</span>}{message.attachments && message.attachments.length > 0 && <div className="ui-th__attachments">{message.attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="document" size={14}/>{file.name}</span>)}</div>}{message.text && <p className="ui-th__bubble" dir="auto">{message.text}</p>}{message.status && message.status !== "sent" && <span className="ui-th__send-status">{message.status === "failed" ? <><Icon name="warning" size={12}/>Couldn't send · <button type="button" onClick={() => retry(message.id)}>Retry</button></> : message.status === "queued" ? "Waiting to send" : "Sending…"}</span>}</div> : <div className="ui-th__assistant" data-streaming={message.streaming || undefined}>
+          {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? <div className="ui-th__who"><span className="ui-th__avatar" data-busy={message.streaming || undefined} aria-hidden="true">{[0, 2, 4, 6, 8].map((pixel, index) => <i key={pixel} style={{ gridArea: `${Math.floor(pixel / 3) + 1}/${pixel % 3 + 1}`, animationDelay: `${index * 130}ms` }}/>)}</span><span>{assistantName}</span>{message.at != null && Number.isFinite(message.at) && <time dateTime={new Date(message.at).toISOString()}>{time(message.at)}</time>}</div> : <span className="ui-th__sr">{assistantName}:</span>}
+          {message.tools && message.tools.length > 0 && <ToolActivity tools={message.tools} onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}/>}
+          {message.parts?.slice(0, 1).map(part => part.kind === "tools" && <ToolActivity key={part.id} tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/>)}
+          {message.text && textPart(message.text, !!message.streaming)}
+          {message.parts?.map((part, index) => index === 0 && part.kind === "tools" ? null : <div className="ui-th__part" key={`${part.kind}-${index}`}>{part.kind === "tools" ? <ToolActivity tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/> : part.kind === "text" ? textPart(part.text, !!message.streaming && index === message.parts!.length - 1 && !message.text) : part.kind === "task" ? <ThreadTaskCard task={part.task} onOpen={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")}/> : part.kind === "artifacts" ? fileChips(part.names) : part.kind === "decision" ? <button type="button" className="ui-th__asked" onClick={() => showDecision(part.ask.id)}><i data-answered={!!answers[part.ask.id] || undefined}/><span>Asked: {part.ask.question}</span><small>· {answers[part.ask.id] ? "answered below" : decisions.some(decision => decision.id === part.ask.id) ? "waiting" : "in Inbox"}</small></button> : <div className="ui-th__error" role="status"><Icon name="warning" size={14}/><span dir="auto">{part.text}</span>{part.retry && <button type="button" onClick={() => retry(message.id)}>Retry</button>}</div>}</div>)}
+          {message.files && fileChips(message.files)}{message.stopped && <span className="ui-th__stopped"><Icon name="stop" size={11}/>Stopped</span>}
+        </div>}
+      </div>)}
+    </div></div>{away && boundaryIndex < 0 && <button type="button" className="ui-th__jump" aria-label={`Jump to latest${newCount ? `, ${newCount} new lines` : ""}${streaming ? ", still writing" : ""}`} aria-keyshortcuts="End" onClick={latest}><Icon name="arrow" size={14}/>{newCount ? `${newCount} new lines` : "Back to latest"}{streaming && <span className="ui-th__jump-live"/>}</button>}</div>
+    <footer className="ui-th__foot"><div className="ui-th__foot-column"><div className="ui-th__dock-slot" data-visible={decisions.length > 0 || undefined}><DecisionDock decisions={decisions} onDecisionsChange={updateDecisions} activeId={activeDecision} onActiveIdChange={setActiveDecision} folded={folded} onFoldedChange={setFolded} onAnswer={answered} onLater={later} focusRequest={focusRequest}/></div>
+      {(uploads.length > 0 || voicePreview || streaming) && <div className="ui-th__above">
+        {uploads.length > 0 && <div className="ui-th__upload-slot"><ThreadUploads uploads={uploads} onRemove={removeUpload} onRetry={retryUpload}/></div>}
+        {voicePreview && <div className="ui-th__upload-slot"><ThreadVoiceInput seconds={voiceSeconds} onDiscard={() => setVoicePreview(false)} onDone={finishVoicePreview}/></div>}
+        {streaming && !voicePreview && <button type="button" className="ui-th__stop" onClick={stop} aria-keyshortcuts="Escape"><Icon name="stop" size={12}/>Stop</button>}
+      </div>}
+      {composer ?? <ChatComposer {...composerProps} models={composerProps?.models ?? (mode === "orchestrator" ? [] : undefined)} value={draft} onValueChange={setDraft} attachments={mode === "orchestrator" ? completedUploads : composerProps?.attachments} onAttachmentsChange={mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange} showAttachments={mode === "orchestrator" ? false : composerProps?.showAttachments} sendDisabled={blockedUpload || composerProps?.sendDisabled} transcribe={mode === "orchestrator" && (transcribe || simulate) ? voice : composerProps?.transcribe} onSend={send}/>}
+    </div></footer><span role="status" aria-live="polite" className="ui-th__sr">{announcement}</span>
+  </section>;
+}
+
+/* ---------- Styles ---------- */
+.ui-th[data-orchestrator]{position:relative}.ui-th[data-orchestrator]>.ui-cn{position:absolute;inset:8px 0 auto;z-index:4;pointer-events:none}.ui-th[data-orchestrator] .ui-th__head{position:absolute;inset:0 0 auto;z-index:2;pointer-events:none;display:flex;align-items:center;gap:12px;height:48px;padding:0 58px 0 24px}.ui-th__title{font-size:13px;font-weight:500;margin:0}.ui-th__summary{pointer-events:auto;display:flex;align-items:center;gap:7px;margin-left:auto;font-size:11px;color:var(--ui-th-muted);font-variant-numeric:tabular-nums}.ui-th__summary button{display:flex;align-items:center;gap:5px;font-size:11px;min-height:28px;border-radius:5px;padding:3px}.ui-th__summary button:hover{background:var(--ui-th-fill)}.ui-th__summary-separator{color:var(--ui-th-faint)}.ui-th__running-dot{width:6px;height:6px;border-radius:50%;border:1px solid #13b8a6}.ui-th__needs-dot{width:5px;height:5px;border-radius:50%;background:#e8a20c}.ui-th[data-orchestrator] .ui-th__scroll{padding-top:56px;padding-bottom:8px;mask-image:linear-gradient(transparent,#000 20px)}.ui-th[data-orchestrator] .ui-th__bubble{max-width:80%}.ui-th__part{margin-top:12px}.ui-th__part:has(.ui-tk)+.ui-th__part:has(.ui-tk){margin-top:8px}.ui-th__part>.ui-th__files{margin-top:0}.ui-th__part>.ui-th__text{margin:0}.ui-th__asked{margin:-2px 0;display:flex;align-items:center;gap:8px;width:100%;padding:0!important;min-height:28px;border-radius:6px;text-align:left;font-size:13px!important;color:var(--ui-th-muted)!important}.ui-th__asked:hover{background:var(--ui-th-fill)}.ui-th__asked>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-th__asked>i{width:6px;height:6px;margin:0 4px;background:#e8a20c;border-radius:50%;flex:none}.ui-th__asked>i[data-answered]{background:#1a9a52}.ui-th__asked>small{font-size:11px;color:var(--ui-th-faint);flex:none}.ui-th__error{display:flex;align-items:center;gap:8px;color:#e5484d;font-size:12px;padding:7px 0}.ui-th__error>span{flex:1;overflow-wrap:anywhere}.ui-th__error button{font-size:12px;text-decoration:underline}.ui-th__answer-context{font-size:11px;color:var(--ui-th-muted);max-width:80%;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-th__dock-slot[data-visible]{margin-bottom:16px}.ui-th__upload-slot{flex:1;min-width:0}.ui-th[data-orchestrator] .ui-th__above{align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:0 2px;margin-bottom:8px}.ui-th__jump-live{width:5px;height:5px;background:#13b8a6;border-radius:50%;animation:ui-th-caret 1.2s ease infinite}.ui-th__unread-boundary{position:relative;margin-bottom:18px}.ui-th[data-orchestrator] .ui-th__foot{padding-top:4px}.ui-th[data-orchestrator] .ui-th__foot-column>.ui-cc{margin-top:8px}.ui-th[data-orchestrator] .ui-th__foot-column:has(.ui-th__dock-slot[data-visible])>.ui-cc{margin-top:0}
+@container ui-th (max-width:900px){.ui-th__summary{display:none}}
+@container ui-th (max-width:560px){.ui-th[data-orchestrator] .ui-th__scroll{padding-inline:12px}.ui-th[data-orchestrator] .ui-th__foot{padding-inline:12px}.ui-th[data-orchestrator] .ui-th__bubble{max-width:88%}.ui-th__asked{flex-wrap:wrap}.ui-th__asked>span{white-space:normal;flex:1}.ui-th__asked>small{margin-left:12px}}
+
+.ui-th{--ui-th-card:#fff;--ui-th-ink:rgba(0,0,0,.88);--ui-th-text:rgba(0,0,0,.61);--ui-th-muted:rgba(0,0,0,.45);--ui-th-faint:rgba(0,0,0,.27);--ui-th-fill:rgba(0,0,0,.04);--ui-th-line:rgba(0,0,0,.06);--ui-th-focus:rgba(0,96,226,.35);--ui-th-ease:cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;height:100%;min-height:0;width:100%;position:relative;background:var(--ui-th-card);border-radius:inherit;container:ui-th / inline-size;font:14px/1.6 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-th-ink);-webkit-font-smoothing:antialiased}
+.ui-th,.ui-th *,.ui-th *::before,.ui-th *::after{box-sizing:border-box}.ui-th :where(button){font:inherit;color:inherit;border:0;background:none;cursor:pointer}.ui-th button:active:not(:disabled){transform:scale(.97)}.ui-th button:focus-visible{outline:2px solid var(--ui-th-focus);outline-offset:2px}.ui-th__head{height:32px;flex:none}.ui-th__body{flex:1;min-height:0;position:relative}.ui-th__scroll{height:100%;overflow-y:auto;overscroll-behavior:contain;padding:24px 32px 12px;scrollbar-width:thin;scrollbar-color:var(--ui-th-line) transparent;overflow-anchor:none}.ui-th__column{max-width:680px;margin-inline:auto;min-width:0}.ui-th__user{display:flex;align-items:flex-end;flex-direction:column;margin:0 0 24px;animation:ui-th-in 420ms var(--ui-th-ease) both}.ui-th__bubble{max-width:94%;margin:0;padding:8px 14px;border-radius:18px;background:var(--ui-th-fill);line-height:22.4px;white-space:pre-wrap;overflow-wrap:anywhere}.ui-th__assistant{margin-bottom:24px;animation:ui-th-in 420ms var(--ui-th-ease) both}.ui-th__who{display:flex;align-items:center;gap:9px;min-height:22px;font-size:13px;line-height:20.8px;margin-bottom:12px}.ui-th__who time{font-size:11px;color:var(--ui-th-faint);font-variant-numeric:tabular-nums}.ui-th__avatar{display:grid;grid-template-columns:repeat(3,3px);grid-template-rows:repeat(3,3px);gap:2px;width:15px;height:15px;flex:none;align-content:center}.ui-th__avatar i{background:#a654ff;width:3px;height:3px}.ui-th__avatar[data-busy] i{animation:ui-th-pixel 1.25s ease-in-out infinite}.ui-th__assistant>.ui-ta{margin-bottom:12px}.ui-th__text p{margin:0 0 12px;overflow-wrap:anywhere;white-space:pre-wrap}.ui-th__text p:last-child{margin-bottom:0}.ui-th__files{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.ui-th__file{display:flex;align-items:center;gap:6px;max-width:240px;height:26px;padding:3px 8px!important;background:var(--ui-th-fill)!important;border-radius:6px;font-size:12px!important}.ui-th__file>span:first-child{display:flex;color:#2989df}.ui-th__file>span[data-kind="table"]{color:#1a9a52}.ui-th__file>span[data-kind="code"]{color:#eb9238}.ui-th__file>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-th__file:hover{box-shadow:0 0 0 .5px var(--ui-th-line)}.ui-th__foot{padding:12px 32px 20px;position:relative;flex:none}.ui-th__foot-column{width:100%;max-width:680px;margin-inline:auto}.ui-th__above{display:flex;justify-content:center;padding-bottom:10px}.ui-th__stop{display:flex;align-items:center;gap:6px;min-height:28px;padding:3px 12px!important;border-radius:20px;font-size:12px!important;background:var(--ui-th-card)!important;box-shadow:0 0 0 .5px var(--ui-th-line),0 2px 6px rgba(0,0,0,.04);animation:ui-th-in 200ms both}.ui-th__stop:hover{background:var(--ui-th-fill)!important}.ui-th__caret{display:inline-block;width:2px;height:1em;margin-left:3px;background:var(--ui-th-ink);vertical-align:-2px;animation:ui-th-caret 1s steps(2) infinite}.ui-th__stopped,.ui-th__send-status{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ui-th-muted);margin-top:8px}.ui-th__send-status button{font-size:inherit;text-decoration:underline}.ui-th__attachments{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;margin-bottom:7px}.ui-th__attachments>span{display:flex;align-items:center;gap:6px;background:var(--ui-th-fill);border-radius:7px;padding:5px 8px;font-size:12px}.ui-th__jump{display:flex;align-items:center;gap:6px;position:absolute;bottom:12px;left:50%;translate:-50% 0;min-height:30px;padding:4px 12px!important;border-radius:20px;background:var(--ui-th-card)!important;box-shadow:0 0 0 .5px var(--ui-th-line),0 3px 14px rgba(0,0,0,.06);font-size:12px!important;white-space:nowrap;z-index:2}.ui-th__jump svg{rotate:90deg}.ui-th__empty{min-height:320px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--ui-th-muted)}.ui-th__empty-icon{color:#a654ff;margin-bottom:12px}.ui-th__empty h2{font-size:24px;line-height:1.4;font-weight:500;color:var(--ui-th-ink);margin:0 0 8px}.ui-th__empty p{font-size:13px;margin:0}.ui-th__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@keyframes ui-th-in{from{opacity:0;transform:translateY(8px)}}@keyframes ui-th-pixel{50%{opacity:.2}}@keyframes ui-th-caret{50%{opacity:0}}
+@container ui-th (max-width:600px){.ui-th__scroll{padding-inline:24px}.ui-th__foot{padding-inline:24px}.ui-th__bubble{max-width:96%}}
+@container ui-th (max-width:400px){.ui-th__scroll{padding:20px 16px 12px}.ui-th__foot{padding:12px 12px 14px}.ui-th__bubble{padding:8px 12px}.ui-th__user{margin-bottom:20px}.ui-th__assistant{margin-bottom:26px}.ui-th__empty h2{font-size:21px}}
+@media(pointer:coarse){.ui-th__file{height:32px}.ui-th__stop{min-height:36px}.ui-th__jump{min-height:36px}}
+@media(prefers-reduced-motion:reduce){.ui-th,.ui-th *{animation:none!important;transition:none!important;scroll-behavior:auto!important}.ui-th__caret{opacity:.45}}
+:where(.dark,[data-theme="dark"]) .ui-th{--ui-th-card:#1c1c1e;--ui-th-ink:rgba(255,255,255,.9);--ui-th-text:rgba(255,255,255,.62);--ui-th-muted:rgba(255,255,255,.46);--ui-th-faint:rgba(255,255,255,.3);--ui-th-fill:rgba(255,255,255,.06);--ui-th-line:rgba(255,255,255,.08);--ui-th-focus:rgba(77,141,255,.5)}
+
+@container ui-th (max-width:560px){.ui-th:has(>.ui-cn) .ui-th__summary{visibility:hidden}}

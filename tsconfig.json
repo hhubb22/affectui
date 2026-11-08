@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "components/app-shell*.tsx",
+    "components/agent-thread*.tsx",
+    "components/artifact-workspace*.tsx",
+    "components/chat-composer*.tsx",
+    "components/command-menu*.tsx",
+    "components/tool-activity*.tsx",
+    "components/thread-task-card*.tsx",
+    "components/decision-dock*.tsx",
+    "components/connection-banner*.tsx",
+    "components/away-summary*.tsx",
+    "components/thread-uploads*.tsx",
+    "components/task-details*.tsx",
+    "components/task-progress-ring*.tsx",
+    "components/task-create*.tsx",
+    "components/task-list*.tsx",
+    "components/task-inspector*.tsx",
+    "components/artifact-folder*.tsx",
+    "components/artifact-image*.tsx",
+    "components/workspace-start*.tsx",
+    "screens/**/*.tsx",
+    "examples/**/*.tsx",
+    "examples/**/*.d.ts",
+    "tests/contracts.tsx",
+    "components/inbox*.tsx"
+  ]
+}

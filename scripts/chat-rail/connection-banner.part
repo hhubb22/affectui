@@ -1,0 +1,83 @@
+export type ThreadConnection = "online" | "offline" | "reconnecting";
+export type ConnectionBannerProps = {
+  connection?: ThreadConnection;
+  defaultConnection?: ThreadConnection;
+  onConnectionChange?: (connection: ThreadConnection) => void;
+  onReconnect?: () => void | Promise<void>;
+  retryIn?: number;
+  backOnline?: boolean;
+  /** Disable the built-in retry clock when a parent supplies its own connection manager. */
+  managed?: boolean;
+  className?: string;
+};
+
+function useThreadConnection({ connection, defaultConnection, onConnectionChange, onReconnect }: Omit<ConnectionBannerProps, "className">) {
+  const [internal, setInternal] = useState<ThreadConnection>(defaultConnection ?? "online");
+  const [retrying, setRetrying] = useState(false), [attempt, setAttempt] = useState(0), [retryIn, setRetryIn] = useState(5), [backOnline, setBackOnline] = useState(false);
+  const forced = useRef(defaultConnection === "offline"), timer = useRef<ReturnType<typeof setTimeout> | null>(null), mounted = useRef(true);
+  const callbacks = useRef({ connection, onReconnect, onConnectionChange }); callbacks.current = { connection, onReconnect, onConnectionChange };
+  const base = connection && ["online", "offline", "reconnecting"].includes(connection) ? connection : internal;
+  const status: ThreadConnection = retrying && base !== "online" ? "reconnecting" : base;
+  const current = useRef(status); current.current = status;
+  const setConnection = (next: ThreadConnection) => { if (callbacks.current.connection === undefined) setInternal(next); callbacks.current.onConnectionChange?.(next); };
+  const reconnect = (manual = true) => {
+    if (current.current === "reconnecting") return;
+    setRetrying(true);
+    Promise.resolve().then(() => callbacks.current.onReconnect?.()).then(() => true, () => false).then(succeeded => {
+      if (!mounted.current) return;
+      timer.current = setTimeout(() => { if (!mounted.current) return; if (manual && succeeded) forced.current = false; if (succeeded && callbacks.current.connection === undefined && navigator.onLine && !forced.current) setConnection("online"); setRetrying(false); setAttempt(value => value + 1); }, 1100);
+    });
+  };
+  const reconnectRef = useRef(reconnect); reconnectRef.current = reconnect;
+  useEffect(() => {
+    mounted.current = true;
+    const online = () => { forced.current = false; if (callbacks.current.connection === undefined) setConnection("online"); };
+    const offline = () => { if (callbacks.current.connection === undefined) setConnection("offline"); };
+    if (!navigator.onLine) offline();
+    window.addEventListener("online", online); window.addEventListener("offline", offline);
+    return () => { mounted.current = false; if (timer.current) clearTimeout(timer.current); window.removeEventListener("online", online); window.removeEventListener("offline", offline); };
+  }, []);
+  useEffect(() => {
+    if (status !== "offline") return;
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const deadline = Date.now() + seconds * 1000; setRetryIn(seconds);
+    const interval = setInterval(() => { const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)); setRetryIn(remaining); if (remaining === 0) { clearInterval(interval); reconnectRef.current(false); } }, 1000);
+    return () => clearInterval(interval);
+  }, [status, attempt]);
+  const previous = useRef(base);
+  useEffect(() => {
+    const was = previous.current; previous.current = base;
+    if (base !== "online" || was === "online") return;
+    setAttempt(0); setBackOnline(true); const timeout = setTimeout(() => setBackOnline(false), 1800); return () => clearTimeout(timeout);
+  }, [base]);
+  return { status, retryIn, backOnline, reconnect: () => reconnect(true) };
+}
+
+/** Connection feedback with an optional browser-driven retry clock. */
+export function ConnectionBanner({ connection, defaultConnection, onConnectionChange, onReconnect, retryIn: suppliedRetry, backOnline: suppliedBack, managed = false, className }: ConnectionBannerProps) {
+  const state = useThreadConnection({ connection: managed ? "online" : connection, defaultConnection, onConnectionChange, onReconnect });
+  const status = managed ? connection ?? "online" : state.status;
+  const back = suppliedBack ?? state.backOnline;
+  if (status === "online" && !back) return null;
+  return <div className={["ui-cn", className].filter(Boolean).join(" ")} data-status={status} role="status" aria-live="polite">
+    <style href="ui-connection-banner" precedence="default">{css}</style>
+    <div className="ui-cn__pill">
+    <span className="ui-cn__mark">{status === "online" ? <Icon name="check" size={14}/> : <span className="ui-cn__spinner" aria-hidden="true"/>}</span>
+    <span className="ui-cn__text">{status === "online" ? "Back online" : "Connection lost – reconnecting…"}</span>
+    {status !== "online" && <><span className="ui-cn__timer">{status === "reconnecting" ? "Reconnecting…" : `Retrying in ${suppliedRetry ?? state.retryIn}s`}</span><button type="button" disabled={status === "reconnecting"} onClick={() => managed ? onReconnect?.() : state.reconnect()}>Retry now</button></>}
+    </div>
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-cn{--ui-cn-card:#fff;--ui-cn-text:rgba(0,0,0,.61);--ui-cn-muted:rgba(0,0,0,.45);--ui-cn-line:rgba(0,0,0,.06);--ui-cn-fill:rgba(0,0,0,.04);--ui-cn-focus:rgba(0,96,226,.35);display:flex;justify-content:center;width:100%;color:var(--ui-cn-text);font:13px/1.5 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;container-type:inline-size;-webkit-font-smoothing:antialiased;}
+.ui-cn__pill{pointer-events:auto;display:inline-flex;align-items:center;gap:8px;height:32px;max-width:100%;padding:0 4px 0 12px;border-radius:999px;background:color-mix(in srgb,var(--ui-cn-text) 6%,var(--ui-cn-card));white-space:nowrap;animation:ui-cn-in 240ms cubic-bezier(.22,1,.36,1) both}.ui-cn__pill:not(:has(button)){padding-right:12px}.ui-cn__text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ui-cn,.ui-cn *,.ui-cn *::before,.ui-cn *::after{box-sizing:border-box}.ui-cn__mark{display:flex;color:#e8a20c}.ui-cn[data-status="online"] .ui-cn__mark{color:#1a9a52}.ui-cn__timer{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ui-cn-muted);font-size:11px}.ui-cn button{height:24px;flex:none;background:none;border:0;border-radius:999px;padding:0 8px;font:inherit;color:var(--ui-cn-text);cursor:pointer}.ui-cn button:hover{background:var(--ui-cn-fill)}.ui-cn button:disabled{opacity:.5;cursor:default}.ui-cn button:active:not(:disabled){transform:scale(.97)}.ui-cn button:focus-visible{outline:2px solid var(--ui-cn-focus);outline-offset:2px}
+@keyframes ui-cn-in{from{opacity:0;transform:translateY(-6px)}}
+@container(max-width:560px){.ui-cn__pill{max-width:calc(100% - 104px)}.ui-cn__timer{display:none}}
+@media(pointer:coarse){.ui-cn button{height:36px}.ui-cn__pill{height:40px}}
+@media(prefers-reduced-motion:reduce){.ui-cn,.ui-cn *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-cn{--ui-cn-card:#1c1c1e;--ui-cn-text:rgba(255,255,255,.62);--ui-cn-muted:rgba(255,255,255,.46);--ui-cn-line:rgba(255,255,255,.08);--ui-cn-fill:rgba(255,255,255,.08);--ui-cn-focus:rgba(77,141,255,.5)}
+
+.ui-cn__spinner{width:12px;height:12px;border-radius:50%;border:2px solid var(--ui-cn-line);border-top-color:var(--ui-cn-muted);animation:ui-cn-spin 900ms linear infinite}@keyframes ui-cn-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ui-cn__spinner{animation:none}}

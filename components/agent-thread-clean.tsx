@@ -1,0 +1,5881 @@
+"use client";
+
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
+
+/*
+ * agent-thread (Clean) – a self-contained React 19 component.
+ * Inline SVGs and scoped styles are included; no other local files or packages are required.
+ * Maintained in scripts/chat-rail; run npm run generate after changes.
+ */
+
+type IconName =
+  | "terminal"
+  | "image"
+  | "inbox"
+  | "memory"
+  | "video"
+  | "chat"
+  | "tasks"
+  | "play"
+  | "folder"
+  | "folder-open"
+  | "plug"
+  | "bell"
+  | "settings"
+  | "search"
+  | "compose"
+  | "chevron"
+  | "check"
+  | "close"
+  | "plus"
+  | "more"
+  | "pin"
+  | "panel"
+  | "mic"
+  | "send"
+  | "hand"
+  | "globe"
+  | "table"
+  | "document"
+  | "undo"
+  | "redo"
+  | "bold"
+  | "italic"
+  | "underline"
+  | "link"
+  | "sort"
+  | "row"
+  | "column"
+  | "trash"
+  | "copy"
+  | "download"
+  | "arrow"
+  | "stop"
+  | "warning"
+  | "spark";
+
+const iconPaths: Record<IconName, ReactNode> = {
+  chat: (
+    <>
+      <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 1v-8.5A8.5 8.5 0 1 1 21 11.5Z" />
+      <path d="M8 11h.01M12 11h.01M16 11h.01" />
+    </>
+  ),
+  tasks: (
+    <>
+      <path d="m3 6 1.5 1.5L8 4M11 6h10M3 13l1.5 1.5L8 11M11 13h10M4 20h3M11 20h10" />
+    </>
+  ),
+  play: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
+  "folder-open": (
+    <>
+      <path d="M3 10V7a2 2 0 0 1 2-2h5l2 2h7v3M3 12h18l-3 9H2Z" />
+    </>
+  ),
+  plug: (
+    <>
+      <path d="M8 3v5M16 3v5M6 8h12v4a6 6 0 0 1-12 0ZM12 18v4" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M5 16h14l-2-3V9a5 5 0 0 0-10 0v4ZM9 20a3 3 0 0 0 6 0" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="m10 3-1 3-3 1-3 3 2 3v3l3 2 2 3h4l1-3 3-1 3-3-2-3V8l-3-2-2-3Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m16 16 5 5" />
+    </>
+  ),
+  compose: (
+    <>
+      <path d="M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M9 15l1-5L18 2l4 4-8 8Z" />
+    </>
+  ),
+  chevron: <path d="m8 10 4 4 4-4" />,
+  check: <path d="m5 12 4 4L19 6" />,
+  close: <path d="m6 6 12 12M18 6 6 18" />,
+  plus: <path d="M12 4v16M4 12h16" />,
+  more: (
+    <>
+      <circle cx="5" cy="12" r=".7" />
+      <circle cx="12" cy="12" r=".7" />
+      <circle cx="19" cy="12" r=".7" />
+    </>
+  ),
+  pin: <path d="m9 3 10 10-4 1-3 4-3-3-6 6M8 4l12 12M8 4l-2 7 7 7" />,
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M15 4v16M18 8v3" />
+    </>
+  ),
+  mic: (
+    <>
+      <rect x="9" y="2" width="6" height="13" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v4M9 22h6" />
+    </>
+  ),
+  send: <path d="M12 20V4m-7 7 7-7 7 7" />,
+  hand: (
+    <>
+      <path d="M8 12V5a2 2 0 0 1 4 0v7M12 6a2 2 0 0 1 4 0v6M16 8a2 2 0 0 1 4 0v7a7 7 0 0 1-12 5l-5-6a2 2 0 0 1 3-3l2 2M8 8a2 2 0 0 0-4 0v5" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <ellipse cx="12" cy="12" rx="4" ry="9" />
+      <path d="M3 12h18M5 7h14M5 17h14" />
+    </>
+  ),
+  table: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M3 14h18M9 9v11M15 9v11" />
+    </>
+  ),
+  inbox: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M3 12h5l2 3h4l2-3h5" />
+    </>
+  ),
+  memory: (
+    <>
+      <path d="M12 4c-2-4-7-2-7 1-3 0-4 5-1 7-2 3 0 6 3 6v3h4V9M12 4c2-4 7-2 7 1 3 0 4 5 1 7 2 3 0 6-3 6v3h-4V9M7 6c4-1 5 3 2 4M17 6c-4-1-5 3-2 4M5 12c3-1 5 1 4 4M19 12c-3-1-5 1-4 4" />
+    </>
+  ),
+  video: (
+    <>
+      <rect x="3" y="5" width="12" height="14" rx="3" />
+      <path d="m15 9 6-3v12l-6-3Z" />
+    </>
+  ),
+  terminal: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="m7 9 3 3-3 3M13 15h4" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="8" cy="8" r="1.5" />
+      <path d="m3 17 6-6 4 4 3-3 5 5" />
+    </>
+  ),
+  document: (
+    <>
+      <path d="M6 3h8l5 5v13H6ZM14 3v5h5M9 12h7M9 16h5" />
+    </>
+  ),
+  undo: <path d="M4 11a8 8 0 1 1 2 8M4 4v7h7" />,
+  redo: <path d="M20 11a8 8 0 1 0-2 8M20 4v7h-7" />,
+  bold: <path d="M7 3h6a5 5 0 0 1 0 9H7Zm0 9h7a5 5 0 0 1 0 9H7Z" />,
+  italic: <path d="M10 3h10M4 21h10M15 3 9 21" />,
+  underline: (
+    <>
+      <path d="M6 3v8a6 6 0 0 0 12 0V3M4 22h16" />
+    </>
+  ),
+  link: (
+    <>
+      <path
+        d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0"
+        transform="translate(2 0) scale(.83 1)"
+      />
+    </>
+  ),
+  sort: <path d="M7 3v18m-4-4 4 4 4-4M14 5h7M14 10h5M14 15h3" />,
+  row: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M3 15h18M12 5v2m-1-1h2" />
+    </>
+  ),
+  column: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18M15 3v18M5 12h2m-1-1v2" />
+    </>
+  ),
+  trash: <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />,
+  copy: (
+    <>
+      <rect x="8" y="8" width="13" height="13" rx="2" />
+      <path d="M16 8V3H3v13h5" />
+    </>
+  ),
+  download: <path d="M12 3v13m-5-5 5 5 5-5M4 18v4h16v-4" />,
+  arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  warning: (
+    <>
+      <path d="m12 3 10 18H2ZM12 9v5M12 17h.01" />
+    </>
+  ),
+  spark: <path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z" />,
+};
+
+function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      {iconPaths[name] ?? iconPaths.document}
+    </svg>
+  );
+}
+
+function useControllable<T>(value: T | undefined, initial: T, onChange?: (value: T) => void) {
+  const [state, setState] = useState(initial);
+  const current = value === undefined ? state : value;
+  const set = (next: T) => {
+    if (value === undefined) setState(next);
+    onChange?.(next);
+  };
+  return [current, set] as const;
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return reduced;
+}
+
+function useMorph(value: string) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const previous = useRef<number | null>(null);
+  const animation = useRef<Animation | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    animation.current?.cancel();
+    const width = el.getBoundingClientRect().width;
+    if (
+      previous.current !== null &&
+      Math.abs(previous.current - width) > 1 &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      animation.current = el.animate([{ width: `${previous.current}px` }, { width: `${width}px` }], {
+        duration: 480,
+        easing: "cubic-bezier(0.25, 1, 0.5, 1)",
+      });
+    }
+    previous.current = width;
+    return () => animation.current?.cancel();
+  }, [value]);
+  return ref;
+}
+
+function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
+  if ((event.target as HTMLElement).matches("input,textarea")) return;
+  const items = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),[role="option"][tabindex]'),
+  ].filter((el) => !el.closest("[inert],[hidden]") && el.getClientRects().length > 0);
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    event.key === "ArrowDown"
+      ? (index + 1) % items.length
+      : event.key === "ArrowUp"
+        ? (index - 1 + items.length) % items.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? items.length - 1
+            : null;
+  if (next === null || !items.length) return;
+  event.preventDefault();
+  items[next]?.focus();
+}
+
+function FloatingMenu({
+  anchor,
+  root,
+  children,
+  onClose,
+  className,
+  id,
+  label,
+  side = "bottom",
+  align = "start",
+}: {
+  anchor: RefObject<HTMLElement | null>;
+  root: RefObject<HTMLElement | null>;
+  children: ReactNode;
+  onClose: () => void;
+  className: string;
+  id: string;
+  label: string;
+  side?: "top" | "bottom" | "right";
+  align?: "start" | "end";
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 400 });
+  useLayoutEffect(() => {
+    const update = () => {
+      const origin = root.current,
+        target = anchor.current,
+        menu = ref.current;
+      if (!origin || !target || !menu) return;
+      const a = target.getBoundingClientRect(),
+        r = origin.getBoundingClientRect();
+      const boundary = origin.closest<HTMLElement>("[data-overlay-boundary]")?.getBoundingClientRect();
+      const leftEdge = Math.max(8, (boundary?.left ?? 0) + 8),
+        rightEdge = Math.min(window.innerWidth - 8, (boundary?.right ?? window.innerWidth) - 8);
+      const topEdge = Math.max(8, (boundary?.top ?? 0) + 8),
+        bottomEdge = Math.min(window.innerHeight - 8, (boundary?.bottom ?? window.innerHeight) - 8);
+      const maxHeight = Math.max(80, bottomEdge - topEdge);
+      const width = menu.offsetWidth,
+        height = Math.min(menu.scrollHeight, maxHeight);
+      let x = side === "right" ? a.right + 10 : align === "end" ? a.right - width : a.left;
+      let y = side === "top" ? a.top - height - 8 : side === "right" ? a.top : a.bottom + 8;
+      if (side === "bottom" && y + height > bottomEdge && a.top - height - 8 >= topEdge) y = a.top - height - 8;
+      x = Math.max(leftEdge, Math.min(x, rightEdge - width));
+      y = Math.max(topEdge, Math.min(y, bottomEdge - height));
+      setPosition({ left: x - r.left + origin.scrollLeft, top: y - r.top + origin.scrollTop, maxHeight });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    if (ref.current) observer.observe(ref.current);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [anchor, root, side, align]);
+  useEffect(() => {
+    const target = anchor.current;
+    ref.current
+      ?.querySelector<HTMLElement>('[aria-checked="true"],input,button:not(:disabled)')
+      ?.focus({ preventScroll: true });
+    const dismiss = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node) && !anchor.current?.contains(event.target as Node))
+        closeRef.current();
+    };
+    const key = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeRef.current();
+        target?.focus({ preventScroll: true });
+      }
+      if (event.key === "Tab") {
+        closeRef.current();
+        target?.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [anchor]);
+  return (
+    <div
+      ref={ref}
+      id={id}
+      className={className}
+      role="menu"
+      aria-label={label}
+      style={{ position: "absolute", ...position, zIndex: 50 }}
+      onKeyDown={moveMenuFocus}
+    >
+      {children}
+    </div>
+  );
+}
+
+function initials(name: string) {
+  return String(name || "User")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function durationLabel(ms: number) {
+  return `${(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1000).toFixed(1)}s`;
+}
+
+function safeNumber(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function isEditing(target: EventTarget | null) {
+  return target instanceof HTMLElement && !!target.closest('input,textarea,select,[contenteditable="true"]');
+}
+
+export type ToolActivityItem = {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  status: "running" | "done" | "failed" | "stopped";
+  startedAt?: number;
+  duration?: number;
+  error?: string;
+};
+
+export type ToolActivityProps = {
+  tools: ToolActivityItem[];
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onRetry?: (id: string) => void;
+  className?: string;
+};
+
+/** A quiet, collapsible tool trace; active calls expand and count time, finished calls settle into one line. */
+export function ToolActivity({
+  tools: rawTools,
+  open: openProp,
+  defaultOpen,
+  onOpenChange,
+  onRetry,
+  className,
+}: ToolActivityProps) {
+  const tools = (Array.isArray(rawTools) ? rawTools : []).filter(Boolean);
+  const running = tools.some((tool) => tool.status === "running");
+  const failed = tools.filter((tool) => tool.status === "failed").length;
+  const [manual, setManual] = useState<boolean | undefined>(defaultOpen);
+  const [settling, setSettling] = useState(false);
+  const wasRunning = useRef(running);
+  const [now, setNow] = useState(0);
+  const id = useId();
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  useEffect(() => {
+    const finished = wasRunning.current && !running;
+    wasRunning.current = running;
+    if (!finished) return;
+    setSettling(true);
+    const timer = window.setTimeout(() => setSettling(false), 650);
+    return () => window.clearTimeout(timer);
+  }, [running]);
+  const open = openProp ?? manual ?? (running || settling || failed > 0);
+  const elapsed = (tool: ToolActivityItem) =>
+    tool.status === "running"
+      ? Math.max(0, (now || tool.startedAt || 0) - (tool.startedAt ?? now))
+      : (tool.duration ?? 0);
+  const total = Math.max(0, ...tools.map(elapsed));
+  const stopped = tools.some((tool) => tool.status === "stopped");
+  const label = running
+    ? `Running ${tools.length === 1 ? "a tool" : `${tools.length} tools in parallel`}`
+    : stopped
+      ? `Stopped · ${tools.filter((tool) => tool.status === "done").length} of ${tools.length} ran`
+      : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : durationLabel(total)}`;
+  return (
+    <div
+      className={["ui-tac", className].filter(Boolean).join(" ")}
+      data-open={open}
+      data-state={running ? "running" : failed ? "failed" : "done"}
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <button
+        type="button"
+        className="ui-tac__head"
+        aria-expanded={open}
+        aria-controls={`${id}-tools`}
+        onClick={() => {
+          if (openProp === undefined) setManual(!open);
+          onOpenChange?.(!open);
+        }}
+      >
+        <span className="ui-tac__status" data-spinning={running || undefined}>
+          <Icon name={running ? "play" : failed ? "warning" : "check"} size={14} />
+        </span>
+        <span className="ui-tac__title" data-text={label} data-shimmer={running || undefined}>
+          {label}
+        </span>
+        <span className="ui-tac__chevron">
+          <Icon name="chevron" size={12} />
+        </span>
+      </button>
+      <div id={`${id}-tools`} className="ui-tac__wrap" inert={!open}>
+        <ul className="ui-tac__list">
+          {tools.map((tool, index) => {
+            const status = ["running", "done", "failed", "stopped"].includes(tool.status) ? tool.status : "done";
+            return (
+              <li
+                className="ui-tac__tool"
+                data-status={status}
+                key={tool.id}
+                style={{ "--ui-tac-index": index } as CSSProperties}
+              >
+                <span className="ui-tac__mark" data-spinning={status === "running" || undefined}>
+                  <Icon
+                    name={
+                      status === "running"
+                        ? "play"
+                        : status === "failed"
+                          ? "warning"
+                          : status === "stopped"
+                            ? "stop"
+                            : "check"
+                    }
+                    size={12}
+                  />
+                </span>
+                <span
+                  className="ui-tac__icon"
+                  onErrorCapture={(event) => {
+                    if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                  }}
+                >
+                  {tool.icon ?? <Icon name={index ? "globe" : "search"} size={13} />}
+                </span>
+                <span className="ui-tac__label" dir="auto" title={tool.error ?? tool.label}>
+                  {tool.label}
+                  {tool.error && <small>{tool.error}</small>}
+                </span>
+                <span className="ui-tac__time">{durationLabel(elapsed(tool))}</span>
+                {status === "failed" && onRetry && (
+                  <button type="button" className="ui-tac__retry" onClick={() => onRetry(tool.id)}>
+                    Retry
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export type ChatComposerModel = { id: string; name: string; provider?: string; icon?: ReactNode; description?: string };
+export type ChatComposerApproval = "request" | "auto" | "full";
+export type ChatComposerAttachment = { id: string; name: string; size: number; file?: File };
+export type ChatComposerSendOptions = {
+  model: string;
+  approval: ChatComposerApproval;
+  planMode: boolean;
+  attachments: ChatComposerAttachment[];
+};
+export type ChatComposerProps = {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  onSend?: (message: string, options: ChatComposerSendOptions) => void;
+  placeholder?: string;
+  models?: ChatComposerModel[];
+  model?: string;
+  defaultModel?: string;
+  onModelChange?: (model: string) => void;
+  approval?: ChatComposerApproval;
+  defaultApproval?: ChatComposerApproval;
+  onApprovalChange?: (approval: ChatComposerApproval) => void;
+  planMode?: boolean;
+  defaultPlanMode?: boolean;
+  onPlanModeChange?: (enabled: boolean) => void;
+  attachments?: ChatComposerAttachment[];
+  defaultAttachments?: ChatComposerAttachment[];
+  onAttachmentsChange?: (attachments: ChatComposerAttachment[]) => void;
+  onAction?: (action: string) => void;
+  /** Optional speech service. Without one, recorded audio is attached as a voice note. */
+  transcribe?: (audio: Blob, signal: AbortSignal) => Promise<string>;
+  disabled?: boolean;
+  busy?: boolean;
+  /** Keep typing and attaching available while a parent waits for uploads. */
+  sendDisabled?: boolean;
+  showAttachments?: boolean;
+  /** Optional footer, rendered below the input card. */
+  footer?: ReactNode;
+  className?: string;
+};
+
+const composerModels: ChatComposerModel[] = [
+  { id: "auto", name: "Auto", description: "Choose the best model for this task" },
+  { id: "claude-sonnet", name: "Claude Sonnet", provider: "Anthropic" },
+  { id: "claude-opus", name: "Claude Opus", provider: "Anthropic" },
+  { id: "claude-haiku", name: "Claude Haiku", provider: "Anthropic" },
+  { id: "gpt-5", name: "GPT-5", provider: "OpenAI" },
+  { id: "gpt-5-mini", name: "GPT-5 mini", provider: "OpenAI" },
+];
+const approvalOptions: { id: ChatComposerApproval; label: string; description: string; icon: IconName }[] = [
+  {
+    id: "request",
+    label: "Request approval",
+    description: "Always ask before editing outside files or using the internet",
+    icon: "hand",
+  },
+  { id: "auto", label: "Approve for me", description: "Only ask for potentially unsafe actions", icon: "check" },
+  {
+    id: "full",
+    label: "Full access",
+    description: "Unrestricted access to the internet and all files on your computer",
+    icon: "spark",
+  },
+];
+
+/** A compact composer with keyboard submission, animated model/permission controls and attachment/voice input. */
+export function ChatComposer({
+  value: valueProp,
+  defaultValue = "",
+  onValueChange,
+  onSend,
+  placeholder = "Ask anything – it searches the web",
+  models = composerModels,
+  model: modelProp,
+  defaultModel = "auto",
+  onModelChange,
+  approval: approvalProp,
+  defaultApproval = "request",
+  onApprovalChange,
+  planMode: planProp,
+  defaultPlanMode = false,
+  onPlanModeChange,
+  attachments: attachmentsProp,
+  defaultAttachments = [],
+  onAttachmentsChange,
+  onAction,
+  transcribe,
+  disabled = false,
+  busy = false,
+  sendDisabled = false,
+  showAttachments = true,
+  footer,
+  className,
+}: ChatComposerProps) {
+  const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
+  const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
+  const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
+  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0];
+  const [plan, setPlan] = useControllable(planProp, defaultPlanMode, onPlanModeChange);
+  const [attachments, setAttachments] = useControllable(attachmentsProp, defaultAttachments, onAttachmentsChange);
+  const [menu, setMenu] = useState<"model" | "approval" | "add" | "apps" | null>(null);
+  const [connected, setConnected] = useState(["Web search"]);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
+  const [error, setError] = useState("");
+  const root = useRef<HTMLDivElement>(null),
+    input = useRef<HTMLTextAreaElement>(null),
+    fileInput = useRef<HTMLInputElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null),
+    modelRef = useMorph(model),
+    approvalRef = useMorph(approval.id);
+  const recorder = useRef<MediaRecorder | null>(null),
+    stream = useRef<MediaStream | null>(null),
+    recordingAction = useRef(false);
+  const chunks = useRef<Blob[]>([]),
+    mounted = useRef(true),
+    pending = useRef<AbortController | null>(null);
+  const id = useId();
+  const list = (Array.isArray(models) ? models : []).filter(Boolean);
+  const selectedModel = list.find((item) => item.id === model) ?? list[0];
+  const blocked = disabled || busy || transcribing;
+  const canSend = !blocked && !sendDisabled && (!!value.trim() || attachments.length > 0);
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (el) {
+      el.style.height = "0px";
+      el.style.height = `${Math.min(180, Math.max(40, el.scrollHeight))}px`;
+    }
+  }, [value]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      pending.current?.abort();
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      stream.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+  useEffect(() => {
+    if (!recording) return;
+    const timer = window.setInterval(() => setRecordingSeconds((seconds) => seconds + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [recording]);
+  const send = () => {
+    if (!canSend) return;
+    onSend?.(value.trim(), {
+      model: selectedModel?.id ?? "auto",
+      approval: approval.id,
+      planMode: plan,
+      attachments: [...attachments],
+    });
+    setValue("");
+    setAttachments([]);
+    setMenu(null);
+    input.current?.focus();
+  };
+  const attachFiles = (files: FileList | File[] | null) => {
+    if (!files) return;
+    setAttachments([
+      ...attachments,
+      ...Array.from(files).map((file, index) => ({
+        id: `${id}-${Date.now()}-${index}`,
+        name: file.name,
+        size: file.size,
+        file,
+      })),
+    ]);
+    input.current?.focus();
+  };
+  const stopRecording = (use: boolean) => {
+    recordingAction.current = use;
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    setRecording(false);
+    input.current?.focus();
+  };
+  const startRecording = async () => {
+    if (blocked) return;
+    setError("");
+    setMenu(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined")
+        throw new Error("Voice recording is unavailable in this browser.");
+      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mounted.current) {
+        media.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream.current = media;
+      chunks.current = [];
+      recordingAction.current = false;
+      const next = new MediaRecorder(media);
+      recorder.current = next;
+      next.ondataavailable = (event) => {
+        if (event.data.size) chunks.current.push(event.data);
+      };
+      next.onstop = async () => {
+        media.getTracks().forEach((track) => track.stop());
+        if (!mounted.current || !recordingAction.current) return;
+        const blob = new Blob(chunks.current, { type: next.mimeType || "audio/webm" });
+        if (!transcribe) {
+          const file = new File([blob], "Voice note.webm", { type: blob.type });
+          attachFiles([file]);
+          return;
+        }
+        const controller = new AbortController();
+        pending.current = controller;
+        setTranscribing(true);
+        try {
+          const text = await transcribe(blob, controller.signal);
+          if (mounted.current && !controller.signal.aborted)
+            setValue(`${value.trimEnd()}${value.trim() ? " " : ""}${text}`);
+        } catch {
+          if (mounted.current && !controller.signal.aborted)
+            setError("Couldn't transcribe this recording. Please try again.");
+        } finally {
+          if (mounted.current) setTranscribing(false);
+        }
+      };
+      next.start();
+      setRecordingSeconds(0);
+      setRecording(true);
+    } catch (reason) {
+      if (mounted.current)
+        setError(
+          reason instanceof DOMException && reason.name === "NotAllowedError"
+            ? "Microphone access was declined. You can still type a message."
+            : reason instanceof Error
+              ? reason.message
+              : "Couldn't start recording.",
+        );
+    }
+  };
+  const chooseAction = (action: string) => {
+    if (action === "files") fileInput.current?.click();
+    if (action === "plan") setPlan(!plan);
+    if (action === "apps") {
+      setMenu("apps");
+      return;
+    }
+    onAction?.(action);
+    setMenu(null);
+    input.current?.focus();
+  };
+  const anchor = menu === "model" ? modelRef : menu === "approval" ? approvalRef : addRef;
+  const toggle = (next: typeof menu) => setMenu(menu === next ? null : next);
+  const triggerKey = (next: typeof menu) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setMenu(next);
+    }
+  };
+  return (
+    <div
+      ref={root}
+      className={["ui-ccc", className].filter(Boolean).join(" ")}
+      data-menu-open={!!menu || undefined}
+      data-recording={recording || undefined}
+      data-disabled={disabled || undefined}
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      {showAttachments && attachments.length > 0 && (
+        <ul className="ui-ccc__attachments" aria-label="Attachments">
+          {attachments.map((file) => (
+            <li key={file.id}>
+              <Icon name="document" size={14} />
+              <span title={file.name}>{file.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${file.name}`}
+                onClick={() => setAttachments(attachments.filter((item) => item.id !== file.id))}
+              >
+                <Icon name="close" size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <section
+        className="ui-ccc__body"
+        aria-label="Message composer"
+        aria-busy={transcribing || busy}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && recording) {
+            event.preventDefault();
+            stopRecording(false);
+          }
+        }}
+      >
+        <textarea
+          ref={input}
+          className="ui-ccc__message"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          aria-label="Message"
+          placeholder={transcribing ? "Transcribing…" : placeholder}
+          disabled={disabled}
+          readOnly={recording || transcribing}
+          dir="auto"
+          rows={2}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat) {
+              event.preventDefault();
+              send();
+            }
+          }}
+        />
+        <div className="ui-ccc__tools">
+          <div className="ui-ccc__group" inert={recording}>
+            <button
+              ref={addRef}
+              type="button"
+              className="ui-ccc__icon-btn"
+              aria-label="Add"
+              disabled={blocked}
+              aria-haspopup="menu"
+              aria-expanded={menu === "add" || menu === "apps"}
+              aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined}
+              onKeyDown={triggerKey("add")}
+              onClick={() => toggle("add")}
+            >
+              <Icon name="plus" />
+            </button>
+            <button
+              ref={approvalRef}
+              type="button"
+              className="ui-ccc__approval"
+              data-tone={approval.id}
+              disabled={blocked}
+              aria-haspopup="menu"
+              aria-expanded={menu === "approval"}
+              aria-controls={menu === "approval" ? `${id}-menu` : undefined}
+              onKeyDown={triggerKey("approval")}
+              onClick={() => toggle("approval")}
+            >
+              <span className="ui-ccc__face" key={approval.id}>
+                <Icon name={approval.icon} size={14} />
+                <span>{approval.label}</span>
+              </span>
+            </button>
+            {plan && <span className="ui-ccc__plan">Plan</span>}
+          </div>
+          {recording ? (
+            <div className="ui-ccc__recording" role="group" aria-label="Voice recording">
+              <span className="ui-ccc__timer">
+                {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
+              </span>
+              <span className="ui-ccc__wave" aria-hidden="true">
+                {Array.from({ length: 22 }, (_, index) => (
+                  <i
+                    key={index}
+                    style={{ height: `${4 + ((index * 7) % 14)}px`, animationDelay: `${index * -71}ms` }}
+                  />
+                ))}
+              </span>
+              <button
+                type="button"
+                className="ui-ccc__icon-btn"
+                aria-label="Discard recording"
+                onClick={() => stopRecording(false)}
+              >
+                <Icon name="close" />
+              </button>
+              <button
+                type="button"
+                className="ui-ccc__send"
+                aria-label="Use recording"
+                onClick={() => stopRecording(true)}
+              >
+                <Icon name="check" />
+              </button>
+            </div>
+          ) : (
+            <div className="ui-ccc__group ui-ccc__group--end">
+              {selectedModel && (
+                <button
+                  ref={modelRef}
+                  type="button"
+                  className="ui-ccc__model"
+                  disabled={blocked}
+                  aria-haspopup="menu"
+                  aria-expanded={menu === "model"}
+                  aria-controls={menu === "model" ? `${id}-menu` : undefined}
+                  onKeyDown={triggerKey("model")}
+                  onClick={() => toggle("model")}
+                >
+                  <span
+                    className="ui-ccc__face"
+                    key={selectedModel.id}
+                    onErrorCapture={(event) => {
+                      if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                    }}
+                  >
+                    {selectedModel.icon}
+                    <span title={selectedModel.name}>{selectedModel.name}</span>
+                  </span>
+                  <Icon name="chevron" size={12} />
+                </button>
+              )}
+              <button
+                type="button"
+                className="ui-ccc__icon-btn"
+                aria-label="Voice input"
+                disabled={blocked}
+                onClick={startRecording}
+              >
+                <Icon name="mic" />
+              </button>
+              <button
+                type="button"
+                className="ui-ccc__send"
+                aria-label="Send message"
+                disabled={!canSend}
+                onClick={send}
+              >
+                <Icon name="send" />
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+      {footer && <div className="ui-ccc__footer">{footer}</div>}
+      {error && (
+        <p className="ui-ccc__error" role="alert">
+          {error}
+          <button type="button" aria-label="Dismiss message" onClick={() => setError("")}>
+            <Icon name="close" size={12} />
+          </button>
+        </p>
+      )}
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        aria-label="Attach files"
+        onChange={(event) => {
+          attachFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      {menu && (
+        <FloatingMenu
+          key={menu}
+          anchor={anchor}
+          root={root}
+          className="ui-ccc__menu"
+          id={`${id}-menu`}
+          label={
+            menu === "approval"
+              ? "Permissions"
+              : menu === "model"
+                ? "Models"
+                : menu === "apps"
+                  ? "Connect apps"
+                  : "Add to the chat"
+          }
+          side="top"
+          align={menu === "model" ? "end" : "start"}
+          onClose={() => setMenu(null)}
+        >
+          {menu === "model" && (
+            <>
+              <div className="ui-ccc__menu-title">Models</div>
+              {list.map((item) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selectedModel?.id === item.id}
+                  className="ui-ccc__option"
+                  key={item.id}
+                  onClick={() => {
+                    setModel(item.id);
+                    setMenu(null);
+                    modelRef.current?.focus();
+                  }}
+                >
+                  <span
+                    className="ui-ccc__option-logo"
+                    aria-hidden="true"
+                    onErrorCapture={(event) => {
+                      if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                    }}
+                  >
+                    {item.icon ??
+                      (item.id === "auto" ? (
+                        <Icon name="spark" />
+                      ) : (
+                        <span>{initials(item.provider ?? item.name).slice(0, 1)}</span>
+                      ))}
+                  </span>
+                  <span className="ui-ccc__option-text">
+                    <span>{item.name}</span>
+                    {item.description && <small>{item.description}</small>}
+                  </span>
+                  {selectedModel?.id === item.id && <Icon name="check" size={14} />}
+                </button>
+              ))}
+            </>
+          )}
+          {menu === "approval" && (
+            <>
+              <div className="ui-ccc__menu-title">Permissions</div>
+              {approvalOptions.map((item) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={approval.id === item.id}
+                  className="ui-ccc__option"
+                  key={item.id}
+                  onClick={() => {
+                    setApproval(item.id);
+                    setMenu(null);
+                    approvalRef.current?.focus();
+                  }}
+                >
+                  <span className="ui-ccc__option-logo" aria-hidden="true">
+                    <Icon name={item.icon} />
+                  </span>
+                  <span className="ui-ccc__option-text">
+                    <span>{item.label}</span>
+                    <small>{item.description}</small>
+                  </span>
+                  {approval.id === item.id && <Icon name="check" size={14} />}
+                </button>
+              ))}
+            </>
+          )}
+          {menu === "add" && (
+            <>
+              <div className="ui-ccc__menu-title">Add</div>
+              {(
+                [
+                  ["files", "Files and folders", "", "document"],
+                  ["apps", "Connect apps", `${connected.length} connected`, "plug"],
+                  ["goal", "Goal", "Set a goal to keep working toward", "tasks"],
+                  ["plan", "Plan mode", plan ? "Turn off plan mode" : "Turn on plan mode", "compose"],
+                  ["skill", "Record a skill", "", "play"],
+                  ["draw", "Draw", "Sketch a drawing", "compose"],
+                ] as const
+              ).map(([action, label, description, icon]) => (
+                <button
+                  type="button"
+                  role={action === "plan" ? "menuitemcheckbox" : "menuitem"}
+                  aria-checked={action === "plan" ? plan : undefined}
+                  className="ui-ccc__option"
+                  key={action}
+                  onClick={() => chooseAction(action)}
+                >
+                  <span className="ui-ccc__option-logo" aria-hidden="true">
+                    <Icon name={icon} />
+                  </span>
+                  <span className="ui-ccc__option-text">
+                    <span>{label}</span>
+                    {description && <small>{description}</small>}
+                  </span>
+                  {action === "plan" && plan && <Icon name="check" size={14} />}
+                </button>
+              ))}
+              <div className="ui-ccc__menu-title">Plugins</div>
+              {(
+                [
+                  ["document", "Documents", "Create and edit documents"],
+                  ["pdf", "PDF", "Read, create and verify PDFs"],
+                ] as const
+              ).map(([action, label, description]) => (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="ui-ccc__option"
+                  key={action}
+                  onClick={() => chooseAction(action)}
+                >
+                  <span className="ui-ccc__option-logo" aria-hidden="true">
+                    <Icon name="document" />
+                  </span>
+                  <span className="ui-ccc__option-text">
+                    <span>{label}</span>
+                    <small>{description}</small>
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+          {menu === "apps" && (
+            <>
+              <div className="ui-ccc__menu-title">Connect apps</div>
+              {["Web search", "Google Drive", "Gmail", "Notion"].map((app) => (
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={connected.includes(app)}
+                  className="ui-ccc__option"
+                  key={app}
+                  onClick={() => {
+                    setConnected(
+                      connected.includes(app) ? connected.filter((item) => item !== app) : [...connected, app],
+                    );
+                    onAction?.(`connect:${app}`);
+                  }}
+                >
+                  <Icon name={app === "Web search" ? "globe" : "plug"} />
+                  <span className="ui-ccc__option-text">{app}</span>
+                  {connected.includes(app) && <Icon name="check" size={14} />}
+                </button>
+              ))}
+            </>
+          )}
+        </FloatingMenu>
+      )}
+    </div>
+  );
+}
+
+export type ThreadTask = {
+  id: string;
+  title: string;
+  status: string;
+  steps?: { done: number; total: number };
+  done?: boolean;
+  tone?: "active" | "waiting" | "done" | "error";
+};
+export type ThreadTaskCardProps = { task: ThreadTask; onOpen?: (id: string) => void; className?: string };
+
+/** A compact task mention; opening it keeps the conversation in place. */
+export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps) {
+  const tone = task.done
+    ? "done"
+    : ["active", "waiting", "done", "error"].includes(task.tone ?? "")
+      ? task.tone
+      : "waiting";
+  const total = Math.max(0, safeNumber(task.steps?.total, 0));
+  const done = clamp(safeNumber(task.steps?.done, 0), 0, total);
+  return (
+    <div className={["ui-tkc", className].filter(Boolean).join(" ")} data-tone={tone}>
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <span className="ui-tkc__mark" aria-hidden="true">
+        {tone === "done" ? (
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" />
+            <circle cx="8" cy="8" r="4.5" fill="currentColor" />
+          </svg>
+        ) : tone === "error" ? (
+          <Icon name="warning" size={14} />
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" />
+            <path d="M8 3v5l-2.5 4.3A5 5 0 0 0 8 3Z" fill="currentColor" />
+          </svg>
+        )}
+      </span>
+      <span className="ui-tkc__text">
+        <strong dir="auto" title={task.title}>
+          {task.title}
+        </strong>
+        <small dir="auto" title={task.status}>
+          {task.status}
+        </small>
+      </span>
+      {task.steps && (
+        <span className="ui-tkc__count" aria-label={`${done} of ${total} steps`}>
+          {done}/{total}
+        </span>
+      )}
+      <button
+        type="button"
+        disabled={!onOpen}
+        onClick={() => onOpen?.(task.id)}
+        aria-label={`Open ${task.title} – ${task.status}${task.steps ? `, ${done} of ${total} steps` : ""}`}
+      >
+        Open
+      </button>
+    </div>
+  );
+}
+
+export type ThreadDecisionOption = {
+  id: string;
+  title: string;
+  summary?: string;
+  recommended?: boolean;
+  wireframe?: "illustration" | "checklist" | "data" | ReactNode;
+};
+export type ThreadDecision = {
+  id: string;
+  kind?: "decision" | "pick" | "approval";
+  question: string;
+  task: string;
+  taskId?: string;
+  options?: ThreadDecisionOption[];
+  facts?: { label: string; value: string }[];
+};
+export type ThreadDecisionAnswer = { option?: string; text?: string } | "approve" | "decline";
+export type DecisionDockProps = {
+  decisions?: ThreadDecision[];
+  defaultDecisions?: ThreadDecision[];
+  onDecisionsChange?: (decisions: ThreadDecision[]) => void;
+  activeId?: string;
+  defaultActiveId?: string;
+  onActiveIdChange?: (id: string) => void;
+  folded?: boolean;
+  defaultFolded?: boolean;
+  onFoldedChange?: (folded: boolean) => void;
+  onAnswer?: (id: string, answer: ThreadDecisionAnswer) => void;
+  onLater?: (id: string) => void;
+  /** Increment to reveal the dock, focus its first option and pulse the card. */
+  focusRequest?: number;
+  className?: string;
+};
+
+export const defaultThreadDecisions: ThreadDecision[] = [
+  {
+    id: "queue",
+    taskId: "ingest",
+    task: "Ingest pipeline",
+    question: "Which queue should the ingest service use?",
+    options: [
+      {
+        id: "kafka",
+        title: "Kafka",
+        summary: "A durable log – a day of events to replay after a bad deploy",
+        recommended: true,
+      },
+      { id: "sqs", title: "SQS", summary: "Managed, nothing to run – but no replay" },
+      {
+        id: "postgres",
+        title: "Postgres queue",
+        summary: "The database you already have – won't keep up with the bursts",
+      },
+      { id: "nats", title: "NATS JetStream", summary: "Light, with replay – a smaller community" },
+    ],
+  },
+  {
+    id: "weekly",
+    kind: "approval",
+    taskId: "weekly",
+    task: "Weekly update",
+    question: "Send the weekly update to Northwind?",
+    facts: [
+      { label: "To", value: "Dana Reyes, Northwind" },
+      { label: "Subject", value: "Week 45: ingest is live, dashboard in review" },
+      { label: "Body", value: "Ingest runs on staging and took Tuesday's spike without losing an event…" },
+    ],
+  },
+];
+
+/** Decisions live above the composer, with list/tile choices, approvals, a pager and a separate custom answer. */
+export function DecisionDock({
+  decisions: decisionsProp,
+  defaultDecisions = [],
+  onDecisionsChange,
+  activeId: activeProp,
+  defaultActiveId = "",
+  onActiveIdChange,
+  folded: foldedProp,
+  defaultFolded = false,
+  onFoldedChange,
+  onAnswer,
+  onLater,
+  focusRequest = 0,
+  className,
+}: DecisionDockProps) {
+  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const [activeId, setActiveId] = useControllable(activeProp, defaultActiveId, onActiveIdChange);
+  const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
+  const [custom, setCustom] = useState(""),
+    [focused, setFocused] = useState(0);
+  const root = useRef<HTMLDivElement>(null),
+    customInput = useRef<HTMLInputElement>(null),
+    previous = useRef<ThreadDecision | null>(null);
+  const id = useId();
+  const list = (Array.isArray(decisions) ? decisions : []).filter(Boolean);
+  const current = list.find((decision) => decision.id === activeId) ?? list[0];
+  if (current) previous.current = current;
+  const decision = current ?? previous.current;
+  const approval = decision?.kind === "approval";
+  const options: ThreadDecisionOption[] = approval
+    ? [
+        { id: "approve", title: "Approve" },
+        { id: "decline", title: "Decline" },
+      ]
+    : (decision?.options ?? []).filter(Boolean).slice(0, 5);
+  const rows = options.length + 1;
+  const activeIndex = current ? list.findIndex((item) => item.id === current.id) : 0;
+  const answer = (index: number) => {
+    if (!current || folded) return;
+    if (index === options.length) {
+      setFocused(index);
+      customInput.current?.focus();
+      return;
+    }
+    const option = options[index];
+    if (!option) return;
+    onAnswer?.(current.id, approval ? (option.id === "approve" ? "approve" : "decline") : { option: option.id });
+    setDecisions(list.filter((item) => item.id !== current.id));
+    setActiveId("");
+    setCustom("");
+  };
+  const answerCustom = () => {
+    if (!current || !custom.trim()) return;
+    onAnswer?.(current.id, { text: custom.trim() });
+    setDecisions(list.filter((item) => item.id !== current.id));
+    setActiveId("");
+    setCustom("");
+  };
+  const later = () => {
+    if (!current) return;
+    setFolded(true);
+    onLater?.(current.id);
+  };
+  const actions = useRef({ answer, later, folded, current });
+  actions.current = { answer, later, folded, current };
+  useEffect(() => {
+    setCustom("");
+    setFocused(0);
+  }, [current?.id]);
+  useEffect(() => {
+    if (!focusRequest || !current) return;
+    setFolded(false);
+    const frame = requestAnimationFrame(() =>
+      root.current?.querySelector<HTMLElement>('[role="option"]')?.focus({ preventScroll: true }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest]);
+  useEffect(() => {
+    const key = (event: globalThis.KeyboardEvent) => {
+      const state = actions.current;
+      if (root.current?.closest("[inert]")) return;
+      if (
+        document.activeElement === document.body &&
+        document.querySelector("[data-decision-shortcuts]:not([data-empty]):not([data-folded])") !== root.current
+      )
+        return;
+      if (
+        !state.current ||
+        state.folded ||
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        isEditing(event.target)
+      )
+        return;
+      const area = root.current?.closest("[data-thread-shortcuts]") ?? root.current;
+      if (document.activeElement !== document.body && !area?.contains(document.activeElement)) return;
+      if (/^[1-6]$/.test(event.key)) {
+        const index = Number(event.key) - 1;
+        if (index < rows) {
+          event.preventDefault();
+          state.answer(index);
+        }
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [rows]);
+  if (!decision) return null;
+  const focus = (index: number) => {
+    setFocused(index);
+    if (index === options.length) customInput.current?.focus();
+    else root.current?.querySelectorAll<HTMLElement>('[role="option"]')[index]?.focus();
+  };
+  const keyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && !folded) {
+      event.preventDefault();
+      event.stopPropagation();
+      later();
+      return;
+    }
+    if (isEditing(event.target)) return;
+    const next =
+      event.key === "ArrowDown" || event.key === "ArrowRight"
+        ? (focused + 1) % rows
+        : event.key === "ArrowUp" || event.key === "ArrowLeft"
+          ? (focused - 1 + rows) % rows
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? rows - 1
+              : null;
+    if (next !== null) {
+      event.preventDefault();
+      focus(next);
+    }
+  };
+  return (
+    <div
+      ref={root}
+      data-decision-shortcuts=""
+      className={["ui-ddc", className].filter(Boolean).join(" ")}
+      data-empty={!current || undefined}
+      data-folded={folded || undefined}
+      data-kind={approval ? "approval" : decision.kind === "pick" ? "pick" : "decision"}
+      onKeyDown={keyboard}
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      {folded && current && (
+        <div className="ui-ddc__folded">
+          <span className="ui-ddc__dot" />
+          {list.length} {list.length === 1 ? "decision" : "decisions"} waiting
+          <button
+            type="button"
+            aria-expanded="false"
+            aria-controls={`${id}-card`}
+            onClick={() => {
+              setFolded(false);
+              requestAnimationFrame(() =>
+                root.current?.querySelector<HTMLElement>("[role=option]")?.focus({ preventScroll: true }),
+              );
+            }}
+          >
+            Show
+          </button>
+        </div>
+      )}
+      <div className="ui-ddc__collapse" inert={folded || !current} aria-hidden={folded || !current}>
+        <div className="ui-ddc__clip">
+          <section
+            id={`${id}-card`}
+            className="ui-ddc__card"
+            role="group"
+            aria-labelledby={`${id}-question`}
+            data-pulse={focusRequest || undefined}
+            key={decision.id}
+          >
+            <header className="ui-ddc__head">
+              <span className="ui-ddc__tag">Needs you</span>
+              <span className="ui-ddc__task" title={decision.task}>
+                {decision.task}
+              </span>
+              {list.length > 1 && (
+                <span className="ui-ddc__pager">
+                  <button
+                    type="button"
+                    aria-label="Previous decision"
+                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
+                  >
+                    <Icon name="chevron" size={10} />
+                  </button>
+                  <span>
+                    {activeIndex + 1} of {list.length}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Next decision"
+                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
+                  >
+                    <Icon name="chevron" size={10} />
+                  </button>
+                </span>
+              )}
+              <button
+                type="button"
+                className="ui-ddc__later"
+                aria-expanded="true"
+                aria-controls={`${id}-card`}
+                onClick={later}
+              >
+                Later
+              </button>
+            </header>
+            <p className="ui-ddc__question" id={`${id}-question`} dir="auto">
+              {decision.question}
+            </p>
+            {approval && decision.facts && (
+              <dl className="ui-ddc__facts">
+                {decision.facts.map((fact) => (
+                  <div key={fact.label}>
+                    <dt>{fact.label}</dt>
+                    <dd dir="auto" title={fact.value}>
+                      {fact.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            <div className="ui-ddc__choices" role="listbox" aria-label={decision.question}>
+              {options.map((option, index) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={focused === index}
+                  tabIndex={focused === index ? 0 : -1}
+                  aria-keyshortcuts={String(index + 1)}
+                  className="ui-ddc__option"
+                  key={option.id}
+                  onFocus={() => setFocused(index)}
+                  onClick={() => answer(index)}
+                >
+                  {decision.kind === "pick" && (
+                    <span
+                      className="ui-ddc__wire"
+                      aria-hidden="true"
+                      data-wire={
+                        typeof option.wireframe === "string"
+                          ? option.wireframe
+                          : index === 0
+                            ? "illustration"
+                            : index === 1
+                              ? "checklist"
+                              : "data"
+                      }
+                    >
+                      {typeof option.wireframe === "object" ? (
+                        option.wireframe
+                      ) : (
+                        <svg viewBox="0 0 200 80" fill="none" aria-hidden="true">
+                          <rect x="40" width="120" height="80" rx="8" fill="var(--ui-ddc-card)" />
+                          <g fill="var(--ui-ddc-faint)">
+                            {(option.wireframe ??
+                              (index === 0 ? "illustration" : index === 1 ? "checklist" : "data")) ===
+                            "illustration" ? (
+                              <>
+                                <rect x="88" y="16" width="24" height="20" rx="4" />
+                                <rect x="74" y="44" width="52" height="3" rx="1.5" />
+                                <rect x="82" y="51" width="36" height="2" rx="1" opacity=".6" />
+                                <rect x="91" y="60" width="18" height="6" rx="2" />
+                              </>
+                            ) : (option.wireframe ?? (index === 1 ? "checklist" : "data")) === "checklist" ? (
+                              <>
+                                <rect x="52" y="10" width="43" height="4" rx="2" />
+                                <rect x="52" y="18" width="31" height="3" rx="1.5" opacity=".6" />
+                                <rect x="52" y="25" width="94" height="1" opacity=".4" />
+                                <circle cx="56" cy="37" r="3" />
+                                <rect x="64" y="34" width="58" height="5" rx="2.5" />
+                                <g opacity=".45">
+                                  <circle cx="56" cy="51" r="3" />
+                                  <rect x="64" y="49" width="45" height="3" rx="1.5" />
+                                  <circle cx="56" cy="64" r="3" />
+                                  <rect x="64" y="62" width="54" height="3" rx="1.5" />
+                                </g>
+                              </>
+                            ) : (
+                              <>
+                                <rect x="52" y="12" width="50" height="12" rx="6" />
+                                <g opacity=".45">
+                                  <rect x="56" y="51" width="9" height="17" rx="2" />
+                                  <rect x="72" y="39" width="9" height="29" rx="2" />
+                                  <rect x="88" y="28" width="9" height="40" rx="2" />
+                                  <rect x="104" y="42" width="9" height="26" rx="2" />
+                                  <rect x="120" y="22" width="9" height="46" rx="2" />
+                                </g>
+                              </>
+                            )}
+                          </g>
+                        </svg>
+                      )}
+                    </span>
+                  )}
+                  <span className="ui-ddc__number">{index + 1}</span>
+                  <span className="ui-ddc__text">
+                    <strong dir="auto">{option.title}</strong>
+                    {option.summary && <small dir="auto">{option.summary}</small>}
+                  </span>
+                  {option.recommended && <span className="ui-ddc__recommended">Recommended</span>}
+                </button>
+              ))}
+            </div>
+            <form
+              className="ui-ddc__custom"
+              onSubmit={(event) => {
+                event.preventDefault();
+                answerCustom();
+              }}
+            >
+              <span className="ui-ddc__number">{rows}</span>
+              <input
+                ref={customInput}
+                aria-label="Something else"
+                placeholder="Something else…"
+                value={custom}
+                onFocus={() => setFocused(options.length)}
+                onChange={(event) => setCustom(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    later();
+                  }
+                }}
+              />
+              {custom.trim() && (
+                <button type="submit" aria-label="Send custom answer">
+                  <Icon name="send" size={14} />
+                </button>
+              )}
+            </form>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type ThreadConnection = "online" | "offline" | "reconnecting";
+export type ConnectionBannerProps = {
+  connection?: ThreadConnection;
+  defaultConnection?: ThreadConnection;
+  onConnectionChange?: (connection: ThreadConnection) => void;
+  onReconnect?: () => void | Promise<void>;
+  retryIn?: number;
+  backOnline?: boolean;
+  /** Disable the built-in retry clock when a parent supplies its own connection manager. */
+  managed?: boolean;
+  className?: string;
+};
+
+function useThreadConnection({
+  connection,
+  defaultConnection,
+  onConnectionChange,
+  onReconnect,
+}: Omit<ConnectionBannerProps, "className">) {
+  const [internal, setInternal] = useState<ThreadConnection>(defaultConnection ?? "online");
+  const [retrying, setRetrying] = useState(false),
+    [attempt, setAttempt] = useState(0),
+    [retryIn, setRetryIn] = useState(5),
+    [backOnline, setBackOnline] = useState(false);
+  const forced = useRef(defaultConnection === "offline"),
+    timer = useRef<ReturnType<typeof setTimeout> | null>(null),
+    mounted = useRef(true);
+  const callbacks = useRef({ connection, onReconnect, onConnectionChange });
+  callbacks.current = { connection, onReconnect, onConnectionChange };
+  const base = connection && ["online", "offline", "reconnecting"].includes(connection) ? connection : internal;
+  const status: ThreadConnection = retrying && base !== "online" ? "reconnecting" : base;
+  const current = useRef(status);
+  current.current = status;
+  const setConnection = (next: ThreadConnection) => {
+    if (callbacks.current.connection === undefined) setInternal(next);
+    callbacks.current.onConnectionChange?.(next);
+  };
+  const reconnect = (manual = true) => {
+    if (current.current === "reconnecting") return;
+    setRetrying(true);
+    Promise.resolve()
+      .then(() => callbacks.current.onReconnect?.())
+      .then(
+        () => true,
+        () => false,
+      )
+      .then((succeeded) => {
+        if (!mounted.current) return;
+        timer.current = setTimeout(() => {
+          if (!mounted.current) return;
+          if (manual && succeeded) forced.current = false;
+          if (succeeded && callbacks.current.connection === undefined && navigator.onLine && !forced.current)
+            setConnection("online");
+          setRetrying(false);
+          setAttempt((value) => value + 1);
+        }, 1100);
+      });
+  };
+  const reconnectRef = useRef(reconnect);
+  reconnectRef.current = reconnect;
+  useEffect(() => {
+    mounted.current = true;
+    const online = () => {
+      forced.current = false;
+      if (callbacks.current.connection === undefined) setConnection("online");
+    };
+    const offline = () => {
+      if (callbacks.current.connection === undefined) setConnection("offline");
+    };
+    if (!navigator.onLine) offline();
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    return () => {
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+    };
+  }, []);
+  useEffect(() => {
+    if (status !== "offline") return;
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const deadline = Date.now() + seconds * 1000;
+    setRetryIn(seconds);
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setRetryIn(remaining);
+      if (remaining === 0) {
+        clearInterval(interval);
+        reconnectRef.current(false);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [status, attempt]);
+  const previous = useRef(base);
+  useEffect(() => {
+    const was = previous.current;
+    previous.current = base;
+    if (base !== "online" || was === "online") return;
+    setAttempt(0);
+    setBackOnline(true);
+    const timeout = setTimeout(() => setBackOnline(false), 1800);
+    return () => clearTimeout(timeout);
+  }, [base]);
+  return { status, retryIn, backOnline, reconnect: () => reconnect(true) };
+}
+
+/** Connection feedback with an optional browser-driven retry clock. */
+export function ConnectionBanner({
+  connection,
+  defaultConnection,
+  onConnectionChange,
+  onReconnect,
+  retryIn: suppliedRetry,
+  backOnline: suppliedBack,
+  managed = false,
+  className,
+}: ConnectionBannerProps) {
+  const state = useThreadConnection({
+    connection: managed ? "online" : connection,
+    defaultConnection,
+    onConnectionChange,
+    onReconnect,
+  });
+  const status = managed ? (connection ?? "online") : state.status;
+  const back = suppliedBack ?? state.backOnline;
+  if (status === "online" && !back) return null;
+  return (
+    <div
+      className={["ui-cnc", className].filter(Boolean).join(" ")}
+      data-status={status}
+      role="status"
+      aria-live="polite"
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <div className="ui-cnc__pill">
+        <span className="ui-cnc__mark">
+          {status === "online" ? (
+            <Icon name="check" size={14} />
+          ) : (
+            <span className="ui-cnc__spinner" aria-hidden="true" />
+          )}
+        </span>
+        <span className="ui-cnc__text">{status === "online" ? "Back online" : "Connection lost – reconnecting…"}</span>
+        {status !== "online" && (
+          <>
+            <span className="ui-cnc__timer">
+              {status === "reconnecting" ? "Reconnecting…" : `Retrying in ${suppliedRetry ?? state.retryIn}s`}
+            </span>
+            <button
+              type="button"
+              disabled={status === "reconnecting"}
+              onClick={() => (managed ? onReconnect?.() : state.reconnect())}
+            >
+              Retry now
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export type AwaySummaryProps = {
+  tasks?: ThreadTask[];
+  decisions?: { id: string; question: string }[];
+  since?: number;
+  onOpenTask?: (id: string) => void;
+  onOpenDecision?: (id: string) => void;
+  onOpenTasks?: () => void;
+  onOpenInbox?: () => void;
+  onMarkRead?: () => void;
+  className?: string;
+};
+
+/** A return-to-thread summary, followed by the unread boundary and a mark-as-read action. */
+export function AwaySummary({
+  tasks = [],
+  decisions = [],
+  since,
+  onOpenTask,
+  onOpenDecision,
+  onOpenTasks,
+  onOpenInbox,
+  onMarkRead,
+  className,
+}: AwaySummaryProps) {
+  const done = tasks.filter((task) => task.done);
+  return (
+    <div className={["ui-ayc", className].filter(Boolean).join(" ")}>
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <section className="ui-ayc__card" aria-label="While you were away">
+        <header>
+          <span className="ui-ayc__title">While you were away</span>
+          <span className="ui-ayc__counts">
+            {done.length} done · {decisions.length} need you
+          </span>
+        </header>
+        <div className="ui-ayc__rows">
+          {done.map((task) => (
+            <button type="button" className="ui-ayc__row" key={task.id} onClick={() => onOpenTask?.(task.id)}>
+              <span className="ui-ayc__check">
+                <Icon name="check" size={13} />
+              </span>
+              <strong dir="auto">{task.title}</strong>
+              <small dir="auto">{task.status}</small>
+            </button>
+          ))}
+          {decisions.map((decision) => (
+            <button
+              type="button"
+              className="ui-ayc__row"
+              data-question=""
+              key={decision.id}
+              onClick={() => onOpenDecision?.(decision.id)}
+            >
+              <span className="ui-ayc__dot" />
+              <strong dir="auto">{decision.question}</strong>
+              <small>Needs you</small>
+            </button>
+          ))}
+        </div>
+        <footer>
+          {onOpenTasks && (
+            <button type="button" onClick={onOpenTasks}>
+              Open Tasks
+              <Icon name="arrow" size={12} />
+            </button>
+          )}
+          {onOpenInbox && (
+            <button type="button" onClick={onOpenInbox}>
+              Open Inbox
+              <Icon name="arrow" size={12} />
+            </button>
+          )}
+        </footer>
+      </section>
+      {(since != null || onMarkRead) && (
+        <div className="ui-ayc__boundary">
+          <span>
+            {since != null && Number.isFinite(since)
+              ? `New since ${new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(since)}`
+              : "New activity"}
+          </span>
+          {onMarkRead && (
+            <button type="button" onClick={onMarkRead}>
+              <Icon name="check" size={11} />
+              Mark as read
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export type ThreadAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  kind?: "file" | "voice";
+  file?: File;
+  seconds?: number;
+};
+export type ThreadUpload = ThreadAttachment & {
+  progress: number;
+  state: "uploading" | "paused" | "done" | "failed" | "transcribing" | "waiting";
+};
+export type ThreadUploadsProps = {
+  uploads: ThreadUpload[];
+  onRemove?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  className?: string;
+};
+
+/** Upload progress, paused transfers, retryable failures and voice notes waiting for a connection. */
+export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, className }: ThreadUploadsProps) {
+  const uploads = (Array.isArray(rawUploads) ? rawUploads : []).filter(Boolean);
+  const size = (bytes: number) =>
+    bytes >= 1e6
+      ? `${Math.round(bytes / 1e6)} MB`
+      : bytes >= 1000
+        ? `${Math.round(bytes / 1000)} KB`
+        : `${Math.max(0, bytes)} B`;
+  return (
+    <ul className={["ui-upc", className].filter(Boolean).join(" ")} aria-label="Attachments">
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      {uploads.map((upload) => {
+        const status = ["uploading", "paused", "done", "failed", "transcribing", "waiting"].includes(upload.state)
+          ? upload.state
+          : "done";
+        const progress = clamp(safeNumber(upload.progress, 0), 0, 1);
+        return (
+          <li
+            key={upload.id}
+            className="ui-upc__file"
+            data-state={status}
+            data-kind={upload.kind === "voice" ? "voice" : undefined}
+          >
+            <span
+              className="ui-upc__icon"
+              data-kind={
+                upload.kind === "voice"
+                  ? "voice"
+                  : /\.(mov|mp4|webm)$/i.test(upload.name)
+                    ? "video"
+                    : /\.(csv|xlsx?)$/i.test(upload.name)
+                      ? "table"
+                      : "file"
+              }
+            >
+              <Icon
+                name={
+                  upload.kind === "voice"
+                    ? "mic"
+                    : /\.(mov|mp4|webm)$/i.test(upload.name)
+                      ? "video"
+                      : /\.(csv|xlsx?)$/i.test(upload.name)
+                        ? "table"
+                        : "document"
+                }
+                size={14}
+              />
+            </span>
+            <span className="ui-upc__info">
+              <strong title={upload.name} dir="auto">
+                {upload.name}
+                {upload.kind === "voice" && upload.seconds != null
+                  ? ` · ${Math.floor(upload.seconds / 60)}:${String(upload.seconds % 60).padStart(2, "0")}`
+                  : ""}
+              </strong>
+              <span className="ui-upc__status">
+                {status === "failed" ? (
+                  <>
+                    {upload.kind === "voice" ? "Transcription failed" : "Upload failed"} ·{" "}
+                    <button type="button" aria-label={`Retry ${upload.name}`} onClick={() => onRetry?.(upload.id)}>
+                      Retry
+                    </button>
+                  </>
+                ) : status === "waiting" ? (
+                  "Saved – will transcribe when you're back online"
+                ) : status === "transcribing" ? (
+                  "Transcribing…"
+                ) : status === "paused" ? (
+                  `Paused – waiting for connection · ${size(upload.size)}`
+                ) : status === "uploading" ? (
+                  `${Math.round(progress * 100)}% · ${size(upload.size)}`
+                ) : (
+                  size(upload.size)
+                )}
+              </span>
+              {(status === "uploading" || status === "paused") && (
+                <span
+                  className="ui-upc__bar"
+                  role="progressbar"
+                  aria-label={`Uploading ${upload.name}`}
+                  aria-valuenow={Math.round(progress * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                >
+                  <span style={{ transform: `scaleX(${progress})` }} />
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              className="ui-upc__remove"
+              aria-label={`${status === "uploading" || status === "paused" ? "Cancel upload" : "Remove"} ${upload.name}`}
+              onClick={() => onRemove?.(upload.id)}
+            >
+              <Icon name="close" size={12} />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export type ThreadVoiceInputProps = { seconds: number; onDiscard: () => void; onDone: () => void; className?: string };
+/** Preview-friendly dictation controls, also useful with a caller-owned recorder. */
+export function ThreadVoiceInput({ seconds, onDiscard, onDone, className }: ThreadVoiceInputProps) {
+  const value = Math.max(0, Math.floor(safeNumber(seconds, 0)));
+  return (
+    <div
+      className={["ui-upc", "ui-upc__voice", className].filter(Boolean).join(" ")}
+      role="group"
+      aria-label="Dictating"
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <button type="button" aria-label="Discard recording" onClick={onDiscard}>
+        <Icon name="close" size={16} />
+      </button>
+      <span className="ui-upc__red-dot" />
+      <span className="ui-upc__wave" aria-hidden="true">
+        {Array.from({ length: 56 }, (_, index) => (
+          <i key={index} style={{ height: `${3 + ((index * 7) % 17)}px`, animationDelay: `${index * -83}ms` }} />
+        ))}
+      </span>
+      <span className="ui-upc__time">
+        {Math.floor(value / 60)}:{String(value % 60).padStart(2, "0")}
+      </span>
+      <button type="button" aria-label="Done" onClick={onDone}>
+        <Icon name="check" size={16} />
+      </button>
+    </div>
+  );
+}
+
+export type ThreadPreset = "live" | "decision" | "scrolled" | "offline" | "uploading" | "dictating" | "away" | "error";
+export type AgentMessagePart =
+  | { kind: "text"; text: string }
+  | { kind: "tools"; id: string; tools: (ToolActivityItem & { ms?: number })[] }
+  | { kind: "task"; task: ThreadTask }
+  | { kind: "decision"; ask: { id: string; question: string; task?: string; kind?: string } }
+  | { kind: "artifacts"; names: string[] }
+  | { kind: "error"; text: string; retry?: boolean };
+export type AgentMessage = {
+  id: string;
+  role: "user" | "assistant" | "agent";
+  text?: string;
+  at?: number;
+  parts?: AgentMessagePart[];
+  tools?: ToolActivityItem[];
+  files?: string[];
+  attachments?: { name: string; size?: number }[];
+  streaming?: boolean;
+  stopped?: boolean;
+  status?: "sent" | "sending" | "queued" | "failed";
+  answer?: { id: string; question: string };
+};
+export type AgentThreadProps = {
+  messages?: AgentMessage[];
+  defaultMessages?: AgentMessage[];
+  onMessagesChange?: (messages: AgentMessage[]) => void;
+  title?: string;
+  assistantName?: string;
+  mode?: "chat" | "orchestrator";
+  onSend?: (message: string, options: ChatComposerSendOptions) => void;
+  onStop?: () => void;
+  onRetry?: (id: string) => void;
+  onOpenFile?: (name: string) => void;
+  onNavigate?: (label: string) => void;
+  onOpenTask?: (id: string) => void;
+  onOpenInbox?: (id?: string) => void;
+  running?: { running: number; needs: number };
+  decisions?: ThreadDecision[];
+  defaultDecisions?: ThreadDecision[];
+  onDecisionsChange?: (decisions: ThreadDecision[]) => void;
+  onDecide?: (id: string, answer: ThreadDecisionAnswer) => void;
+  onLater?: (id: string) => void;
+  decisionRequest?: { id: string; sequence: number };
+  folded?: boolean;
+  defaultFolded?: boolean;
+  onFoldedChange?: (folded: boolean) => void;
+  connection?: ThreadConnection;
+  defaultConnection?: ThreadConnection;
+  onConnectionChange?: (connection: ThreadConnection) => void;
+  onReconnect?: () => void | Promise<void>;
+  lastSeen?: number;
+  defaultLastSeen?: number;
+  onLastSeenChange?: (at: number | undefined) => void;
+  awayAfter?: number;
+  onMarkRead?: () => void;
+  uploads?: ThreadUpload[];
+  defaultUploads?: ThreadUpload[];
+  onUploadsChange?: (uploads: ThreadUpload[]) => void;
+  upload?: (file: File, progress: (progress: number) => void, signal: AbortSignal) => Promise<void>;
+  transcribe?: (clip: ThreadAttachment) => Promise<string>;
+  composerProps?: Omit<ChatComposerProps, "onSend">;
+  composer?: ReactNode;
+  simulate?: boolean | ThreadPreset;
+  className?: string;
+};
+
+export const defaultAgentMessages: AgentMessage[] = [
+  {
+    id: "fabric-question",
+    role: "user",
+    text: "What's the best fabric for a summer overshirt – linen, cotton or a blend?",
+  },
+  {
+    id: "fabric-answer",
+    role: "assistant",
+    at: Date.UTC(2026, 10, 8, 10, 48),
+    tools: [
+      { id: "web", label: "Searched the web for “linen vs cotton breathability”", status: "done", duration: 1400 },
+      { id: "read", label: "Read 6 pages", status: "done", duration: 3100 },
+      { id: "compare", label: "Compared weights, creasing and price", status: "done", duration: 900 },
+    ],
+    text: "Linen breathes best – it pulls moisture off the skin and dries fast, which is why it feels cool on a hot day. The trade-off is creasing: a pure linen overshirt looks lived-in after an hour.\n\nFor an overshirt I'd take a linen-cotton blend around 55/45 at 160–180 gsm: it keeps most of the coolness, creases far less and is soft from the first wear. Pure linen if the relaxed look is the point; seersucker if it has to look sharp all day.",
+    files: ["fabric-comparison.csv", "sources.md"],
+  },
+  { id: "weight-question", role: "user", text: "Which weight for a shirt you can wear open over a T-shirt?" },
+  {
+    id: "weight-answer",
+    role: "assistant",
+    at: Date.UTC(2026, 10, 8, 10, 52),
+    tools: [
+      { id: "weight", label: "Searched the web for “overshirt fabric weight gsm”", status: "done", duration: 1200 },
+    ],
+    text: "Go a little heavier than a shirt: 180–200 gsm. It hangs straight when it's open, doesn't cling to the T-shirt underneath and still breathes – under 160 gsm it starts to look like a shirt you forgot to button.",
+  },
+];
+
+/** A conversation that preserves decisions, uploads and queued messages across interrupted connections. */
+export function AgentThread({
+  messages: messagesProp,
+  defaultMessages = defaultAgentMessages,
+  onMessagesChange,
+  title = "Best fabric for a summer overshirt",
+  assistantName = "Assistant",
+  mode = "chat",
+  onSend,
+  onStop,
+  onRetry,
+  onOpenFile,
+  onNavigate,
+  onOpenTask,
+  onOpenInbox,
+  running,
+  decisions: decisionsProp,
+  defaultDecisions = [],
+  onDecisionsChange,
+  onDecide,
+  onLater,
+  decisionRequest,
+  folded: foldedProp,
+  defaultFolded = false,
+  onFoldedChange,
+  connection,
+  defaultConnection,
+  onConnectionChange,
+  onReconnect,
+  lastSeen: lastSeenProp,
+  defaultLastSeen,
+  onLastSeenChange,
+  awayAfter = 5,
+  onMarkRead,
+  uploads: uploadsProp,
+  defaultUploads = [],
+  onUploadsChange,
+  upload,
+  transcribe,
+  composerProps,
+  composer,
+  simulate = messagesProp === undefined && onSend === undefined,
+  className,
+}: AgentThreadProps) {
+  const [messages, setMessages] = useControllable(messagesProp, defaultMessages, onMessagesChange);
+  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
+  const [uploads, setUploads] = useControllable(uploadsProp, defaultUploads, onUploadsChange);
+  const [draft, setDraft] = useControllable(
+    composerProps?.value,
+    composerProps?.defaultValue ?? "",
+    composerProps?.onValueChange,
+  );
+  const [lastSeen, setLastSeen] = useControllable<number | undefined>(lastSeenProp, defaultLastSeen, onLastSeenChange);
+  const [readReceipt, setReadReceipt] = useState<number | undefined>();
+  const [localRunning, setLocalRunning] = useState(false),
+    [away, setAway] = useState(false),
+    [newCount, setNewCount] = useState(0),
+    [announcement, setAnnouncement] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({}),
+    [activeDecision, setActiveDecision] = useState(""),
+    [focusRequest, setFocusRequest] = useState(0);
+  const [voicePreview, setVoicePreview] = useState(simulate === "dictating"),
+    [voiceSeconds, setVoiceSeconds] = useState(0);
+  const root = useRef<HTMLElement>(null),
+    scroll = useRef<HTMLDivElement>(null),
+    column = useRef<HTMLDivElement>(null),
+    unreadBoundary = useRef<HTMLDivElement>(null),
+    follow = useRef(simulate !== "scrolled");
+  const messageRef = useRef(messages),
+    decisionsRef = useRef(decisions),
+    uploadsRef = useRef(uploads),
+    draftRef = useRef(draft);
+  messageRef.current = messages;
+  decisionsRef.current = decisions;
+  uploadsRef.current = uploads;
+  draftRef.current = draft;
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()),
+    generation = useRef(0),
+    sequence = useRef(0),
+    mounted = useRef(true);
+  const deliveryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const controllers = useRef<Map<string, AbortController>>(new Map()),
+    transcribing = useRef<Set<string>>(new Set()),
+    delivered = useRef<Set<string>>(new Set());
+  const connectionState = useThreadConnection({ connection, defaultConnection, onConnectionChange, onReconnect });
+  const connectionRef = useRef(connectionState.status);
+  connectionRef.current = connectionState.status;
+  const reduced = useReducedMotion();
+  const list = (Array.isArray(messages) ? messages : []).filter(Boolean);
+  const streaming =
+    localRunning ||
+    list.some(
+      (message) =>
+        message.streaming ||
+        message.tools?.some((tool) => tool.status === "running") ||
+        message.parts?.some((part) => part.kind === "tools" && part.tools.some((tool) => tool.status === "running")),
+    );
+  const update = (fn: (messages: AgentMessage[]) => AgentMessage[]) => {
+    const next = fn(messageRef.current);
+    messageRef.current = next;
+    setMessages(next);
+  };
+  const updateUploads = (fn: (uploads: ThreadUpload[]) => ThreadUpload[]) => {
+    const next = fn(uploadsRef.current);
+    uploadsRef.current = next;
+    setUploads(next);
+  };
+  const updateDecisions = (next: ThreadDecision[]) => {
+    decisionsRef.current = next;
+    setDecisions(next);
+  };
+  const schedule = (callback: () => void, ms: number) => {
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      if (mounted.current) callback();
+    }, ms);
+    timers.current.add(timer);
+    return timer;
+  };
+  const clearTimers = () => {
+    timers.current.forEach((timer) => clearTimeout(timer));
+    timers.current.clear();
+  };
+  const pause = (ms: number, token: number) =>
+    new Promise<boolean>((resolve) => {
+      let remaining = ms;
+      const tick = () => {
+        if (!mounted.current || token !== generation.current) {
+          resolve(false);
+          return;
+        }
+        if (connectionRef.current === "online") remaining -= 50;
+        if (remaining <= 0) resolve(true);
+        else schedule(tick, 50);
+      };
+      schedule(tick, Math.min(50, ms));
+    });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      generation.current++;
+      clearTimers();
+      deliveryTimers.current.forEach((timer) => clearTimeout(timer));
+      controllers.current.forEach((controller) => controller.abort());
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const el = scroll.current;
+    if (!el) return;
+    if (follow.current) el.scrollTop = el.scrollHeight;
+    else setNewCount((count) => count + 1);
+  }, [messages]);
+  useEffect(() => {
+    const el = scroll.current,
+      content = column.current;
+    if (!el || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (follow.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(content);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const latest = () => {
+    follow.current = true;
+    setAway(false);
+    setNewCount(0);
+    scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: reduced ? "auto" : "smooth" });
+  };
+  const stop = () => {
+    generation.current++;
+    clearTimers();
+    setLocalRunning(false);
+    const stoppedTool = (tool: ToolActivityItem) =>
+      tool.status === "running"
+        ? { ...tool, status: "stopped" as const, duration: Math.max(0, Date.now() - (tool.startedAt ?? Date.now())) }
+        : tool;
+    update((messages) =>
+      messages.map((message) =>
+        message.role !== "user" &&
+        (message.streaming ||
+          message.tools?.some((tool) => tool.status === "running") ||
+          message.parts?.some((part) => part.kind === "tools" && part.tools.some((tool) => tool.status === "running")))
+          ? {
+              ...message,
+              streaming: false,
+              stopped: true,
+              tools: message.tools?.map(stoppedTool),
+              parts: message.parts?.map((part) =>
+                part.kind === "tools" ? { ...part, tools: part.tools.map(stoppedTool) } : part,
+              ),
+            }
+          : message,
+      ),
+    );
+    onStop?.();
+    setAnnouncement("Response stopped");
+  };
+  const streamText = async (id: string, text: string, token: number, append = false) => {
+    const words = text.match(/\S+\s*/g) ?? [];
+    const initial = append ? (messageRef.current.find((message) => message.id === id)?.text ?? "") : "";
+    for (let count = 0; count < words.length;) {
+      if (!(await pause(reduced ? 20 : 60, token))) return false;
+      count += reduced ? 4 : 2;
+      update((messages) =>
+        messages.map((message) =>
+          message.id === id ? { ...message, text: initial + words.slice(0, count).join(""), streaming: true } : message,
+        ),
+      );
+    }
+    return true;
+  };
+  const reply = async (text: string) => {
+    const token = generation.current,
+      id = `reply-${Date.now()}-${++sequence.current}`;
+    setLocalRunning(true);
+    if (!(await pause(550, token))) return;
+    update((messages) => [
+      ...messages,
+      {
+        id,
+        role: "assistant",
+        at: Date.now(),
+        streaming: true,
+        tools: [
+          {
+            id: `${id}-search`,
+            label:
+              mode === "orchestrator"
+                ? "Checked the current tasks and project notes"
+                : `Searched the web for “${text.slice(0, 48)}${text.length > 48 ? "…" : ""}”`,
+            status: "running",
+            startedAt: Date.now(),
+          },
+        ],
+      },
+    ]);
+    if (!(await pause(1300, token))) return;
+    update((messages) =>
+      messages.map((message) =>
+        message.id === id
+          ? { ...message, tools: message.tools?.map((tool) => ({ ...tool, status: "done", duration: 1300 })) }
+          : message,
+      ),
+    );
+    const response =
+      mode === "orchestrator"
+        ? "I've checked the project notes and the current tasks. I'll keep the work moving and bring the next decision back here when I need your input."
+        : "Here's what I found: the sources agree on the main point, and the comparison sheet has the numbers side by side. Want me to turn it into a short brief for the supplier?";
+    if (!(await streamText(id, response, token))) return;
+    update((messages) => messages.map((message) => (message.id === id ? { ...message, streaming: false } : message)));
+    setLocalRunning(false);
+    setAnnouncement("Response complete");
+  };
+  const defaults = (): ChatComposerSendOptions => ({
+    model: composerProps?.model ?? "auto",
+    approval: composerProps?.approval ?? "request",
+    planMode: composerProps?.planMode ?? false,
+    attachments: [],
+  });
+  const pending = useRef<Map<string, ChatComposerSendOptions>>(new Map());
+  const send = (text: string, options: ChatComposerSendOptions) => {
+    const id = `message-${Date.now()}-${++sequence.current}`;
+    const online = connectionRef.current === "online";
+    update((messages) => [
+      ...messages,
+      {
+        id,
+        role: "user",
+        text,
+        at: Date.now(),
+        status: online ? "sent" : "queued",
+        attachments: options.attachments.map((file) => ({ name: file.name, size: file.size })),
+      },
+    ]);
+    updateUploads((uploads) => uploads.filter((file) => file.kind === "voice" && file.state !== "done"));
+    latest();
+    if (!online) {
+      pending.current.set(id, options);
+      setAnnouncement("Waiting to send – it goes out when you're back online");
+      return;
+    }
+    delivered.current.add(id);
+    onSend?.(text, options);
+    if (simulate) {
+      if (streaming) stop();
+      void reply(text);
+    }
+  };
+  const deliveryRef = useRef({ onSend, simulate });
+  deliveryRef.current = { onSend, simulate };
+  useEffect(() => {
+    if (connectionState.status !== "online") return;
+    const queued = messageRef.current.filter(
+      (message) => message.role === "user" && message.status === "queued" && !delivered.current.has(message.id),
+    );
+    queued.forEach((message) => delivered.current.add(message.id));
+    if (!queued.length) return;
+    update((messages) =>
+      messages.map((message) =>
+        queued.some((item) => item.id === message.id) ? { ...message, status: "sending" } : message,
+      ),
+    );
+    const deliveryTimer = setTimeout(() => {
+      deliveryTimers.current.delete(deliveryTimer);
+      if (!mounted.current) return;
+      if (connectionRef.current !== "online") {
+        queued.forEach((message) => delivered.current.delete(message.id));
+        update((messages) =>
+          messages.map((message) =>
+            queued.some((item) => item.id === message.id) ? { ...message, status: "queued" } : message,
+          ),
+        );
+        return;
+      }
+      update((messages) =>
+        messages.map((message) =>
+          queued.some((item) => item.id === message.id) ? { ...message, status: "sent" } : message,
+        ),
+      );
+      queued.forEach((message) => {
+        const options = pending.current.get(message.id) ?? defaults();
+        pending.current.delete(message.id);
+        if (!message.answer) deliveryRef.current.onSend?.(message.text ?? "", options);
+      });
+      if (deliveryRef.current.simulate && queued.some((message) => !message.answer)) {
+        update((messages) =>
+          messages.map((message) => (message.streaming ? { ...message, streaming: false } : message)),
+        );
+        void reply(queued.at(-1)?.text ?? "");
+      }
+    }, 600);
+    deliveryTimers.current.add(deliveryTimer);
+  }, [connectionState.status]);
+  const startUpload = (item: ThreadUpload) => {
+    if (!upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online") return;
+    const controller = new AbortController();
+    controllers.current.set(item.id, controller);
+    Promise.resolve()
+      .then(() => {
+        if (controller.signal.aborted) return;
+        return upload(
+          item.file!,
+          (progress) => {
+            if (!controller.signal.aborted && mounted.current)
+              updateUploads((files) =>
+                files.map((file) =>
+                  file.id === item.id
+                    ? { ...file, progress: clamp(safeNumber(progress, 0), 0, 1), state: "uploading" }
+                    : file,
+                ),
+              );
+          },
+          controller.signal,
+        );
+      })
+      .then(() => {
+        if (!controller.signal.aborted && mounted.current)
+          updateUploads((files) =>
+            files.map((file) => (file.id === item.id ? { ...file, state: "done", progress: 1 } : file)),
+          );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && mounted.current) {
+          updateUploads((files) => files.map((file) => (file.id === item.id ? { ...file, state: "failed" } : file)));
+          setAnnouncement(`Upload failed: ${item.name}`);
+        }
+      })
+      .finally(() => {
+        if (controllers.current.get(item.id) === controller) controllers.current.delete(item.id);
+      });
+  };
+  const attach = (files: ChatComposerAttachment[]) => {
+    const added: ThreadUpload[] = files
+      .filter((file) => !uploadsRef.current.some((item) => item.id === file.id))
+      .map((file) => ({
+        ...file,
+        kind: "file",
+        progress: 0,
+        state: connectionRef.current === "online" ? "uploading" : "paused",
+      }));
+    if (added.length) {
+      updateUploads((files) => [...files, ...added]);
+      added.forEach(startUpload);
+    }
+    composerProps?.onAttachmentsChange?.(files);
+  };
+  const removeUpload = (id: string) => {
+    controllers.current.get(id)?.abort();
+    controllers.current.delete(id);
+    updateUploads((files) => files.filter((file) => file.id !== id));
+  };
+  const retryUpload = (id: string) => {
+    const file = uploadsRef.current.find((file) => file.id === id);
+    if (!file) return;
+    if (file.kind === "voice") {
+      updateUploads((files) => files.map((file) => (file.id === id ? { ...file, state: "waiting" } : file)));
+      return;
+    }
+    const next: ThreadUpload = {
+      ...file,
+      progress: 0,
+      state: connectionRef.current === "online" ? "uploading" : "paused",
+    };
+    updateUploads((files) => files.map((file) => (file.id === id ? next : file)));
+    startUpload(next);
+  };
+  const uploading = uploads.some((file) => file.state === "uploading" || file.state === "paused");
+  useEffect(() => {
+    if (!uploading || upload) return;
+    const interval = setInterval(
+      () =>
+        updateUploads((files) =>
+          files.map((file) => {
+            if (file.state !== "uploading" && file.state !== "paused") return file;
+            if (connectionRef.current !== "online") return { ...file, state: "paused" };
+            const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size));
+            return { ...file, progress, state: progress >= 1 ? "done" : "uploading" };
+          }),
+        ),
+      200,
+    );
+    return () => clearInterval(interval);
+  }, [uploading, upload]);
+  useEffect(() => {
+    if (!upload) return;
+    if (connectionState.status === "online") {
+      uploadsRef.current
+        .filter((file) => file.kind !== "voice" && (file.state === "paused" || file.state === "uploading"))
+        .forEach(startUpload);
+      return;
+    }
+    controllers.current.forEach((controller) => controller.abort());
+    controllers.current.clear();
+    if (uploadsRef.current.some((file) => file.kind !== "voice" && file.state === "uploading"))
+      updateUploads((files) =>
+        files.map((file) =>
+          file.kind !== "voice" && file.state === "uploading" ? { ...file, state: "paused" } : file,
+        ),
+      );
+  }, [connectionState.status, upload]);
+  const transcribeClip = async (clip: ThreadAttachment) => {
+    if (transcribe) return transcribe(clip);
+    if (!simulate) throw new Error("Provide a transcribe callback to process saved voice notes.");
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return "Also send Dana the load test numbers.";
+  };
+  const voice = async (blob: Blob, signal: AbortSignal) => {
+    const clip: ThreadUpload = {
+      id: `voice-${Date.now()}`,
+      name: "Voice note",
+      size: blob.size,
+      kind: "voice",
+      file: new File([blob], "Voice note.webm", { type: blob.type }),
+      progress: 1,
+      seconds: Math.max(1, voiceSeconds),
+      state: "waiting",
+    };
+    if (connectionRef.current !== "online") {
+      updateUploads((files) => [...files, clip]);
+      setAnnouncement("Voice note saved – it will transcribe when you're back online");
+      return "";
+    }
+    const text = await transcribeClip(clip);
+    return signal.aborted ? "" : text;
+  };
+  useEffect(() => {
+    if (connectionState.status !== "online") return;
+    uploads
+      .filter((file) => file.kind === "voice" && file.state === "waiting" && !transcribing.current.has(file.id))
+      .forEach((clip) => {
+        transcribing.current.add(clip.id);
+        updateUploads((files) =>
+          files.map((file) => (file.id === clip.id ? { ...file, state: "transcribing" } : file)),
+        );
+        transcribeClip(clip)
+          .then((text) => {
+            if (!mounted.current || !uploadsRef.current.some((file) => file.id === clip.id)) return;
+            setDraft(`${draftRef.current.trimEnd()}${draftRef.current.trim() ? " " : ""}${text}`);
+            updateUploads((files) => files.filter((file) => file.id !== clip.id));
+          })
+          .catch(() => {
+            if (mounted.current)
+              updateUploads((files) =>
+                files.map((file) => (file.id === clip.id ? { ...file, state: "failed" } : file)),
+              );
+          })
+          .finally(() => transcribing.current.delete(clip.id));
+      });
+  }, [connectionState.status, uploads]);
+  useEffect(() => {
+    if (!voicePreview) return;
+    const timer = setInterval(() => setVoiceSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [voicePreview]);
+  const finishVoicePreview = () => {
+    setVoicePreview(false);
+    const clip: ThreadUpload = {
+      id: `voice-preview-${Date.now()}`,
+      name: "Voice note",
+      kind: "voice",
+      seconds: Math.max(1, voiceSeconds),
+      size: Math.max(1, voiceSeconds) * 16000,
+      progress: 1,
+      state: "waiting",
+    };
+    updateUploads((files) => [...files, clip]);
+  };
+  const openInbox = (id?: string) => (onOpenInbox ? onOpenInbox(id) : onNavigate?.("Inbox"));
+  const showDecision = (id?: string) => {
+    if (id && answers[id]) {
+      root.current
+        ?.querySelector(`[data-answer="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+      return;
+    }
+    if (!decisionsRef.current.length || (id && !decisionsRef.current.some((decision) => decision.id === id))) {
+      openInbox(id);
+      return;
+    }
+    if (id) setActiveDecision(id);
+    setFolded(false);
+    setFocusRequest((value) => value + 1);
+  };
+  useEffect(() => {
+    if (decisionRequest) showDecision(decisionRequest.id);
+  }, [decisionRequest]);
+  const answered = (id: string, answer: ThreadDecisionAnswer) => {
+    const decision = decisionsRef.current.find((item) => item.id === id);
+    if (!decision) return;
+    const text =
+      answer === "approve"
+        ? "Approved"
+        : answer === "decline"
+          ? "Declined"
+          : (answer.text ?? decision.options?.find((option) => option.id === answer.option)?.title ?? "Answered");
+    setAnswers((previous) => ({ ...previous, [id]: text }));
+    update((messages) => [
+      ...messages,
+      {
+        id: `answer-${Date.now()}-${++sequence.current}`,
+        role: "user",
+        at: Date.now(),
+        text,
+        answer: { id, question: decision.question },
+        status: connectionRef.current === "online" ? "sent" : "queued",
+      },
+    ]);
+    latest();
+    onDecide?.(id, answer);
+    setAnnouncement(`Answered: ${text}`);
+    requestAnimationFrame(() =>
+      root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }),
+    );
+    if (simulate && connectionRef.current === "online") {
+      schedule(() => {
+        update((messages) => [
+          ...messages,
+          {
+            id: `ack-${Date.now()}`,
+            role: "agent",
+            at: Date.now(),
+            parts: [
+              {
+                kind: "text",
+                text:
+                  answer === "decline"
+                    ? "Understood. I'll keep the draft here until you're ready."
+                    : `Got it – ${text}. I'll take it from here.`,
+              },
+            ],
+          },
+        ]);
+      }, 450);
+      if (decision.taskId === "ingest")
+        schedule(
+          () =>
+            update((messages) =>
+              messages.map((message) => ({
+                ...message,
+                parts: message.parts?.map((part) =>
+                  part.kind === "task" && part.task.id === "ingest"
+                    ? {
+                        ...part,
+                        task: {
+                          ...part.task,
+                          status: "Deployed to staging · smoke test passed",
+                          done: true,
+                          steps: { done: 4, total: 4 },
+                        },
+                      }
+                    : part,
+                ),
+              })),
+            ),
+          1800,
+        );
+    }
+  };
+  const later = (id: string) => {
+    onLater?.(id);
+    setAnnouncement("Later – the decision waits above the composer");
+    requestAnimationFrame(() =>
+      root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }),
+    );
+  };
+  const read = () => {
+    setReadReceipt(lastSeen);
+    setLastSeen(undefined);
+    onMarkRead?.();
+    setAnnouncement("Marked as read");
+  };
+  const boundaryIndex =
+    lastSeen != null && lastSeen !== readReceipt ? list.findIndex((message) => (message.at ?? 0) > lastSeen) : -1;
+  const after = boundaryIndex >= 0 ? list.slice(boundaryIndex) : [];
+  const completedTasks = new Map<string, ThreadTask>();
+  after.forEach((message) =>
+    message.parts?.forEach((part) => {
+      if (part.kind === "task" && part.task.done) completedTasks.set(part.task.id, part.task);
+    }),
+  );
+  const awayDecisions = after
+    .flatMap(
+      (message) =>
+        message.parts
+          ?.filter((part): part is Extract<AgentMessagePart, { kind: "decision" }> => part.kind === "decision")
+          .map((part) => part.ask) ?? [],
+    )
+    .filter(
+      (decision, index, all) => !answers[decision.id] && all.findIndex((item) => item.id === decision.id) === index,
+    );
+  useLayoutEffect(() => {
+    if (boundaryIndex < 0) return;
+    let disposed = false;
+    const position = () => {
+      if (disposed || !unreadBoundary.current || !scroll.current) return;
+      follow.current = false;
+      const viewport = scroll.current;
+      const top =
+        unreadBoundary.current.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop;
+      viewport.scrollTop = Math.max(0, top - 20);
+      setAway(true);
+    };
+    position();
+    void document.fonts?.ready.then(position);
+    return () => {
+      disposed = true;
+    };
+  }, [lastSeen]);
+  useEffect(() => {
+    let hiddenAt = 0;
+    const visibility = () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt >= Math.max(0, awayAfter) * 60000) setLastSeen(hiddenAt);
+    };
+    document.addEventListener("visibilitychange", visibility);
+    return () => document.removeEventListener("visibilitychange", visibility);
+  }, [awayAfter]);
+  const shortcutActions = useRef({ latest, streaming, stop, voicePreview });
+  shortcutActions.current = { latest, streaming, stop, voicePreview };
+  useEffect(() => {
+    const key = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isEditing(event.target)) return;
+      if (document.activeElement !== document.body && !root.current?.contains(document.activeElement)) return;
+      if (event.key === "End") {
+        event.preventDefault();
+        shortcutActions.current.latest();
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+  const liveStory = async () => {
+    const token = generation.current,
+      id = "ingest-story";
+    setLocalRunning(true);
+    if (!(await pause(900, token))) return;
+    update((messages) => [
+      ...messages,
+      {
+        id: "staging-question",
+        role: "user",
+        at: Date.now(),
+        text: "Good. Get ingest onto staging today – and tell me what you need from me.",
+      },
+    ]);
+    if (!(await pause(450, token))) return;
+    const toolLabels = [
+      "Read ingest-design.md",
+      "Checked the staging cluster",
+      "Compared Kafka, SQS and a Postgres queue",
+    ];
+    update((messages) => [
+      ...messages,
+      {
+        id,
+        role: "agent",
+        at: Date.now(),
+        streaming: true,
+        parts: [
+          {
+            kind: "tools",
+            id: "stage-tools",
+            tools: toolLabels.map((label, index) => ({
+              id: `stage-${index}`,
+              label,
+              status: "running",
+              startedAt: Date.now(),
+            })),
+          },
+        ],
+      },
+    ]);
+    for (const [index, wait, duration] of [
+      [0, 1200, 1200],
+      [1, 1400, 2600],
+      [2, 1600, 4200],
+    ]) {
+      if (!(await pause(wait, token))) return;
+      update((messages) =>
+        messages.map((message) =>
+          message.id === id
+            ? {
+                ...message,
+                parts: message.parts?.map((part) =>
+                  part.kind === "tools"
+                    ? {
+                        ...part,
+                        tools: part.tools.map((tool, position) =>
+                          position === index ? { ...tool, status: "done", duration } : tool,
+                        ),
+                      }
+                    : part,
+                ),
+              }
+            : message,
+        ),
+      );
+    }
+    if (!(await pause(700, token))) return;
+    if (
+      !(await streamText(
+        id,
+        "Staging is ready and the load test holds. One thing I can't decide for you: which queue the service runs on. Kafka keeps a day of events to replay after a bad deploy; SQS is less to run but can't replay. I'd pick Kafka.",
+        token,
+      ))
+    )
+      return;
+    update((messages) =>
+      messages.map((message) =>
+        message.id === id
+          ? {
+              ...message,
+              streaming: false,
+              parts: [
+                ...(message.parts ?? []),
+                {
+                  kind: "task",
+                  task: {
+                    id: "ingest",
+                    title: "Ingest pipeline",
+                    status: "Picking a queue",
+                    steps: { done: 2, total: 4 },
+                  },
+                },
+                {
+                  kind: "decision",
+                  ask: { id: "queue", question: defaultThreadDecisions[0].question, task: "Ingest pipeline" },
+                },
+                {
+                  kind: "text",
+                  text: "Once you've picked, I'll deploy to staging and run the smoke test. The deploy plan is ready:",
+                },
+                { kind: "artifacts", names: ["deploy.yaml", "ingest-design.md"] },
+              ],
+            }
+          : message,
+      ),
+    );
+    if (!decisionsRef.current.some((decision) => decision.id === "queue"))
+      updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]]);
+    setFolded(false);
+    setLocalRunning(false);
+  };
+  useEffect(() => {
+    if (simulate === "live") void liveStory();
+    if (simulate === "scrolled") {
+      follow.current = false;
+      const frame = requestAnimationFrame(() => {
+        if (scroll.current)
+          scroll.current.scrollTop = Math.max(0, scroll.current.scrollHeight - scroll.current.clientHeight - 280);
+        setAway(true);
+        setNewCount(12);
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, []);
+  const retry = (id: string) => {
+    onRetry?.(id);
+    if (!simulate) return;
+    const failed = messageRef.current.find((message) => message.id === id);
+    if (!failed) return;
+    if (failed.role === "user") {
+      const options = defaults();
+      update((messages) =>
+        messages.map((message) =>
+          message.id === id ? { ...message, status: connectionRef.current === "online" ? "sent" : "queued" } : message,
+        ),
+      );
+      if (connectionRef.current === "online") {
+        onSend?.(failed.text ?? "", options);
+        void reply(failed.text ?? "");
+      }
+      return;
+    }
+    update((messages) =>
+      messages.map((message) =>
+        message.id === id
+          ? {
+              ...message,
+              streaming: true,
+              parts: message.parts
+                ?.filter((part) => part.kind !== "error")
+                .map((part) =>
+                  part.kind === "tools"
+                    ? {
+                        ...part,
+                        tools: part.tools.map((tool) =>
+                          tool.status === "failed" ? { ...tool, status: "running", startedAt: Date.now() } : tool,
+                        ),
+                      }
+                    : part,
+                ),
+            }
+          : message,
+      ),
+    );
+    const token = generation.current;
+    void (async () => {
+      if (!(await pause(1600, token))) return;
+      update((messages) =>
+        messages.map((message) =>
+          message.id === id
+            ? {
+                ...message,
+                streaming: false,
+                parts: [
+                  ...(message.parts?.map((part) =>
+                    part.kind === "tools"
+                      ? {
+                          ...part,
+                          tools: part.tools.map((tool) =>
+                            tool.status === "running" ? { ...tool, status: "done" as const, duration: 1600 } : tool,
+                          ),
+                        }
+                      : part,
+                  ) ?? []),
+                  {
+                    kind: "text",
+                    text: "The staging cluster answers again – the check passed, so we're good to deploy once you've picked a queue.",
+                  },
+                ],
+              }
+            : message,
+        ),
+      );
+    })();
+  };
+  const needsBaseline = useRef({ needs: running?.needs, answered: 0 });
+  if (needsBaseline.current.needs !== running?.needs)
+    needsBaseline.current = { needs: running?.needs, answered: Object.keys(answers).length };
+  const needs = Math.max(
+    0,
+    safeNumber(running?.needs, decisions.length) - (Object.keys(answers).length - needsBaseline.current.answered),
+  );
+  const time = (at: number) =>
+    new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
+  const fileChips = (names: string[]) => (
+    <div className="ui-thc__files" aria-label="Created files">
+      {names.map((name) => (
+        <button type="button" key={name} className="ui-thc__file" title={name} onClick={() => onOpenFile?.(name)}>
+          <span
+            data-kind={name.endsWith(".csv") ? "table" : /\.(ya?ml|json|tsx?|js)$/.test(name) ? "code" : "document"}
+          >
+            <Icon name={name.endsWith(".csv") ? "table" : "document"} size={12} />
+          </span>
+          <span>{name}</span>
+        </button>
+      ))}
+    </div>
+  );
+  const textPart = (text: string, caret: boolean) => (
+    <div className="ui-thc__text" dir="auto">
+      {text.split(/\n{2,}/).map((paragraph, index, paragraphs) => (
+        <p key={index}>
+          {paragraph}
+          {caret && index === paragraphs.length - 1 && <span className="ui-thc__caret" aria-hidden="true" />}
+        </p>
+      ))}
+    </div>
+  );
+  const completedUploads = uploads.filter((file) => file.state === "done" && file.kind !== "voice");
+  const blockedUpload = uploads.some((file) => file.kind !== "voice" && file.state !== "done");
+  return (
+    <section
+      ref={root}
+      data-thread-shortcuts=""
+      className={["ui-thc", className].filter(Boolean).join(" ")}
+      data-orchestrator={mode === "orchestrator" || undefined}
+      aria-label={title}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented) return;
+        if (event.key === "Escape" && voicePreview) {
+          event.preventDefault();
+          setVoicePreview(false);
+        } else if (event.key === "Escape" && streaming) {
+          event.preventDefault();
+          stop();
+        }
+      }}
+    >
+      <style href="ui-agent-thread-clean" precedence="default">
+        {css}
+      </style>
+      <header className="ui-thc__head">
+        <h1 className="ui-thc__sr">{title}</h1>
+        {running && (
+          <div className="ui-thc__summary">
+            <button
+              type="button"
+              aria-label={`${running.running} tasks running – open Tasks`}
+              onClick={() => onNavigate?.("Tasks")}
+            >
+              <i className="ui-thc__running-dot" />
+              {Math.max(0, safeNumber(running.running, 0))}
+              <span>running</span>
+            </button>
+            {needs > 0 && (
+              <>
+                <span className="ui-thc__summary-separator">·</span>
+                <button
+                  type="button"
+                  aria-label={`${needs} questions waiting – ${decisions.length ? "show the decision" : "open Inbox"}`}
+                  onClick={() => showDecision()}
+                >
+                  <i className="ui-thc__needs-dot" />
+                  {needs}
+                  <span>need{needs === 1 ? "s" : ""} you</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </header>
+      <ConnectionBanner
+        managed
+        connection={connectionState.status}
+        retryIn={connectionState.retryIn}
+        backOnline={connectionState.backOnline}
+        onReconnect={connectionState.reconnect}
+      />
+      <div className="ui-thc__body">
+        <div
+          ref={scroll}
+          className="ui-thc__scroll"
+          onScroll={() => {
+            const el = scroll.current;
+            if (!el) return;
+            const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40;
+            follow.current = pinned;
+            setAway(!pinned);
+            if (pinned) setNewCount(0);
+          }}
+        >
+          <div
+            ref={column}
+            className="ui-thc__column"
+            role="log"
+            aria-label="Conversation"
+            aria-live="polite"
+            aria-relevant="additions"
+            aria-busy={streaming}
+          >
+            {!list.length && (
+              <div className="ui-thc__empty">
+                <span className="ui-thc__empty-icon">
+                  <Icon name="spark" size={26} />
+                </span>
+                <h2>What can I help you with?</h2>
+                <p>Ask a question, explore an idea, or bring a file.</p>
+              </div>
+            )}
+            {list.map((message, messageIndex) => (
+              <div className="ui-thc__message" key={message.id}>
+                {messageIndex === boundaryIndex && (
+                  <div ref={unreadBoundary} className="ui-thc__unread-boundary">
+                    <AwaySummary
+                      tasks={[...completedTasks.values()]}
+                      decisions={awayDecisions}
+                      since={lastSeen}
+                      onOpenTask={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                      onOpenDecision={showDecision}
+                      onOpenTasks={() => onNavigate?.("Tasks")}
+                      onOpenInbox={() => openInbox()}
+                      onMarkRead={read}
+                    />
+                  </div>
+                )}
+                {message.role === "user" ? (
+                  <div className="ui-thc__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}>
+                    <span className="ui-thc__sr">{message.answer ? "You answered:" : "You said:"}</span>
+                    {message.answer && (
+                      <span className="ui-thc__answer-context" title={message.answer.question}>
+                        Answered: {message.answer.question}
+                      </span>
+                    )}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="ui-thc__attachments">
+                        {message.attachments.map((file, index) => (
+                          <span key={`${file.name}-${index}`}>
+                            <Icon name="document" size={14} />
+                            {file.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {message.text && (
+                      <p className="ui-thc__bubble" dir="auto">
+                        {message.text}
+                      </p>
+                    )}
+                    {message.status && message.status !== "sent" && (
+                      <span className="ui-thc__send-status">
+                        {message.status === "failed" ? (
+                          <>
+                            <Icon name="warning" size={12} />
+                            Couldn't send ·{" "}
+                            <button type="button" onClick={() => retry(message.id)}>
+                              Retry
+                            </button>
+                          </>
+                        ) : message.status === "queued" ? (
+                          "Waiting to send"
+                        ) : (
+                          "Sending…"
+                        )}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="ui-thc__assistant" data-streaming={message.streaming || undefined}>
+                    {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? (
+                      <div className="ui-thc__who">
+                        <span className="ui-thc__avatar" data-busy={message.streaming || undefined} aria-hidden="true">
+                          {[0, 2, 4, 6, 8].map((pixel, index) => (
+                            <i
+                              key={pixel}
+                              style={{
+                                gridArea: `${Math.floor(pixel / 3) + 1}/${(pixel % 3) + 1}`,
+                                animationDelay: `${index * 130}ms`,
+                              }}
+                            />
+                          ))}
+                        </span>
+                        <span>{assistantName}</span>
+                        {message.at != null && Number.isFinite(message.at) && (
+                          <time dateTime={new Date(message.at).toISOString()}>{time(message.at)}</time>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="ui-thc__sr">{assistantName}:</span>
+                    )}
+                    {message.tools && message.tools.length > 0 && (
+                      <ToolActivity
+                        tools={message.tools}
+                        onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
+                      />
+                    )}
+                    {message.parts
+                      ?.slice(0, 1)
+                      .map(
+                        (part) =>
+                          part.kind === "tools" && (
+                            <ToolActivity
+                              key={part.id}
+                              tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
+                            />
+                          ),
+                      )}
+                    {message.text && textPart(message.text, !!message.streaming)}
+                    {message.parts?.map((part, index) =>
+                      index === 0 && part.kind === "tools" ? null : (
+                        <div className="ui-thc__part" key={`${part.kind}-${index}`}>
+                          {part.kind === "tools" ? (
+                            <ToolActivity
+                              tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
+                            />
+                          ) : part.kind === "text" ? (
+                            textPart(
+                              part.text,
+                              !!message.streaming && index === message.parts!.length - 1 && !message.text,
+                            )
+                          ) : part.kind === "task" ? (
+                            <ThreadTaskCard
+                              task={part.task}
+                              onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                            />
+                          ) : part.kind === "artifacts" ? (
+                            fileChips(part.names)
+                          ) : part.kind === "decision" ? (
+                            <button type="button" className="ui-thc__asked" onClick={() => showDecision(part.ask.id)}>
+                              <i data-answered={!!answers[part.ask.id] || undefined} />
+                              <span>Asked: {part.ask.question}</span>
+                              <small>
+                                ·{" "}
+                                {answers[part.ask.id]
+                                  ? "answered below"
+                                  : decisions.some((decision) => decision.id === part.ask.id)
+                                    ? "waiting"
+                                    : "in Inbox"}
+                              </small>
+                            </button>
+                          ) : (
+                            <div className="ui-thc__error" role="status">
+                              <Icon name="warning" size={14} />
+                              <span dir="auto">{part.text}</span>
+                              {part.retry && (
+                                <button type="button" onClick={() => retry(message.id)}>
+                                  Retry
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    )}
+                    {message.files && fileChips(message.files)}
+                    {message.stopped && (
+                      <span className="ui-thc__stopped">
+                        <Icon name="stop" size={11} />
+                        Stopped
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        {away && boundaryIndex < 0 && (
+          <button
+            type="button"
+            className="ui-thc__jump"
+            aria-label={`Jump to latest${newCount ? `, ${newCount} new lines` : ""}${streaming ? ", still writing" : ""}`}
+            aria-keyshortcuts="End"
+            onClick={latest}
+          >
+            <Icon name="arrow" size={14} />
+            {newCount ? `${newCount} new lines` : "Back to latest"}
+            {streaming && <span className="ui-thc__jump-live" />}
+          </button>
+        )}
+      </div>
+      <footer className="ui-thc__foot">
+        <div className="ui-thc__foot-column">
+          <div className="ui-thc__dock-slot" data-visible={decisions.length > 0 || undefined}>
+            <DecisionDock
+              decisions={decisions}
+              onDecisionsChange={updateDecisions}
+              activeId={activeDecision}
+              onActiveIdChange={setActiveDecision}
+              folded={folded}
+              onFoldedChange={setFolded}
+              onAnswer={answered}
+              onLater={later}
+              focusRequest={focusRequest}
+            />
+          </div>
+          {(uploads.length > 0 || voicePreview || streaming) && (
+            <div className="ui-thc__above">
+              {uploads.length > 0 && (
+                <div className="ui-thc__upload-slot">
+                  <ThreadUploads uploads={uploads} onRemove={removeUpload} onRetry={retryUpload} />
+                </div>
+              )}
+              {voicePreview && (
+                <div className="ui-thc__upload-slot">
+                  <ThreadVoiceInput
+                    seconds={voiceSeconds}
+                    onDiscard={() => setVoicePreview(false)}
+                    onDone={finishVoicePreview}
+                  />
+                </div>
+              )}
+              {streaming && !voicePreview && (
+                <button type="button" className="ui-thc__stop" onClick={stop} aria-keyshortcuts="Escape">
+                  <Icon name="stop" size={12} />
+                  Stop
+                </button>
+              )}
+            </div>
+          )}
+          {composer ?? (
+            <ChatComposer
+              {...composerProps}
+              models={composerProps?.models ?? (mode === "orchestrator" ? [] : undefined)}
+              value={draft}
+              onValueChange={setDraft}
+              attachments={mode === "orchestrator" ? completedUploads : composerProps?.attachments}
+              onAttachmentsChange={mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange}
+              showAttachments={mode === "orchestrator" ? false : composerProps?.showAttachments}
+              sendDisabled={blockedUpload || composerProps?.sendDisabled}
+              transcribe={mode === "orchestrator" && (transcribe || simulate) ? voice : composerProps?.transcribe}
+              onSend={send}
+            />
+          )}
+        </div>
+      </footer>
+      <span role="status" aria-live="polite" className="ui-thc__sr">
+        {announcement}
+      </span>
+    </section>
+  );
+}
+
+/* ---------- Styles ---------- */
+
+const css = /* css */ `
+.ui-tac {
+  --ui-tac-ink: rgba(0, 0, 0, 0.88);
+  --ui-tac-text: rgba(0, 0, 0, 0.45);
+  --ui-tac-faint: rgba(0, 0, 0, 0.27);
+  --ui-tac-line: rgba(0, 0, 0, 0.06);
+  --ui-tac-ok: #1a9a52;
+  --ui-tac-danger: #e5484d;
+  --ui-tac-focus: rgba(0, 96, 226, 0.35);
+  --ui-tac-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  font:
+    13px/1.5 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-tac-text);
+  container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
+}
+.ui-tac,
+.ui-tac *,
+.ui-tac *::before,
+.ui-tac *::after {
+  box-sizing: border-box;
+}
+.ui-tac button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ui-tac button:focus-visible {
+  outline: 2px solid var(--ui-tac-focus);
+  outline-offset: 2px;
+}
+.ui-tac button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-tac__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0;
+  text-align: left;
+}
+.ui-tac__status,
+.ui-tac__mark {
+  display: flex;
+  align-items: center;
+  color: var(--ui-tac-ok);
+}
+.ui-tac[data-state="failed"] .ui-tac__status,
+.ui-tac__tool[data-status="failed"] .ui-tac__mark {
+  color: var(--ui-tac-danger);
+}
+.ui-tac__title {
+  position: relative;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ui-tac__chevron {
+  display: flex;
+  opacity: 0;
+  transition:
+    transform 280ms var(--ui-tac-ease),
+    opacity 160ms;
+}
+.ui-tac__head:hover .ui-tac__chevron,
+.ui-tac__head:focus-visible .ui-tac__chevron {
+  opacity: 1;
+}
+.ui-tac[data-open="true"] .ui-tac__chevron {
+  transform: rotate(180deg);
+}
+.ui-tac__wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 360ms var(--ui-tac-ease);
+}
+.ui-tac[data-open="true"] .ui-tac__wrap {
+  grid-template-rows: 1fr;
+}
+.ui-tac__list {
+  overflow: hidden;
+  min-height: 0;
+  list-style: none;
+  padding: 0 0 0 4px;
+  margin: 0;
+}
+.ui-tac__tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  position: relative;
+  padding: 2px 0 2px 17px;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition:
+    opacity 200ms,
+    transform 320ms var(--ui-tac-ease);
+  transition-delay: calc(var(--ui-tac-index) * 35ms);
+}
+.ui-tac[data-open="true"] .ui-tac__tool {
+  opacity: 1;
+  transform: none;
+}
+.ui-tac__tool::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--ui-tac-line);
+}
+.ui-tac__mark {
+  position: absolute;
+  left: -5px;
+  background: var(--ui-tac-card, #fff);
+}
+.ui-tac__icon {
+  display: flex;
+  color: var(--ui-tac-faint);
+}
+.ui-tac__label {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.ui-tac__label small {
+  display: block;
+  color: var(--ui-tac-danger);
+  font-size: 12px;
+}
+.ui-tac__time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-tac-faint);
+}
+.ui-tac__retry {
+  font-size: 12px !important;
+  text-decoration: underline;
+}
+.ui-tac [data-spinning] svg {
+  animation: ui-tac-spin 1s linear infinite;
+  color: var(--ui-tac-text);
+}
+.ui-tac__title[data-shimmer]::after {
+  content: attr(data-text) / "";
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  background: linear-gradient(100deg, transparent 25%, var(--ui-tac-ink) 50%, transparent 75%);
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: ui-tac-shimmer 2s linear infinite;
+}
+@keyframes ui-tac-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ui-tac-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@container (max-width:320px) {
+  .ui-tac__tool {
+    gap: 6px;
+  }
+  .ui-tac__time {
+    font-size: 10px;
+  }
+}
+@media (pointer: coarse) {
+  .ui-tac__head {
+    min-height: 36px;
+  }
+  .ui-tac__tool {
+    min-height: 34px;
+  }
+  .ui-tac__retry {
+    min-height: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-tac *,
+  .ui-tac *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ui-tac__tool {
+    transform: none;
+  }
+  .ui-tac__title[data-shimmer]::after {
+    display: none;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-tac {
+  --ui-tac-ink: rgba(255, 255, 255, 0.9);
+  --ui-tac-text: rgba(255, 255, 255, 0.46);
+  --ui-tac-faint: rgba(255, 255, 255, 0.3);
+  --ui-tac-line: rgba(255, 255, 255, 0.08);
+  --ui-tac-card: #1c1c1e;
+  --ui-tac-ok: #3ec27a;
+  --ui-tac-danger: #ff6369;
+  --ui-tac-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-ccc {
+  --ui-ccc-card: #fff;
+  --ui-ccc-tray: rgba(0, 0, 0, 0.035);
+  --ui-ccc-ink: rgba(0, 0, 0, 0.88);
+  --ui-ccc-text: rgba(0, 0, 0, 0.61);
+  --ui-ccc-muted: rgba(0, 0, 0, 0.45);
+  --ui-ccc-faint: rgba(0, 0, 0, 0.27);
+  --ui-ccc-line: rgba(0, 0, 0, 0.06);
+  --ui-ccc-fill: rgba(0, 0, 0, 0.04);
+  --ui-ccc-focus: rgba(0, 96, 226, 0.35);
+  --ui-ccc-danger: #e5484d;
+  --ui-ccc-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 12px 28px -10px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --ui-ccc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  width: 100%;
+  position: relative;
+  container: ui-ccc / inline-size;
+  font:
+    13px/1.5 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-ccc-ink);
+  -webkit-font-smoothing: antialiased;
+}
+.ui-ccc,
+.ui-ccc *,
+.ui-ccc *::before,
+.ui-ccc *::after {
+  box-sizing: border-box;
+}
+.ui-ccc button,
+.ui-ccc textarea {
+  font: inherit;
+  color: inherit;
+}
+.ui-ccc button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ui-ccc button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ui-ccc button:focus-visible,
+.ui-ccc textarea:focus-visible {
+  outline: 2px solid var(--ui-ccc-focus);
+  outline-offset: 2px;
+}
+.ui-ccc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-ccc__body {
+  padding: 14px 12px 10px;
+  border-radius: 18px;
+  background: var(--ui-ccc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-ccc-line);
+}
+.ui-ccc__body:focus-within {
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.16);
+}
+.ui-ccc__message {
+  display: block;
+  resize: none;
+  width: 100%;
+  min-height: 44px;
+  max-height: 180px;
+  padding: 0 2px;
+  border: 0;
+  outline: none !important;
+  background: transparent;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.ui-ccc__message::placeholder {
+  color: var(--ui-ccc-muted);
+}
+.ui-ccc__tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin-top: 10px;
+}
+.ui-ccc__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.ui-ccc__group--end {
+  margin-left: auto;
+}
+.ui-ccc__icon-btn,
+.ui-ccc__send {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--ui-ccc-muted) !important;
+  transition:
+    background-color 150ms,
+    transform 180ms;
+}
+.ui-ccc__icon-btn:hover {
+  background: var(--ui-ccc-fill);
+}
+.ui-ccc__approval,
+.ui-ccc__model {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  max-width: 190px;
+  min-width: 0;
+  height: 28px;
+  border-radius: 6px;
+  padding: 0 6px;
+  overflow: hidden;
+  transition: background-color 150ms;
+}
+.ui-ccc__approval {
+  color: var(--ui-ccc-muted) !important;
+}
+.ui-ccc__approval[data-tone="full"] {
+  color: var(--ui-ccc-danger) !important;
+}
+.ui-ccc__approval:hover,
+.ui-ccc__model:hover {
+  background: var(--ui-ccc-fill);
+}
+.ui-ccc__face {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  animation: ui-ccc-morph 360ms var(--ui-ccc-ease);
+}
+.ui-ccc__face > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-ccc__send {
+  background: var(--ui-ccc-ink) !important;
+  color: var(--ui-ccc-card) !important;
+}
+.ui-ccc__send:disabled {
+  background: var(--ui-ccc-fill) !important;
+  color: var(--ui-ccc-muted) !important;
+  opacity: 1;
+}
+.ui-ccc__plan {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--ui-ccc-muted);
+  background: var(--ui-ccc-fill);
+}
+.ui-ccc__menu {
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--ui-ccc-card);
+  box-shadow: var(--ui-ccc-shadow);
+  animation: ui-ccc-pop 240ms var(--ui-ccc-ease);
+}
+.ui-ccc__menu-title {
+  padding: 8px 9px 5px;
+  color: var(--ui-ccc-muted);
+  font-size: 11px;
+}
+.ui-ccc__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  border-radius: 7px;
+  padding: 7px 9px;
+  text-align: left;
+}
+.ui-ccc__option:hover,
+.ui-ccc__option:focus-visible {
+  background: var(--ui-ccc-fill);
+}
+.ui-ccc__option-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  color: var(--ui-ccc-muted);
+}
+.ui-ccc__option-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.ui-ccc__option-text > span {
+  font-weight: 500;
+}
+.ui-ccc__option-text small {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ui-ccc-muted);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.ui-ccc__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0 0 8px;
+  list-style: none;
+}
+.ui-ccc__attachments li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  background: var(--ui-ccc-fill);
+  padding: 5px 6px 5px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.ui-ccc__attachments li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-ccc__attachments button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+}
+.ui-ccc__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ui-ccc-danger);
+  margin: 8px 0 0;
+}
+.ui-ccc__error button {
+  margin-left: auto;
+}
+.ui-ccc__footer {
+  padding: 10px 6px;
+  color: var(--ui-ccc-muted);
+  font-size: 12px;
+}
+.ui-ccc__recording {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  background: var(--ui-ccc-card);
+  height: 28px;
+}
+.ui-ccc__timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ui-ccc-muted);
+}
+.ui-ccc__wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-inline: 6px;
+}
+.ui-ccc__wave i {
+  display: block;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--ui-ccc-text);
+  animation: ui-ccc-wave 650ms ease-in-out infinite alternate;
+}
+.ui-ccc[data-menu-open] {
+  z-index: 20;
+}
+@keyframes ui-ccc-wave {
+  to {
+    transform: scaleY(0.25);
+  }
+}
+@keyframes ui-ccc-morph {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(25%);
+  }
+}
+@keyframes ui-ccc-pop {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+}
+@container ui-ccc (max-width:420px) {
+  .ui-ccc__approval {
+    max-width: 138px;
+  }
+  .ui-ccc__model {
+    max-width: 110px;
+  }
+  .ui-ccc__body {
+    padding: 12px 10px 8px;
+  }
+  .ui-ccc__group {
+    gap: 2px;
+  }
+}
+@container ui-ccc (max-width:340px) {
+  .ui-ccc__approval {
+    max-width: 28px;
+    padding: 0 6px;
+  }
+  .ui-ccc__approval .ui-ccc__face > span {
+    display: none;
+  }
+  .ui-ccc__plan {
+    display: none;
+  }
+  .ui-ccc__model {
+    max-width: 105px;
+  }
+}
+@media (pointer: coarse) {
+  .ui-ccc__icon-btn,
+  .ui-ccc__send {
+    width: 34px;
+    height: 34px;
+  }
+  .ui-ccc__approval,
+  .ui-ccc__model {
+    height: 34px;
+  }
+  .ui-ccc__tools,
+  .ui-ccc__recording {
+    min-height: 34px;
+  }
+  .ui-ccc__option {
+    min-height: 44px;
+  }
+  .ui-ccc__message {
+    font-size: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-ccc,
+  .ui-ccc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-ccc {
+  --ui-ccc-card: #1c1c1e;
+  --ui-ccc-tray: #161618;
+  --ui-ccc-ink: rgba(255, 255, 255, 0.9);
+  --ui-ccc-text: rgba(255, 255, 255, 0.62);
+  --ui-ccc-muted: rgba(255, 255, 255, 0.46);
+  --ui-ccc-faint: rgba(255, 255, 255, 0.3);
+  --ui-ccc-line: rgba(255, 255, 255, 0.1);
+  --ui-ccc-fill: rgba(255, 255, 255, 0.08);
+  --ui-ccc-focus: rgba(77, 141, 255, 0.5);
+  --ui-ccc-danger: #ff6369;
+  --ui-ccc-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+}
+
+.ui-tkc {
+  --ui-tkc-card: #fff;
+  --ui-tkc-ink: rgba(0, 0, 0, 0.88);
+  --ui-tkc-muted: rgba(0, 0, 0, 0.45);
+  --ui-tkc-faint: rgba(0, 0, 0, 0.27);
+  --ui-tkc-line: rgba(0, 0, 0, 0.06);
+  --ui-tkc-fill: rgba(0, 0, 0, 0.025);
+  --ui-tkc-focus: rgba(0, 96, 226, 0.35);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  background: var(--ui-tkc-card);
+  border-radius: 12px;
+  box-shadow: 0 0 0 0.5px var(--ui-tkc-line);
+  font:
+    13px/1.45 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-tkc-ink);
+  container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
+  animation: ui-tkc-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ui-tkc,
+.ui-tkc *,
+.ui-tkc *::before,
+.ui-tkc *::after {
+  box-sizing: border-box;
+}
+.ui-tkc__mark {
+  display: flex;
+  flex: none;
+  color: #e8a20c;
+}
+.ui-tkc[data-tone="active"] .ui-tkc__mark {
+  color: #ff7c3c;
+}
+.ui-tkc[data-tone="done"] .ui-tkc__mark {
+  color: #0095ff;
+}
+.ui-tkc[data-tone="error"] .ui-tkc__mark {
+  color: #e5484d;
+}
+.ui-tkc__text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.ui-tkc__text strong {
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 18px;
+}
+.ui-tkc__text small {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-tkc-muted);
+}
+.ui-tkc__text > * {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ui-tkc__count {
+  font-size: 12px;
+  color: var(--ui-tkc-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ui-tkc button {
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ui-tkc-muted);
+  height: 28px;
+  padding: 0 6px;
+  cursor: pointer;
+  flex: none;
+}
+.ui-tkc button:hover {
+  background: var(--ui-tkc-fill);
+  color: var(--ui-tkc-ink);
+}
+.ui-tkc button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ui-tkc button:focus-visible {
+  outline: 2px solid var(--ui-tkc-focus);
+  outline-offset: 2px;
+}
+.ui-tkc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+@keyframes ui-tkc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@container (max-width:320px) {
+  .ui-tkc__text small {
+    font-size: 11px;
+  }
+  .ui-tkc__count {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .ui-tkc {
+    min-height: 56px;
+  }
+  .ui-tkc button {
+    height: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-tkc,
+  .ui-tkc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-tkc {
+  --ui-tkc-card: #1c1c1e;
+  --ui-tkc-ink: rgba(255, 255, 255, 0.9);
+  --ui-tkc-muted: rgba(255, 255, 255, 0.46);
+  --ui-tkc-faint: rgba(255, 255, 255, 0.3);
+  --ui-tkc-line: rgba(255, 255, 255, 0.08);
+  --ui-tkc-fill: rgba(255, 255, 255, 0.04);
+  --ui-tkc-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-ddc {
+  --ui-ddc-card: #fff;
+  --ui-ddc-tray: #f0f0f0;
+  --ui-ddc-ink: rgba(0, 0, 0, 0.88);
+  --ui-ddc-muted: rgba(0, 0, 0, 0.45);
+  --ui-ddc-faint: rgba(0, 0, 0, 0.27);
+  --ui-ddc-line: rgba(0, 0, 0, 0.06);
+  --ui-ddc-fill: rgba(0, 0, 0, 0.04);
+  --ui-ddc-focus: rgba(0, 96, 226, 0.35);
+  --ui-ddc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  width: 100%;
+  font:
+    13px/1.45 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-ddc-ink);
+  container: ui-ddc / inline-size;
+  -webkit-font-smoothing: antialiased;
+}
+.ui-ddc,
+.ui-ddc *,
+.ui-ddc *::before,
+.ui-ddc *::after {
+  box-sizing: border-box;
+}
+.ui-ddc button,
+.ui-ddc input {
+  font: inherit;
+  color: inherit;
+}
+.ui-ddc button {
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.ui-ddc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-ddc button:focus-visible,
+.ui-ddc input:focus-visible {
+  outline: 2px solid var(--ui-ddc-focus);
+  outline-offset: -2px;
+}
+.ui-ddc__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 380ms var(--ui-ddc-ease),
+    opacity 180ms;
+}
+.ui-ddc[data-folded] .ui-ddc__collapse,
+.ui-ddc[data-empty] .ui-ddc__collapse {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.ui-ddc__clip {
+  min-height: 0;
+  overflow: clip;
+  overflow-clip-margin: 1px;
+  padding: 0;
+}
+.ui-ddc__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 18px;
+  padding: 10px 8px 6px;
+  background: var(--ui-ddc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-ddc-line);
+  animation: ui-ddc-in 260ms var(--ui-ddc-ease) both;
+}
+.ui-ddc__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 4px;
+  margin-bottom: 0;
+  font-size: 12px;
+  color: var(--ui-ddc-muted);
+}
+.ui-ddc__tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(232, 162, 12, 0.12);
+  color: #b47a06;
+  flex: none;
+}
+.ui-ddc__task {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-ddc__pager {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ui-ddc__pager button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--ui-ddc-muted);
+}
+.ui-ddc__pager button:first-child svg {
+  rotate: 90deg;
+}
+.ui-ddc__pager button:last-child svg {
+  rotate: -90deg;
+}
+.ui-ddc__later {
+  font-size: 12px !important;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.ui-ddc__later:hover,
+.ui-ddc__pager button:hover {
+  background: var(--ui-ddc-fill);
+}
+.ui-ddc__question {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  margin: 0;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+.ui-ddc__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.ui-ddc__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  min-height: 36px;
+  text-align: left;
+  padding: 4px 8px 4px 4px;
+  border-radius: 8px;
+  position: relative;
+}
+.ui-ddc__option:hover,
+.ui-ddc__option:focus-visible {
+  background: var(--ui-ddc-fill);
+}
+.ui-ddc__number {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: var(--ui-ddc-fill);
+  color: var(--ui-ddc-muted);
+  border-radius: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ui-ddc__text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+.ui-ddc__text strong {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.ui-ddc__text small {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-ddc-muted);
+  overflow-wrap: anywhere;
+}
+.ui-ddc__recommended {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--ui-ddc-fill);
+  color: var(--ui-ddc-muted);
+  white-space: nowrap;
+}
+.ui-ddc__custom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 8px 4px 4px;
+}
+.ui-ddc__custom input {
+  width: 0;
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: none;
+  padding: 0;
+  line-height: 20px;
+  min-width: 0;
+}
+.ui-ddc__custom input::placeholder {
+  color: var(--ui-ddc-faint);
+}
+.ui-ddc__custom button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: var(--ui-ddc-fill);
+}
+.ui-ddc__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.ui-ddc__facts > div {
+  display: flex;
+  gap: 12px;
+}
+.ui-ddc__facts dt {
+  color: var(--ui-ddc-muted);
+  width: 60px;
+  flex: none;
+}
+.ui-ddc__facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-ddc__folded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  font-size: 12px;
+  color: var(--ui-ddc-muted);
+  padding: 0 8px 0 14px;
+  border-radius: 18px;
+  background: var(--ui-ddc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-ddc-line);
+}
+.ui-ddc__folded button {
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.ui-ddc__folded button:hover {
+  background: var(--ui-ddc-fill);
+}
+.ui-ddc__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e8a20c;
+}
+.ui-ddc[data-kind="pick"] .ui-ddc__choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.ui-ddc[data-kind="pick"] .ui-ddc__option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+}
+.ui-ddc[data-kind="pick"] .ui-ddc__option .ui-ddc__number {
+  margin-left: 2px;
+}
+.ui-ddc[data-kind="pick"] .ui-ddc__recommended {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--ui-ddc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-ddc-line);
+}
+.ui-ddc__wire {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  grid-column: 1/-1;
+  height: 92px;
+  width: 100%;
+  padding: 6px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 0.5px var(--ui-ddc-line);
+  background: var(--ui-ddc-fill);
+  overflow: hidden;
+}
+.ui-ddc__card[data-pulse] {
+  animation: ui-ddc-pulse 550ms ease both;
+}
+@keyframes ui-ddc-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+@keyframes ui-ddc-pulse {
+  30% {
+    background: var(--ui-ddc-fill);
+  }
+}
+@container ui-ddc (max-width:440px) {
+  .ui-ddc__recommended {
+    font-size: 9px;
+  }
+  .ui-ddc__option {
+    gap: 7px;
+  }
+  .ui-ddc__text small {
+    font-size: 11px;
+  }
+  .ui-ddc__card {
+    padding: 10px;
+  }
+  .ui-ddc[data-kind="pick"] .ui-ddc__choices {
+    gap: 5px;
+  }
+}
+@media (pointer: coarse) {
+  .ui-ddc__option {
+    min-height: 44px;
+  }
+  .ui-ddc__custom {
+    min-height: 40px;
+  }
+  .ui-ddc__custom input {
+    font-size: 16px;
+  }
+  .ui-ddc__pager button,
+  .ui-ddc__later {
+    min-width: 32px;
+    min-height: 36px;
+  }
+  .ui-ddc__folded button {
+    min-height: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-ddc,
+  .ui-ddc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-ddc {
+  --ui-ddc-card: #1c1c1e;
+  --ui-ddc-tray: #161618;
+  --ui-ddc-ink: rgba(255, 255, 255, 0.9);
+  --ui-ddc-muted: rgba(255, 255, 255, 0.46);
+  --ui-ddc-faint: rgba(255, 255, 255, 0.3);
+  --ui-ddc-line: rgba(255, 255, 255, 0.08);
+  --ui-ddc-fill: rgba(255, 255, 255, 0.08);
+  --ui-ddc-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-ddc__wire > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ui-cnc {
+  --ui-cnc-card: #fff;
+  --ui-cnc-text: rgba(0, 0, 0, 0.61);
+  --ui-cnc-muted: rgba(0, 0, 0, 0.45);
+  --ui-cnc-line: rgba(0, 0, 0, 0.06);
+  --ui-cnc-fill: rgba(0, 0, 0, 0.04);
+  --ui-cnc-focus: rgba(0, 96, 226, 0.35);
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  color: var(--ui-cnc-text);
+  font:
+    13px/1.5 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
+}
+.ui-cnc__pill {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  max-width: 100%;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-cnc-text) 6%, var(--ui-cnc-card));
+  white-space: nowrap;
+  animation: ui-cnc-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ui-cnc__pill:not(:has(button)) {
+  padding-right: 12px;
+}
+.ui-cnc__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-cnc,
+.ui-cnc *,
+.ui-cnc *::before,
+.ui-cnc *::after {
+  box-sizing: border-box;
+}
+.ui-cnc__mark {
+  display: flex;
+  color: #e8a20c;
+}
+.ui-cnc[data-status="online"] .ui-cnc__mark {
+  color: #1a9a52;
+}
+.ui-cnc__timer {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-cnc-muted);
+  font-size: 11px;
+}
+.ui-cnc button {
+  height: 24px;
+  flex: none;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--ui-cnc-text);
+  cursor: pointer;
+}
+.ui-cnc button:hover {
+  background: var(--ui-cnc-fill);
+}
+.ui-cnc button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ui-cnc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-cnc button:focus-visible {
+  outline: 2px solid var(--ui-cnc-focus);
+  outline-offset: 2px;
+}
+@keyframes ui-cnc-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@container (max-width:560px) {
+  .ui-cnc__pill {
+    max-width: calc(100% - 104px);
+  }
+  .ui-cnc__timer {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .ui-cnc button {
+    height: 36px;
+  }
+  .ui-cnc__pill {
+    height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-cnc,
+  .ui-cnc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-cnc {
+  --ui-cnc-card: #1c1c1e;
+  --ui-cnc-text: rgba(255, 255, 255, 0.62);
+  --ui-cnc-muted: rgba(255, 255, 255, 0.46);
+  --ui-cnc-line: rgba(255, 255, 255, 0.08);
+  --ui-cnc-fill: rgba(255, 255, 255, 0.08);
+  --ui-cnc-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-cnc__spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-cnc-line);
+  border-top-color: var(--ui-cnc-muted);
+  animation: ui-cnc-spin 900ms linear infinite;
+}
+@keyframes ui-cnc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-cnc__spinner {
+    animation: none;
+  }
+}
+
+.ui-ayc {
+  --ui-ayc-card: #fff;
+  --ui-ayc-ink: rgba(0, 0, 0, 0.88);
+  --ui-ayc-muted: rgba(0, 0, 0, 0.45);
+  --ui-ayc-faint: rgba(0, 0, 0, 0.27);
+  --ui-ayc-line: rgba(0, 0, 0, 0.06);
+  --ui-ayc-fill: rgba(0, 0, 0, 0.025);
+  --ui-ayc-focus: rgba(0, 96, 226, 0.35);
+  font:
+    13px/1.5 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-ayc-ink);
+  width: 100%;
+  container: ui-ayc / inline-size;
+  -webkit-font-smoothing: antialiased;
+  animation: ui-ayc-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ui-ayc,
+.ui-ayc *,
+.ui-ayc *::before,
+.ui-ayc *::after {
+  box-sizing: border-box;
+}
+.ui-ayc button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ui-ayc button:focus-visible {
+  outline: 2px solid var(--ui-ayc-focus);
+  outline-offset: -2px;
+}
+.ui-ayc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-ayc__card {
+  border-radius: 14px;
+  background: var(--ui-ayc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-ayc-line);
+  padding: 12px;
+}
+.ui-ayc__card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 10px;
+}
+.ui-ayc__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.ui-ayc__title svg {
+  color: var(--ui-ayc-muted);
+}
+.ui-ayc__counts {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ui-ayc-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ui-ayc__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ui-ayc__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  text-align: left;
+  padding: 5px 3px;
+  border-radius: 5px;
+}
+.ui-ayc__row:hover {
+  background: var(--ui-ayc-fill);
+}
+.ui-ayc__row strong {
+  font-size: 12px;
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-ayc__row small {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ui-ayc-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-ayc__row > svg {
+  color: var(--ui-ayc-faint);
+  flex: none;
+}
+.ui-ayc__check {
+  display: flex;
+  color: #1a9a52;
+}
+.ui-ayc__dot {
+  width: 5px;
+  height: 5px;
+  margin: 0 4px;
+  flex: none;
+  border-radius: 50%;
+  background: #e8a20c;
+}
+.ui-ayc__card > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 8px;
+}
+.ui-ayc__card > footer button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  font-size: 11px;
+  color: var(--ui-ayc-muted);
+  padding: 3px;
+  border-radius: 4px;
+}
+.ui-ayc__boundary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  color: var(--ui-ayc-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ui-ayc__boundary::before,
+.ui-ayc__boundary::after {
+  content: "";
+  height: 0.5px;
+  background: var(--ui-ayc-line);
+  flex: 1;
+}
+.ui-ayc__boundary button {
+  font-size: 11px;
+  color: var(--ui-ayc-muted);
+  padding: 3px;
+  border-radius: 4px;
+}
+@keyframes ui-ayc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@container ui-ayc (max-width:420px) {
+  .ui-ayc__row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .ui-ayc__row strong {
+    flex: 1;
+  }
+  .ui-ayc__row small {
+    flex-basis: calc(100% - 24px);
+    margin-left: 20px;
+    order: 4;
+  }
+  .ui-ayc__card > header {
+    flex-wrap: wrap;
+  }
+  .ui-ayc__counts {
+    margin-left: 22px;
+  }
+}
+@media (pointer: coarse) {
+  .ui-ayc__row {
+    min-height: 36px;
+  }
+  .ui-ayc__card > footer button,
+  .ui-ayc__boundary button {
+    min-height: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-ayc,
+  .ui-ayc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-ayc {
+  --ui-ayc-card: #1c1c1e;
+  --ui-ayc-ink: rgba(255, 255, 255, 0.9);
+  --ui-ayc-muted: rgba(255, 255, 255, 0.46);
+  --ui-ayc-faint: rgba(255, 255, 255, 0.3);
+  --ui-ayc-line: rgba(255, 255, 255, 0.08);
+  --ui-ayc-fill: rgba(255, 255, 255, 0.04);
+  --ui-ayc-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-ayc__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 8px 8px;
+  border-radius: 12px;
+}
+.ui-ayc__card > header {
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 6px 2px;
+}
+.ui-ayc__counts {
+  margin-left: 0;
+  font-size: 12px;
+}
+.ui-ayc__rows {
+  gap: 0;
+}
+.ui-ayc__row {
+  height: 32px;
+  min-height: 32px;
+  gap: 10px;
+  padding: 0 6px;
+}
+.ui-ayc__row strong {
+  font-size: 13px;
+  flex: 0 1 auto;
+}
+.ui-ayc__row small {
+  font-size: 12px;
+  margin-left: 0;
+  flex: 0 100 auto;
+}
+.ui-ayc__row[data-question] small {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(232, 162, 12, 0.12);
+  color: #b47a06;
+}
+.ui-ayc__card > footer {
+  justify-content: flex-start;
+  gap: 4px;
+  margin-top: 0;
+  padding-top: 2px;
+}
+.ui-ayc__card > footer button {
+  font-size: 12px;
+  padding: 3px 6px;
+  min-height: 28px;
+}
+.ui-ayc__check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid #0095ff;
+  border-radius: 50%;
+}
+.ui-ayc__check > svg {
+  display: none;
+}
+.ui-ayc__check:after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0095ff;
+}
+.ui-ayc__boundary:before {
+  order: 0;
+}
+.ui-ayc__boundary > span {
+  order: 1;
+}
+.ui-ayc__boundary:after {
+  order: 2;
+}
+.ui-ayc__boundary > button {
+  order: 3;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+@media (pointer: coarse) {
+  .ui-ayc__row {
+    height: auto;
+    min-height: 36px;
+  }
+  .ui-ayc__card > footer button {
+    min-height: 36px;
+  }
+}
+
+.ui-upc {
+  --ui-upc-card: #fff;
+  --ui-upc-ink: rgba(0, 0, 0, 0.88);
+  --ui-upc-muted: rgba(0, 0, 0, 0.45);
+  --ui-upc-faint: rgba(0, 0, 0, 0.27);
+  --ui-upc-line: rgba(0, 0, 0, 0.06);
+  --ui-upc-fill: rgba(0, 0, 0, 0.025);
+  --ui-upc-accent: #0060e2;
+  --ui-upc-focus: rgba(0, 96, 226, 0.35);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  width: 100%;
+  font:
+    12px/1.5 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-upc-ink);
+  container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
+}
+.ui-upc,
+.ui-upc *,
+.ui-upc *::before,
+.ui-upc *::after {
+  box-sizing: border-box;
+}
+.ui-upc button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ui-upc button:focus-visible {
+  outline: 2px solid var(--ui-upc-focus);
+  outline-offset: 2px;
+}
+.ui-upc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-upc__file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  min-width: 0;
+  max-width: 280px;
+  flex: none;
+  min-height: 40px;
+  padding: 4px 4px 4px 6px;
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0.5px var(--ui-upc-line);
+  background: var(--ui-upc-fill);
+  animation: ui-upc-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ui-upc__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--ui-upc-fill);
+  color: var(--ui-upc-muted);
+}
+.ui-upc__icon[data-kind="voice"] {
+  color: #a367d1;
+}
+.ui-upc__icon[data-kind="video"] {
+  color: #db5e9d;
+}
+.ui-upc__icon[data-kind="table"] {
+  color: #44ad76;
+}
+.ui-upc__info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+}
+.ui-upc__info strong {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-upc__status {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ui-upc-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ui-upc__status button {
+  font-size: 11px;
+  text-decoration: underline;
+  padding: 0;
+}
+.ui-upc__file[data-state="failed"] .ui-upc__status {
+  color: #e5484d;
+}
+.ui-upc__remove {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--ui-upc-muted) !important;
+}
+.ui-upc__remove:hover {
+  background: var(--ui-upc-fill);
+}
+.ui-upc__bar {
+  position: absolute;
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ui-upc-fill);
+  overflow: hidden;
+  margin-top: 3px;
+}
+.ui-upc__bar > span {
+  display: block;
+  transform-origin: left;
+  width: 100%;
+  height: 100%;
+  background: var(--ui-upc-accent);
+  transition: transform 200ms linear;
+}
+.ui-upc__file[data-state="paused"] .ui-upc__bar > span {
+  background: var(--ui-upc-faint);
+}
+.ui-upc__voice {
+  flex-wrap: nowrap;
+  align-items: center;
+  padding: 4px 6px;
+  gap: 8px;
+  border-radius: 14px;
+  height: 36px;
+  background: var(--ui-upc-card);
+  box-shadow: 0 0 0 0.5px var(--ui-upc-line);
+}
+.ui-upc__voice > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--ui-upc-muted);
+}
+.ui-upc__voice > button:hover {
+  background: var(--ui-upc-fill);
+}
+.ui-upc__red-dot {
+  width: 5px;
+  height: 5px;
+  background: #e5484d;
+  border-radius: 50%;
+  animation: ui-upc-pulse 1s ease-in-out infinite;
+}
+.ui-upc__wave {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  justify-content: flex-start;
+  height: 20px;
+  overflow: hidden;
+}
+.ui-upc__wave i {
+  display: block;
+  flex: none;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--ui-upc-accent);
+  animation: ui-upc-wave 600ms ease-in-out infinite alternate;
+}
+.ui-upc__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ui-upc-muted);
+}
+@keyframes ui-upc-wave {
+  to {
+    transform: scaleY(0.2);
+  }
+}
+@keyframes ui-upc-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes ui-upc-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+@container (max-width:400px) {
+  .ui-upc__file {
+    max-width: 100%;
+  }
+}
+@media (pointer: coarse) {
+  .ui-upc__remove,
+  .ui-upc__voice > button {
+    width: 36px;
+    height: 36px;
+  }
+  .ui-upc__status button {
+    min-height: 32px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-upc,
+  .ui-upc * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-upc {
+  --ui-upc-card: #1c1c1e;
+  --ui-upc-ink: rgba(255, 255, 255, 0.9);
+  --ui-upc-muted: rgba(255, 255, 255, 0.46);
+  --ui-upc-faint: rgba(255, 255, 255, 0.3);
+  --ui-upc-line: rgba(255, 255, 255, 0.08);
+  --ui-upc-fill: rgba(255, 255, 255, 0.04);
+  --ui-upc-accent: #4d8dff;
+  --ui-upc-focus: rgba(77, 141, 255, 0.5);
+}
+
+.ui-upc__file[data-kind="voice"] {
+  max-width: 380px;
+}
+.ui-upc__file[data-kind="voice"][data-state="waiting"] {
+  padding-block: 6px;
+}
+.ui-upc__file[data-kind="voice"] .ui-upc__status {
+  white-space: normal;
+}
+
+.ui-thc[data-orchestrator] {
+  position: relative;
+}
+.ui-thc[data-orchestrator] > .ui-cnc {
+  position: absolute;
+  inset: 8px 0 auto;
+  z-index: 4;
+  pointer-events: none;
+}
+.ui-thc[data-orchestrator] .ui-thc__head {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 58px 0 24px;
+}
+.ui-thc__title {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0;
+}
+.ui-thc__summary {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ui-thc-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ui-thc__summary button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  min-height: 28px;
+  border-radius: 5px;
+  padding: 3px;
+}
+.ui-thc__summary button:hover {
+  background: var(--ui-thc-fill);
+}
+.ui-thc__summary-separator {
+  color: var(--ui-thc-faint);
+}
+.ui-thc__running-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid #13b8a6;
+}
+.ui-thc__needs-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e8a20c;
+}
+.ui-thc[data-orchestrator] .ui-thc__scroll {
+  padding-top: 56px;
+  padding-bottom: 8px;
+  mask-image: linear-gradient(transparent, #000 20px);
+}
+.ui-thc[data-orchestrator] .ui-thc__bubble {
+  max-width: 80%;
+}
+.ui-thc__part {
+  margin-top: 12px;
+}
+.ui-thc__part:has(.ui-tkc) + .ui-thc__part:has(.ui-tkc) {
+  margin-top: 8px;
+}
+.ui-thc__part > .ui-thc__files {
+  margin-top: 0;
+}
+.ui-thc__part > .ui-thc__text {
+  margin: 0;
+}
+.ui-thc__asked {
+  margin: -2px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 !important;
+  min-height: 28px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 13px !important;
+  color: var(--ui-thc-muted) !important;
+}
+.ui-thc__asked:hover {
+  background: var(--ui-thc-fill);
+}
+.ui-thc__asked > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-thc__asked > i {
+  width: 6px;
+  height: 6px;
+  margin: 0 4px;
+  background: #e8a20c;
+  border-radius: 50%;
+  flex: none;
+}
+.ui-thc__asked > i[data-answered] {
+  background: #1a9a52;
+}
+.ui-thc__asked > small {
+  font-size: 11px;
+  color: var(--ui-thc-faint);
+  flex: none;
+}
+.ui-thc__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e5484d;
+  font-size: 12px;
+  padding: 7px 0;
+}
+.ui-thc__error > span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.ui-thc__error button {
+  font-size: 12px;
+  text-decoration: underline;
+}
+.ui-thc__answer-context {
+  font-size: 11px;
+  color: var(--ui-thc-muted);
+  max-width: 80%;
+  margin-bottom: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-thc__dock-slot[data-visible] {
+  margin-bottom: 16px;
+}
+.ui-thc__upload-slot {
+  flex: 1;
+  min-width: 0;
+}
+.ui-thc[data-orchestrator] .ui-thc__above {
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2px;
+  margin-bottom: 8px;
+}
+.ui-thc__jump-live {
+  width: 5px;
+  height: 5px;
+  background: #13b8a6;
+  border-radius: 50%;
+  animation: ui-thc-caret 1.2s ease infinite;
+}
+.ui-thc__unread-boundary {
+  position: relative;
+  margin-bottom: 18px;
+}
+.ui-thc[data-orchestrator] .ui-thc__foot {
+  padding-top: 4px;
+}
+.ui-thc[data-orchestrator] .ui-thc__foot-column > .ui-ccc {
+  margin-top: 8px;
+}
+.ui-thc[data-orchestrator] .ui-thc__foot-column:has(.ui-thc__dock-slot[data-visible]) > .ui-ccc {
+  margin-top: 0;
+}
+@container ui-thc (max-width:900px) {
+  .ui-thc__summary {
+    display: none;
+  }
+}
+@container ui-thc (max-width:560px) {
+  .ui-thc[data-orchestrator] .ui-thc__scroll {
+    padding-inline: 12px;
+  }
+  .ui-thc[data-orchestrator] .ui-thc__foot {
+    padding-inline: 12px;
+  }
+  .ui-thc[data-orchestrator] .ui-thc__bubble {
+    max-width: 88%;
+  }
+  .ui-thc__asked {
+    flex-wrap: wrap;
+  }
+  .ui-thc__asked > span {
+    white-space: normal;
+    flex: 1;
+  }
+  .ui-thc__asked > small {
+    margin-left: 12px;
+  }
+}
+
+.ui-thc {
+  --ui-thc-card: #fff;
+  --ui-thc-ink: rgba(0, 0, 0, 0.88);
+  --ui-thc-text: rgba(0, 0, 0, 0.61);
+  --ui-thc-muted: rgba(0, 0, 0, 0.45);
+  --ui-thc-faint: rgba(0, 0, 0, 0.27);
+  --ui-thc-fill: rgba(0, 0, 0, 0.04);
+  --ui-thc-line: rgba(0, 0, 0, 0.06);
+  --ui-thc-focus: rgba(0, 96, 226, 0.35);
+  --ui-thc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  background: var(--ui-thc-card);
+  border-radius: inherit;
+  container: ui-thc / inline-size;
+  font:
+    14px/1.6 "Inter",
+    "InterVariable",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ui-thc-ink);
+  -webkit-font-smoothing: antialiased;
+}
+.ui-thc,
+.ui-thc *,
+.ui-thc *::before,
+.ui-thc *::after {
+  box-sizing: border-box;
+}
+.ui-thc :where(button) {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.ui-thc button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ui-thc button:focus-visible {
+  outline: 2px solid var(--ui-thc-focus);
+  outline-offset: 2px;
+}
+.ui-thc__head {
+  height: 32px;
+  flex: none;
+}
+.ui-thc__body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.ui-thc__scroll {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 32px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-thc-line) transparent;
+  overflow-anchor: none;
+}
+.ui-thc__column {
+  max-width: 680px;
+  margin-inline: auto;
+  min-width: 0;
+}
+.ui-thc__user {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  margin: 0 0 24px;
+  animation: ui-thc-in 420ms var(--ui-thc-ease) both;
+}
+.ui-thc__bubble {
+  max-width: 94%;
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 18px;
+  background: var(--ui-thc-fill);
+  line-height: 22.4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ui-thc__assistant {
+  margin-bottom: 24px;
+  animation: ui-thc-in 420ms var(--ui-thc-ease) both;
+}
+.ui-thc__who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 22px;
+  font-size: 13px;
+  line-height: 20.8px;
+  margin-bottom: 12px;
+}
+.ui-thc__who time {
+  font-size: 11px;
+  color: var(--ui-thc-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ui-thc__avatar {
+  display: grid;
+  grid-template-columns: repeat(3, 3px);
+  grid-template-rows: repeat(3, 3px);
+  gap: 2px;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  align-content: center;
+}
+.ui-thc__avatar i {
+  background: #a654ff;
+  width: 3px;
+  height: 3px;
+}
+.ui-thc__avatar[data-busy] i {
+  animation: ui-thc-pixel 1.25s ease-in-out infinite;
+}
+.ui-thc__assistant > .ui-tac {
+  margin-bottom: 12px;
+}
+.ui-thc__text p {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ui-thc__text p:last-child {
+  margin-bottom: 0;
+}
+.ui-thc__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ui-thc__file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 26px;
+  padding: 3px 8px !important;
+  background: var(--ui-thc-fill) !important;
+  border-radius: 6px;
+  font-size: 12px !important;
+}
+.ui-thc__file > span:first-child {
+  display: flex;
+  color: #2989df;
+}
+.ui-thc__file > span[data-kind="table"] {
+  color: #1a9a52;
+}
+.ui-thc__file > span[data-kind="code"] {
+  color: #eb9238;
+}
+.ui-thc__file > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-thc__file:hover {
+  box-shadow: 0 0 0 0.5px var(--ui-thc-line);
+}
+.ui-thc__foot {
+  padding: 12px 32px 20px;
+  position: relative;
+  flex: none;
+}
+.ui-thc__foot-column {
+  width: 100%;
+  max-width: 680px;
+  margin-inline: auto;
+}
+.ui-thc__above {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 10px;
+}
+.ui-thc__stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 12px !important;
+  border-radius: 20px;
+  font-size: 12px !important;
+  background: var(--ui-thc-card) !important;
+  box-shadow:
+    0 0 0 0.5px var(--ui-thc-line),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  animation: ui-thc-in 200ms both;
+}
+.ui-thc__stop:hover {
+  background: var(--ui-thc-fill) !important;
+}
+.ui-thc__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  background: var(--ui-thc-ink);
+  vertical-align: -2px;
+  animation: ui-thc-caret 1s steps(2) infinite;
+}
+.ui-thc__stopped,
+.ui-thc__send-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--ui-thc-muted);
+  margin-top: 8px;
+}
+.ui-thc__send-status button {
+  font-size: inherit;
+  text-decoration: underline;
+}
+.ui-thc__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-bottom: 7px;
+}
+.ui-thc__attachments > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ui-thc-fill);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.ui-thc__jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  translate: -50% 0;
+  min-height: 30px;
+  padding: 4px 12px !important;
+  border-radius: 20px;
+  background: var(--ui-thc-card) !important;
+  box-shadow:
+    0 0 0 0.5px var(--ui-thc-line),
+    0 3px 14px rgba(0, 0, 0, 0.06);
+  font-size: 12px !important;
+  white-space: nowrap;
+  z-index: 2;
+}
+.ui-thc__jump svg {
+  rotate: 90deg;
+}
+.ui-thc__empty {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--ui-thc-muted);
+}
+.ui-thc__empty-icon {
+  color: #a654ff;
+  margin-bottom: 12px;
+}
+.ui-thc__empty h2 {
+  font-size: 24px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--ui-thc-ink);
+  margin: 0 0 8px;
+}
+.ui-thc__empty p {
+  font-size: 13px;
+  margin: 0;
+}
+.ui-thc__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes ui-thc-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes ui-thc-pixel {
+  50% {
+    opacity: 0.2;
+  }
+}
+@keyframes ui-thc-caret {
+  50% {
+    opacity: 0;
+  }
+}
+@container ui-thc (max-width:600px) {
+  .ui-thc__scroll {
+    padding-inline: 24px;
+  }
+  .ui-thc__foot {
+    padding-inline: 24px;
+  }
+  .ui-thc__bubble {
+    max-width: 96%;
+  }
+}
+@container ui-thc (max-width:400px) {
+  .ui-thc__scroll {
+    padding: 20px 16px 12px;
+  }
+  .ui-thc__foot {
+    padding: 12px 12px 14px;
+  }
+  .ui-thc__bubble {
+    padding: 8px 12px;
+  }
+  .ui-thc__user {
+    margin-bottom: 20px;
+  }
+  .ui-thc__assistant {
+    margin-bottom: 26px;
+  }
+  .ui-thc__empty h2 {
+    font-size: 21px;
+  }
+}
+@media (pointer: coarse) {
+  .ui-thc__file {
+    height: 32px;
+  }
+  .ui-thc__stop {
+    min-height: 36px;
+  }
+  .ui-thc__jump {
+    min-height: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-thc,
+  .ui-thc * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .ui-thc__caret {
+    opacity: 0.45;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-thc {
+  --ui-thc-card: #1c1c1e;
+  --ui-thc-ink: rgba(255, 255, 255, 0.9);
+  --ui-thc-text: rgba(255, 255, 255, 0.62);
+  --ui-thc-muted: rgba(255, 255, 255, 0.46);
+  --ui-thc-faint: rgba(255, 255, 255, 0.3);
+  --ui-thc-fill: rgba(255, 255, 255, 0.06);
+  --ui-thc-line: rgba(255, 255, 255, 0.08);
+  --ui-thc-focus: rgba(77, 141, 255, 0.5);
+}
+
+@container ui-thc (max-width:560px) {
+  .ui-thc:has(> .ui-cnc) .ui-thc__summary {
+    visibility: hidden;
+  }
+}
+
+`;

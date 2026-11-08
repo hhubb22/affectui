@@ -1,0 +1,163 @@
+export type ChatComposerModel = { id: string; name: string; provider?: string; icon?: ReactNode; description?: string };
+export type ChatComposerApproval = "request" | "auto" | "full";
+export type ChatComposerAttachment = { id: string; name: string; size: number; file?: File };
+export type ChatComposerSendOptions = { model: string; approval: ChatComposerApproval; planMode: boolean; attachments: ChatComposerAttachment[] };
+export type ChatComposerProps = {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  onSend?: (message: string, options: ChatComposerSendOptions) => void;
+  placeholder?: string;
+  models?: ChatComposerModel[];
+  model?: string;
+  defaultModel?: string;
+  onModelChange?: (model: string) => void;
+  approval?: ChatComposerApproval;
+  defaultApproval?: ChatComposerApproval;
+  onApprovalChange?: (approval: ChatComposerApproval) => void;
+  planMode?: boolean;
+  defaultPlanMode?: boolean;
+  onPlanModeChange?: (enabled: boolean) => void;
+  attachments?: ChatComposerAttachment[];
+  defaultAttachments?: ChatComposerAttachment[];
+  onAttachmentsChange?: (attachments: ChatComposerAttachment[]) => void;
+  onAction?: (action: string) => void;
+  /** Optional speech service. Without one, recorded audio is attached as a voice note. */
+  transcribe?: (audio: Blob, signal: AbortSignal) => Promise<string>;
+  disabled?: boolean;
+  busy?: boolean;
+  /** Keep typing and attaching available while a parent waits for uploads. */
+  sendDisabled?: boolean;
+  showAttachments?: boolean;
+  /** Optional footer, rendered below the input card. */
+  footer?: ReactNode;
+  className?: string;
+};
+
+const composerModels: ChatComposerModel[] = [
+  { id: "auto", name: "Auto", description: "Choose the best model for this task" },
+  { id: "claude-sonnet", name: "Claude Sonnet", provider: "Anthropic" },
+  { id: "claude-opus", name: "Claude Opus", provider: "Anthropic" },
+  { id: "claude-haiku", name: "Claude Haiku", provider: "Anthropic" },
+  { id: "gpt-5", name: "GPT-5", provider: "OpenAI" },
+  { id: "gpt-5-mini", name: "GPT-5 mini", provider: "OpenAI" },
+];
+const approvalOptions: { id: ChatComposerApproval; label: string; description: string; icon: IconName }[] = [
+  { id: "request", label: "Request approval", description: "Always ask before editing outside files or using the internet", icon: "hand" },
+  { id: "auto", label: "Approve for me", description: "Only ask for potentially unsafe actions", icon: "check" },
+  { id: "full", label: "Full access", description: "Unrestricted access to the internet and all files on your computer", icon: "spark" },
+];
+
+/** A compact composer with keyboard submission, animated model/permission controls and attachment/voice input. */
+export function ChatComposer({ value: valueProp, defaultValue = "", onValueChange, onSend, placeholder = "Ask anything – it searches the web", models = composerModels, model: modelProp, defaultModel = "auto", onModelChange, approval: approvalProp, defaultApproval = "request", onApprovalChange, planMode: planProp, defaultPlanMode = false, onPlanModeChange, attachments: attachmentsProp, defaultAttachments = [], onAttachmentsChange, onAction, transcribe, disabled = false, busy = false, sendDisabled = false, showAttachments = true, footer, className }: ChatComposerProps) {
+  const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
+  const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
+  const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
+  const approval = approvalOptions.find(option => option.id === rawApproval) ?? approvalOptions[0];
+  const [plan, setPlan] = useControllable(planProp, defaultPlanMode, onPlanModeChange);
+  const [attachments, setAttachments] = useControllable(attachmentsProp, defaultAttachments, onAttachmentsChange);
+  const [menu, setMenu] = useState<"model" | "approval" | "add" | "apps" | null>(null);
+  const [connected, setConnected] = useState(["Web search"]);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
+  const [error, setError] = useState("");
+  const root = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null), modelRef = useMorph(model), approvalRef = useMorph(approval.id);
+  const recorder = useRef<MediaRecorder | null>(null), stream = useRef<MediaStream | null>(null), recordingAction = useRef(false);
+  const chunks = useRef<Blob[]>([]), mounted = useRef(true), pending = useRef<AbortController | null>(null);
+  const id = useId();
+  const list = (Array.isArray(models) ? models : []).filter(Boolean);
+  const selectedModel = list.find(item => item.id === model) ?? list[0];
+  const blocked = disabled || busy || transcribing;
+  const canSend = !blocked && !sendDisabled && (!!value.trim() || attachments.length > 0);
+  useLayoutEffect(() => { const el = input.current; if (el) { el.style.height = "0px"; el.style.height = `${Math.min(180, Math.max(40, el.scrollHeight))}px`; } }, [value]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; pending.current?.abort(); if (recorder.current?.state === "recording") recorder.current.stop(); stream.current?.getTracks().forEach(track => track.stop()); };
+  }, []);
+  useEffect(() => { if (!recording) return; const timer = window.setInterval(() => setRecordingSeconds(seconds => seconds + 1), 1000); return () => window.clearInterval(timer); }, [recording]);
+  const send = () => {
+    if (!canSend) return;
+    onSend?.(value.trim(), { model: selectedModel?.id ?? "auto", approval: approval.id, planMode: plan, attachments: [...attachments] });
+    setValue(""); setAttachments([]); setMenu(null); input.current?.focus();
+  };
+  const attachFiles = (files: FileList | File[] | null) => {
+    if (!files) return;
+    setAttachments([...attachments, ...Array.from(files).map((file, index) => ({ id: `${id}-${Date.now()}-${index}`, name: file.name, size: file.size, file }))]);
+    input.current?.focus();
+  };
+  const stopRecording = (use: boolean) => { recordingAction.current = use; if (recorder.current?.state === "recording") recorder.current.stop(); setRecording(false); input.current?.focus(); };
+  const startRecording = async () => {
+    if (blocked) return;
+    setError(""); setMenu(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") throw new Error("Voice recording is unavailable in this browser.");
+      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mounted.current) { media.getTracks().forEach(track => track.stop()); return; }
+      stream.current = media; chunks.current = []; recordingAction.current = false;
+      const next = new MediaRecorder(media); recorder.current = next;
+      next.ondataavailable = event => { if (event.data.size) chunks.current.push(event.data); };
+      next.onstop = async () => {
+        media.getTracks().forEach(track => track.stop());
+        if (!mounted.current || !recordingAction.current) return;
+        const blob = new Blob(chunks.current, { type: next.mimeType || "audio/webm" });
+        if (!transcribe) { const file = new File([blob], "Voice note.webm", { type: blob.type }); attachFiles([file]); return; }
+        const controller = new AbortController(); pending.current = controller; setTranscribing(true);
+        try { const text = await transcribe(blob, controller.signal); if (mounted.current && !controller.signal.aborted) setValue(`${value.trimEnd()}${value.trim() ? " " : ""}${text}`); }
+        catch { if (mounted.current && !controller.signal.aborted) setError("Couldn't transcribe this recording. Please try again."); }
+        finally { if (mounted.current) setTranscribing(false); }
+      };
+      next.start(); setRecordingSeconds(0); setRecording(true);
+    } catch (reason) { if (mounted.current) setError(reason instanceof DOMException && reason.name === "NotAllowedError" ? "Microphone access was declined. You can still type a message." : reason instanceof Error ? reason.message : "Couldn't start recording."); }
+  };
+  const chooseAction = (action: string) => {
+    if (action === "files") fileInput.current?.click();
+    if (action === "plan") setPlan(!plan);
+    if (action === "apps") { setMenu("apps"); return; }
+    onAction?.(action); setMenu(null); input.current?.focus();
+  };
+  const anchor = menu === "model" ? modelRef : menu === "approval" ? approvalRef : addRef;
+  const toggle = (next: typeof menu) => setMenu(menu === next ? null : next);
+  const triggerKey = (next: typeof menu) => (event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); setMenu(next); } };
+  return <div ref={root} className={["ui-cc", className].filter(Boolean).join(" ")} data-menu-open={!!menu || undefined} data-recording={recording || undefined} data-disabled={disabled || undefined}>
+    <style href="ui-chat-composer" precedence="default">{css}</style>
+    {showAttachments && attachments.length > 0 && <ul className="ui-cc__attachments" aria-label="Attachments">{attachments.map(file => <li key={file.id}><Icon name="document" size={14}/><span title={file.name}>{file.name}</span><button type="button" aria-label={`Remove ${file.name}`} onClick={() => setAttachments(attachments.filter(item => item.id !== file.id))}><Icon name="close" size={12}/></button></li>)}</ul>}
+    <section className="ui-cc__body" aria-label="Message composer" aria-busy={transcribing || busy} onKeyDown={event => { if (event.key === "Escape" && recording) { event.preventDefault(); stopRecording(false); } }}>
+      <textarea ref={input} className="ui-cc__message" value={value} onChange={event => setValue(event.target.value)} aria-label="Message" placeholder={transcribing ? "Transcribing…" : placeholder} disabled={disabled} readOnly={recording || transcribing} dir="auto" rows={2} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat) { event.preventDefault(); send(); } }}/>
+      <div className="ui-cc__tools">
+        <div className="ui-cc__group" inert={recording}>
+          <button ref={addRef} type="button" className="ui-cc__icon-btn" aria-label="Add" disabled={blocked} aria-haspopup="menu" aria-expanded={menu === "add" || menu === "apps"} aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined} onKeyDown={triggerKey("add")} onClick={() => toggle("add")}><Icon name="plus"/></button>
+          <button ref={approvalRef} type="button" className="ui-cc__approval" data-tone={approval.id} disabled={blocked} aria-haspopup="menu" aria-expanded={menu === "approval"} aria-controls={menu === "approval" ? `${id}-menu` : undefined} onKeyDown={triggerKey("approval")} onClick={() => toggle("approval")}><span className="ui-cc__face" key={approval.id}><Icon name={approval.icon} size={14}/><span>{approval.label}</span></span></button>
+          {plan && <span className="ui-cc__plan">Plan</span>}
+        </div>
+        {recording ? <div className="ui-cc__recording" role="group" aria-label="Voice recording"><span className="ui-cc__timer">{Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}</span><span className="ui-cc__wave" aria-hidden="true">{Array.from({ length: 22 }, (_, index) => <i key={index} style={{ height: `${4 + (index * 7 % 14)}px`, animationDelay: `${index * -71}ms` }}/>)}</span><button type="button" className="ui-cc__icon-btn" aria-label="Discard recording" onClick={() => stopRecording(false)}><Icon name="close"/></button><button type="button" className="ui-cc__send" aria-label="Use recording" onClick={() => stopRecording(true)}><Icon name="check"/></button></div> : <div className="ui-cc__group ui-cc__group--end">
+          {selectedModel && <button ref={modelRef} type="button" className="ui-cc__model" disabled={blocked} aria-haspopup="menu" aria-expanded={menu === "model"} aria-controls={menu === "model" ? `${id}-menu` : undefined} onKeyDown={triggerKey("model")} onClick={() => toggle("model")}><span className="ui-cc__face" key={selectedModel.id} onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{selectedModel.icon}<span title={selectedModel.name}>{selectedModel.name}</span></span><Icon name="chevron" size={12}/></button>}
+          <button type="button" className="ui-cc__icon-btn" aria-label="Voice input" disabled={blocked} onClick={startRecording}><Icon name="mic"/></button>
+          <button type="button" className="ui-cc__send" aria-label="Send message" disabled={!canSend} onClick={send}><Icon name="send"/></button>
+        </div>}
+      </div>
+    </section>
+    {footer && <div className="ui-cc__footer">{footer}</div>}
+    {error && <p className="ui-cc__error" role="alert">{error}<button type="button" aria-label="Dismiss message" onClick={() => setError("")}><Icon name="close" size={12}/></button></p>}
+    <input ref={fileInput} type="file" multiple hidden aria-label="Attach files" onChange={event => { attachFiles(event.target.files); event.target.value = ""; }}/>
+    {menu && <FloatingMenu key={menu} anchor={anchor} root={root} className="ui-cc__menu" id={`${id}-menu`} label={menu === "approval" ? "Permissions" : menu === "model" ? "Models" : menu === "apps" ? "Connect apps" : "Add to the chat"} side="top" align={menu === "model" ? "end" : "start"} onClose={() => setMenu(null)}>
+      {menu === "model" && <><div className="ui-cc__menu-title">Models</div>{list.map(item => <button type="button" role="menuitemradio" aria-checked={selectedModel?.id === item.id} className="ui-cc__option" key={item.id} onClick={() => { setModel(item.id); setMenu(null); modelRef.current?.focus(); }}><span className="ui-cc__option-logo" aria-hidden="true" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{item.icon ?? (item.id === "auto" ? <Icon name="spark"/> : <span>{initials(item.provider ?? item.name).slice(0, 1)}</span>)}</span><span className="ui-cc__option-text"><span>{item.name}</span>{item.description && <small>{item.description}</small>}</span>{selectedModel?.id === item.id && <Icon name="check" size={14}/>}</button>)}</>}
+      {menu === "approval" && <><div className="ui-cc__menu-title">Permissions</div>{approvalOptions.map(item => <button type="button" role="menuitemradio" aria-checked={approval.id === item.id} className="ui-cc__option" key={item.id} onClick={() => { setApproval(item.id); setMenu(null); approvalRef.current?.focus(); }}><span className="ui-cc__option-logo" aria-hidden="true"><Icon name={item.icon}/></span><span className="ui-cc__option-text"><span>{item.label}</span><small>{item.description}</small></span>{approval.id === item.id && <Icon name="check" size={14}/>}</button>)}</>}
+      {menu === "add" && <><div className="ui-cc__menu-title">Add</div>{([
+        ["files", "Files and folders", "", "document"], ["apps", "Connect apps", `${connected.length} connected`, "plug"], ["goal", "Goal", "Set a goal to keep working toward", "tasks"], ["plan", "Plan mode", plan ? "Turn off plan mode" : "Turn on plan mode", "compose"], ["skill", "Record a skill", "", "play"], ["draw", "Draw", "Sketch a drawing", "compose"],
+      ] as const).map(([action, label, description, icon]) => <button type="button" role={action === "plan" ? "menuitemcheckbox" : "menuitem"} aria-checked={action === "plan" ? plan : undefined} className="ui-cc__option" key={action} onClick={() => chooseAction(action)}><span className="ui-cc__option-logo" aria-hidden="true"><Icon name={icon}/></span><span className="ui-cc__option-text"><span>{label}</span>{description && <small>{description}</small>}</span>{action === "plan" && plan && <Icon name="check" size={14}/>}</button>)}<div className="ui-cc__menu-title">Plugins</div>{([['document', 'Documents', 'Create and edit documents'], ['pdf', 'PDF', 'Read, create and verify PDFs']] as const).map(([action, label, description]) => <button type="button" role="menuitem" className="ui-cc__option" key={action} onClick={() => chooseAction(action)}><span className="ui-cc__option-logo" aria-hidden="true"><Icon name="document"/></span><span className="ui-cc__option-text"><span>{label}</span><small>{description}</small></span></button>)}</>}
+      {menu === "apps" && <><div className="ui-cc__menu-title">Connect apps</div>{["Web search", "Google Drive", "Gmail", "Notion"].map(app => <button type="button" role="menuitemcheckbox" aria-checked={connected.includes(app)} className="ui-cc__option" key={app} onClick={() => { setConnected(connected.includes(app) ? connected.filter(item => item !== app) : [...connected, app]); onAction?.(`connect:${app}`); }}><Icon name={app === "Web search" ? "globe" : "plug"}/><span className="ui-cc__option-text">{app}</span>{connected.includes(app) && <Icon name="check" size={14}/>}</button>)}</>}
+    </FloatingMenu>}
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-cc{--ui-cc-card:#fff;--ui-cc-tray:rgba(0,0,0,.035);--ui-cc-ink:rgba(0,0,0,.88);--ui-cc-text:rgba(0,0,0,.61);--ui-cc-muted:rgba(0,0,0,.45);--ui-cc-faint:rgba(0,0,0,.27);--ui-cc-line:rgba(0,0,0,.06);--ui-cc-fill:rgba(0,0,0,.04);--ui-cc-focus:rgba(0,96,226,.35);--ui-cc-danger:#e5484d;--ui-cc-shadow:0 0 0 .5px rgba(0,0,0,.08),0 12px 28px -10px rgba(0,0,0,.16),0 1px 2px rgba(0,0,0,.05);--ui-cc-ease:cubic-bezier(.22,1,.36,1);width:100%;position:relative;container:ui-cc / inline-size;font:13px/1.5 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-cc-ink);-webkit-font-smoothing:antialiased}
+.ui-cc,.ui-cc *,.ui-cc *::before,.ui-cc *::after{box-sizing:border-box}.ui-cc button,.ui-cc textarea{font:inherit;color:inherit}.ui-cc button{border:0;background:none;cursor:pointer}.ui-cc button:disabled{opacity:.4;cursor:default}.ui-cc button:focus-visible,.ui-cc textarea:focus-visible{outline:2px solid var(--ui-cc-focus);outline-offset:2px}.ui-cc button:active:not(:disabled){transform:scale(.97)}.ui-cc__body{padding:14px 12px 10px;border-radius:18px;background:var(--ui-cc-card);box-shadow:0 0 0 .5px var(--ui-cc-line)}.ui-cc__body:focus-within{box-shadow:0 0 0 .5px rgba(0,0,0,.16)}.ui-cc__message{display:block;resize:none;width:100%;min-height:44px;max-height:180px;padding:0 2px;border:0;outline:none!important;background:transparent;line-height:20px;overflow-wrap:anywhere}.ui-cc__message::placeholder{color:var(--ui-cc-muted)}.ui-cc__tools{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px;margin-top:10px}.ui-cc__group{display:flex;align-items:center;gap:4px;min-width:0}.ui-cc__group--end{margin-left:auto}.ui-cc__icon-btn,.ui-cc__send{display:inline-grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;color:var(--ui-cc-muted)!important;transition:background-color 150ms,transform 180ms}.ui-cc__icon-btn:hover{background:var(--ui-cc-fill)}.ui-cc__approval,.ui-cc__model{display:flex;align-items:center;gap:5px;white-space:nowrap;max-width:190px;min-width:0;height:28px;border-radius:6px;padding:0 6px;overflow:hidden;transition:background-color 150ms}.ui-cc__approval{color:var(--ui-cc-muted)!important}.ui-cc__approval[data-tone="full"]{color:var(--ui-cc-danger)!important}.ui-cc__approval:hover,.ui-cc__model:hover{background:var(--ui-cc-fill)}.ui-cc__face{display:flex;align-items:center;gap:6px;min-width:0;animation:ui-cc-morph 360ms var(--ui-cc-ease)}.ui-cc__face>span{min-width:0;overflow:hidden;text-overflow:ellipsis}.ui-cc__send{background:var(--ui-cc-ink)!important;color:var(--ui-cc-card)!important}.ui-cc__send:disabled{background:var(--ui-cc-fill)!important;color:var(--ui-cc-muted)!important;opacity:1}.ui-cc__plan{font-size:10px;padding:2px 5px;border-radius:4px;color:var(--ui-cc-muted);background:var(--ui-cc-fill)}.ui-cc__menu{width:300px;max-width:calc(100vw - 24px);overflow:auto;overscroll-behavior:contain;padding:5px;border-radius:12px;background:var(--ui-cc-card);box-shadow:var(--ui-cc-shadow);animation:ui-cc-pop 240ms var(--ui-cc-ease)}.ui-cc__menu-title{padding:8px 9px 5px;color:var(--ui-cc-muted);font-size:11px}.ui-cc__option{display:flex;align-items:center;gap:10px;width:100%;min-height:36px;border-radius:7px;padding:7px 9px;text-align:left}.ui-cc__option:hover,.ui-cc__option:focus-visible{background:var(--ui-cc-fill)}.ui-cc__option-logo{display:grid;place-items:center;flex:none;width:22px;color:var(--ui-cc-muted)}.ui-cc__option-text{display:flex;flex:1;min-width:0;flex-direction:column}.ui-cc__option-text>span{font-weight:500}.ui-cc__option-text small{font-size:11px;line-height:1.45;color:var(--ui-cc-muted);margin-top:2px;overflow-wrap:anywhere}.ui-cc__attachments{display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:0 0 8px;list-style:none}.ui-cc__attachments li{display:flex;align-items:center;gap:6px;max-width:200px;background:var(--ui-cc-fill);padding:5px 6px 5px 8px;border-radius:7px;font-size:11px}.ui-cc__attachments li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-cc__attachments button{display:grid;place-items:center;padding:2px}.ui-cc__error{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ui-cc-danger);margin:8px 0 0}.ui-cc__error button{margin-left:auto}.ui-cc__footer{padding:10px 6px;color:var(--ui-cc-muted);font-size:12px}.ui-cc__recording{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:1;position:absolute;left:12px;right:12px;background:var(--ui-cc-card);height:28px}.ui-cc__timer{font-variant-numeric:tabular-nums;font-size:11px;color:var(--ui-cc-muted)}.ui-cc__wave{display:flex;align-items:center;gap:2px;margin-left:auto;padding-inline:6px}.ui-cc__wave i{display:block;width:2px;border-radius:2px;background:var(--ui-cc-text);animation:ui-cc-wave 650ms ease-in-out infinite alternate}.ui-cc[data-menu-open]{z-index:20}
+@keyframes ui-cc-wave{to{transform:scaleY(.25)}}@keyframes ui-cc-morph{from{opacity:0;filter:blur(3px);transform:translateY(25%)}}@keyframes ui-cc-pop{from{opacity:0;transform:translateY(5px) scale(.98)}}
+@container ui-cc (max-width:420px){.ui-cc__approval{max-width:138px}.ui-cc__model{max-width:110px}.ui-cc__body{padding:12px 10px 8px}.ui-cc__group{gap:2px}}
+@container ui-cc (max-width:340px){.ui-cc__approval{max-width:28px;padding:0 6px}.ui-cc__approval .ui-cc__face>span{display:none}.ui-cc__plan{display:none}.ui-cc__model{max-width:105px}}
+@media(pointer:coarse){.ui-cc__icon-btn,.ui-cc__send{width:34px;height:34px}.ui-cc__approval,.ui-cc__model{height:34px}.ui-cc__tools,.ui-cc__recording{min-height:34px}.ui-cc__option{min-height:44px}.ui-cc__message{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.ui-cc,.ui-cc *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-cc{--ui-cc-card:#1c1c1e;--ui-cc-tray:#161618;--ui-cc-ink:rgba(255,255,255,.9);--ui-cc-text:rgba(255,255,255,.62);--ui-cc-muted:rgba(255,255,255,.46);--ui-cc-faint:rgba(255,255,255,.3);--ui-cc-line:rgba(255,255,255,.1);--ui-cc-fill:rgba(255,255,255,.08);--ui-cc-focus:rgba(77,141,255,.5);--ui-cc-danger:#ff6369;--ui-cc-shadow:0 0 0 .5px rgba(255,255,255,.12),0 12px 28px -10px rgba(0,0,0,.6)}

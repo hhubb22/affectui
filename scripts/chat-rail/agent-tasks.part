@@ -1,0 +1,886 @@
+export function createDefaultAgentTasks(now = Date.now()): AgentTask[] {
+  return [
+  {
+    "id": "ingest",
+    "title": "Ingest pipeline",
+    "project": "Northwind",
+    "status": "running",
+    "statusText": "Picking a queue",
+    "steps": [
+      {
+        "label": "Draft the event schema",
+        "done": true
+      },
+      {
+        "label": "Load test at 20k a minute",
+        "done": true
+      },
+      {
+        "label": "Pick a queue"
+      },
+      {
+        "label": "Deploy to staging"
+      }
+    ],
+    "artifacts": [
+      "ingest-design.md",
+      "load-test-results.csv",
+      "event-schema.json",
+      "staging"
+    ],
+    "asks": [
+      {
+        "id": "queue",
+        "question": "Which queue should the ingest service use?",
+        "kind": "decision"
+      }
+    ],
+    "updatedAt": now - 4 * 60000,
+    "goal": "Take in Northwind's order events and keep a day of them to replay after a bad deploy.",
+    "started": "Mon, Nov 3",
+    "history": [
+      "Asked you which queue to use",
+      "Load test passed at 20k events a minute",
+      "Wrote the design doc and the event schema"
+    ],
+    "decided": [
+      {
+        "question": "Which format for the events?",
+        "answer": "JSON with a version field",
+        "at": now - 3 * 86400000
+      }
+    ]
+  },
+  {
+    "id": "dashboard",
+    "title": "Client dashboard",
+    "project": "Northwind",
+    "status": "running",
+    "statusText": "Choosing an empty state",
+    "steps": [
+      {
+        "label": "Usage page",
+        "done": true
+      },
+      {
+        "label": "Empty state"
+      },
+      {
+        "label": "Alerts page"
+      }
+    ],
+    "artifacts": [
+      "dashboard-spec.md",
+      "usage-sample.csv",
+      "usage-page.png"
+    ],
+    "asks": [
+      {
+        "id": "empty-state",
+        "question": "Which empty state for the dashboard?",
+        "kind": "pick"
+      }
+    ],
+    "updatedAt": now - 18 * 60000,
+    "goal": "A usage dashboard Northwind's team opens every morning.",
+    "started": "Tue, Oct 28",
+    "history": [
+      "Drew three empty states for you to pick from",
+      "Usage page shipped with daily bars",
+      "Northwind opened it 31 times this week"
+    ],
+    "decided": [
+      {
+        "question": "Which chart for the usage page?",
+        "answer": "Bars",
+        "at": now - 2 * 86400000
+      }
+    ]
+  },
+  {
+    "id": "weekly",
+    "title": "Weekly update",
+    "project": "Northwind",
+    "status": "running",
+    "statusText": "Ready to send",
+    "steps": [
+      {
+        "label": "Collect merged work",
+        "done": true
+      },
+      {
+        "label": "Draft the email",
+        "done": true
+      },
+      {
+        "label": "Send it"
+      }
+    ],
+    "artifacts": [
+      "weekly-update-week-45.md"
+    ],
+    "asks": [
+      {
+        "id": "weekly",
+        "question": "Send the weekly update to Northwind?",
+        "kind": "approval"
+      }
+    ],
+    "updatedAt": now - 42 * 60000,
+    "goal": "Tell Northwind what shipped this week and what needs their answer.",
+    "started": "Today",
+    "history": [
+      "Drafted the email for you to approve",
+      "Collected 14 merged changes from this week"
+    ]
+  },
+  {
+    "id": "onboarding",
+    "title": "Onboarding emails",
+    "project": "Northwind",
+    "status": "running",
+    "statusText": "Writing the draft",
+    "steps": [
+      {
+        "label": "Outline the three emails",
+        "done": true
+      },
+      {
+        "label": "Write the drafts"
+      },
+      {
+        "label": "Test with two accounts"
+      }
+    ],
+    "artifacts": [
+      "onboarding-outline.md"
+    ],
+    "updatedAt": now - 12 * 60000,
+    "goal": "Three short emails that walk a new Northwind account to its first sync.",
+    "started": "Thu, Nov 5",
+    "history": [
+      "Writing the second email",
+      "First email drafted",
+      "Outline agreed in the thread"
+    ]
+  },
+  {
+    "id": "webhooks",
+    "title": "Billing webhooks",
+    "project": "Platform",
+    "status": "running",
+    "statusText": "Deploying to staging",
+    "steps": [
+      {
+        "label": "Retry with backoff",
+        "done": true
+      },
+      {
+        "label": "Dead letter and alert",
+        "done": true
+      },
+      {
+        "label": "Tests",
+        "done": true
+      },
+      {
+        "label": "Deploy to staging"
+      }
+    ],
+    "artifacts": [
+      "webhooks-plan.md",
+      "deploy.yaml"
+    ],
+    "updatedAt": now - 6 * 60000,
+    "goal": "Retry failed billing webhooks and tell the client when one gives up.",
+    "started": "Wed, Nov 4",
+    "history": [
+      "Deploying to staging",
+      "All 48 tests pass",
+      "Added a dead letter queue and an alert"
+    ]
+  },
+  {
+    "id": "api",
+    "title": "API migration",
+    "project": "Platform",
+    "status": "running",
+    "statusText": "Deciding the v1 end date",
+    "steps": [
+      {
+        "label": "Ship v2",
+        "done": true
+      },
+      {
+        "label": "Move our own apps",
+        "done": true
+      },
+      {
+        "label": "Decide on the v1 end date"
+      },
+      {
+        "label": "Write to the clients"
+      }
+    ],
+    "artifacts": [
+      "migration-plan.md",
+      "v1-traffic.csv"
+    ],
+    "asks": [
+      {
+        "id": "api",
+        "question": "Keep the old API until March or drop it now?",
+        "kind": "decision"
+      }
+    ],
+    "updatedAt": now - 180 * 60000,
+    "goal": "Move every client from the v1 API to v2 without breaking a running integration.",
+    "started": "Mon, Oct 20",
+    "history": [
+      "Asked you whether to keep v1 until March",
+      "Two clients still call v1 – about 4% of traffic",
+      "Our own apps run on v2"
+    ]
+  },
+  {
+    "id": "triage",
+    "title": "Support triage",
+    "project": "Platform",
+    "status": "running",
+    "statusText": "Rolling out to all queues",
+    "steps": [
+      {
+        "label": "Pick a model",
+        "done": true
+      },
+      {
+        "label": "Weekly eval",
+        "done": true
+      },
+      {
+        "label": "Roll out to all queues"
+      }
+    ],
+    "artifacts": [
+      "triage-eval.csv",
+      "prompts"
+    ],
+    "updatedAt": now - 25 * 60000,
+    "goal": "Sort and summarise incoming support tickets before anyone reads them.",
+    "started": "Thu, Oct 30",
+    "history": [
+      "Runs on 2 of 5 support queues",
+      "First weekly eval: 94% match a human summary"
+    ],
+    "decided": [
+      {
+        "question": "Which model should summarise support tickets?",
+        "answer": "The small model",
+        "at": now - 1 * 86400000
+      }
+    ]
+  },
+  {
+    "id": "launch",
+    "title": "Launch post",
+    "project": "Evalkit",
+    "status": "running",
+    "statusText": "Picking the tone",
+    "steps": [
+      {
+        "label": "Outline",
+        "done": true
+      },
+      {
+        "label": "Pick the tone"
+      },
+      {
+        "label": "First draft"
+      },
+      {
+        "label": "Schedule"
+      }
+    ],
+    "artifacts": [
+      "launch-outline.md",
+      "benchmarks.csv"
+    ],
+    "asks": [
+      {
+        "id": "launch",
+        "question": "What tone should the launch post have?",
+        "kind": "question"
+      }
+    ],
+    "updatedAt": now - 60 * 60000,
+    "goal": "Announce the open-source release of the eval kit.",
+    "started": "Wed, Nov 5",
+    "history": [
+      "Asked you which tone the post should have",
+      "Outline ready, with the benchmark numbers"
+    ]
+  },
+  {
+    "id": "benchmarks",
+    "title": "Benchmark suite",
+    "project": "Evalkit",
+    "status": "running",
+    "statusText": "Running the evals",
+    "steps": [
+      {
+        "label": "Pick the models",
+        "done": true
+      },
+      {
+        "label": "Prepare the datasets",
+        "done": true
+      },
+      {
+        "label": "Run the evals",
+        "done": true
+      },
+      {
+        "label": "Check the outliers"
+      },
+      {
+        "label": "Write up"
+      }
+    ],
+    "artifacts": [
+      "benchmarks.csv"
+    ],
+    "updatedAt": now - 2 * 60000,
+    "goal": "Run the kit against five open models so the launch post has real numbers.",
+    "started": "Tue, Nov 4",
+    "history": [
+      "Running the last two models",
+      "Three of five models done",
+      "Datasets prepared – 2,400 cases"
+    ]
+  },
+  {
+    "id": "usage",
+    "title": "Usage page",
+    "project": "Northwind",
+    "status": "running",
+    "statusText": "Done · Fri",
+    "steps": [
+      {
+        "label": "Query",
+        "done": true
+      },
+      {
+        "label": "Chart",
+        "done": true
+      },
+      {
+        "label": "Ship",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "usage-page.png"
+    ],
+    "updatedAt": now - 2880 * 60000,
+    "done": true,
+    "goal": "Show Northwind their daily usage, one bar per day.",
+    "started": "Tue, Oct 28",
+    "history": [
+      "Shipped to Northwind",
+      "Daily bars, as you picked"
+    ],
+    "decided": [
+      {
+        "question": "Which chart for the usage page?",
+        "answer": "Bars",
+        "at": now - 2 * 86400000
+      }
+    ]
+  },
+  {
+    "id": "auth",
+    "title": "Auth refactor",
+    "project": "Platform",
+    "status": "running",
+    "statusText": "Done · Yesterday",
+    "steps": [
+      {
+        "label": "Refactor",
+        "done": true
+      },
+      {
+        "label": "Merge",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "auth-refactor.md"
+    ],
+    "updatedAt": now - 1440 * 60000,
+    "done": true,
+    "goal": "One sign-in flow for web and mobile before the demo.",
+    "started": "Fri, Oct 24",
+    "history": [
+      "Deployed to staging before the demo",
+      "Merged into main – 41 files, all checks green"
+    ],
+    "decided": [
+      {
+        "question": "Merge the auth refactor before the demo?",
+        "answer": "Approved",
+        "at": now - 1 * 86400000
+      }
+    ]
+  },
+  {
+    "id": "rate-limits",
+    "title": "Rate limits",
+    "project": "Platform",
+    "status": "running",
+    "statusText": "Done · Wed",
+    "steps": [
+      {
+        "label": "Limits per plan",
+        "done": true
+      },
+      {
+        "label": "Headers and docs",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "rate-limits.md"
+    ],
+    "updatedAt": now - 5760 * 60000,
+    "done": true,
+    "goal": "Per-client rate limits on the public API.",
+    "started": "Thu, Oct 29",
+    "history": [
+      "Live for every client",
+      "Limits per plan agreed"
+    ]
+  },
+  {
+    "id": "docs",
+    "title": "Docs site",
+    "project": "Evalkit",
+    "status": "running",
+    "statusText": "Done · Thu",
+    "steps": [
+      {
+        "label": "Structure",
+        "done": true
+      },
+      {
+        "label": "Guides",
+        "done": true
+      },
+      {
+        "label": "Publish",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "docs-outline.md"
+    ],
+    "updatedAt": now - 4320 * 60000,
+    "done": true,
+    "goal": "A docs site for the eval kit, ready before the launch.",
+    "started": "Mon, Nov 2",
+    "history": [
+      "Published with four guides",
+      "Structure agreed in the thread"
+    ]
+  }
+];
+}
+
+export const defaultAgentTaskFiles: ArtifactFile[] = [
+  {
+    "kind": "document",
+    "name": "ingest-design.md",
+    "updated": "Just now",
+    "content": "# Ingest pipeline\n\nTake in Northwind’s order events and keep a day of them to replay after a bad deploy.\n\n## Event format\n\nJSON with a version field. The load test passed at 20k events per minute, p95 under 100 ms.\n\n## Staging rollout\n\n1. Pick a queue\n2. Deploy to staging\n3. Run the smoke test\n4. Review the canary metrics"
+  },
+  {
+    "kind": "table",
+    "name": "load-test-results.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Events / min",
+        "p95 (ms)",
+        "Errors",
+        "Result"
+      ],
+      [
+        "10000",
+        "54",
+        "0.01%",
+        "Passed"
+      ],
+      [
+        "20000",
+        "96",
+        "0.02%",
+        "Passed"
+      ],
+      [
+        "30000",
+        "142",
+        "0.08%",
+        "Backlog"
+      ]
+    ]
+  },
+  {
+    "kind": "code",
+    "name": "event-schema.json",
+    "language": "JSON",
+    "updated": "Ingest pipeline",
+    "content": "{\n  \"version\": 1,\n  \"event\": \"order.created\",\n  \"order_id\": \"nw_0142\",\n  \"occurred_at\": \"2026-11-08T12:04:00Z\",\n  \"payload\": {\n    \"total\": 149,\n    \"currency\": \"USD\"\n  }\n}"
+  },
+  {
+    "kind": "folder",
+    "name": "staging",
+    "updated": "Ingest pipeline · 4 items",
+    "entries": [
+      {
+        "name": "canary-metrics.csv",
+        "size": "9 KB",
+        "bytes": 9000,
+        "modified": "12:04",
+        "kind": "table"
+      },
+      {
+        "name": "deploy.yaml",
+        "size": "1.3 KB",
+        "bytes": 1300,
+        "modified": "13:00",
+        "kind": "code"
+      },
+      {
+        "name": "rollout-plan.md",
+        "size": "4.1 KB",
+        "bytes": 4100,
+        "modified": "Nov 6",
+        "kind": "document"
+      },
+      {
+        "name": "smoke-test.md",
+        "size": "2.9 KB",
+        "bytes": 2900,
+        "modified": "12:53",
+        "kind": "document"
+      }
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "dashboard-spec.md",
+    "updated": "Just now",
+    "content": "# dashboard spec\n\nA usage dashboard Northwind's team opens every morning.\n\n## Progress\n\n- Drew three empty states for you to pick from\n- Usage page shipped with daily bars\n- Northwind opened it 31 times this week"
+  },
+  {
+    "kind": "table",
+    "name": "usage-sample.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "image",
+    "name": "usage-page.png",
+    "alt": "Northwind daily usage bar chart",
+    "updated": "Client dashboard",
+    "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%22440%22%20viewBox%3D%220%200%20720%20440%22%3E%3Crect%20width%3D%22720%22%20height%3D%22440%22%20rx%3D%2216%22%20fill%3D%22%23fff%22%2F%3E%3Ctext%20x%3D%2236%22%20y%3D%2248%22%20font-family%3D%22sans-serif%22%20font-size%3D%2222%22%20fill%3D%22%23171717%22%3ENorthwind%20%C2%B7%20Daily%20usage%3C%2Ftext%3E%3Ctext%20x%3D%2236%22%20y%3D%2276%22%20font-family%3D%22sans-serif%22%20font-size%3D%2213%22%20fill%3D%22%238f8f8f%22%3EEvents%20processed%20this%20week%3C%2Ftext%3E%3Cpath%20d%3D%22M52%20120H684M52%20190H684M52%20260H684M52%20330H684%22%20stroke%3D%22%23eee%22%2F%3E%3Cg%20fill%3D%22%230190fe%22%3E%3Crect%20x%3D%2276%22%20y%3D%22240%22%20width%3D%2246%22%20height%3D%22120%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22160%22%20y%3D%22200%22%20width%3D%2246%22%20height%3D%22160%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22244%22%20y%3D%22225%22%20width%3D%2246%22%20height%3D%22135%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22328%22%20y%3D%22140%22%20width%3D%2246%22%20height%3D%22220%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22412%22%20y%3D%22175%22%20width%3D%2246%22%20height%3D%22185%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22496%22%20y%3D%22105%22%20width%3D%2246%22%20height%3D%22255%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22580%22%20y%3D%22165%22%20width%3D%2246%22%20height%3D%22195%22%20rx%3D%226%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23999%22%20font-family%3D%22sans-serif%22%20font-size%3D%2212%22%3E%3Ctext%20x%3D%2286%22%20y%3D%22388%22%3EMon%3C%2Ftext%3E%3Ctext%20x%3D%22170%22%20y%3D%22388%22%3ETue%3C%2Ftext%3E%3Ctext%20x%3D%22254%22%20y%3D%22388%22%3EWed%3C%2Ftext%3E%3Ctext%20x%3D%22338%22%20y%3D%22388%22%3EThu%3C%2Ftext%3E%3Ctext%20x%3D%22422%22%20y%3D%22388%22%3EFri%3C%2Ftext%3E%3Ctext%20x%3D%22506%22%20y%3D%22388%22%3ESat%3C%2Ftext%3E%3Ctext%20x%3D%22590%22%20y%3D%22388%22%3ESun%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E"
+  },
+  {
+    "kind": "document",
+    "name": "weekly-update-week-45.md",
+    "updated": "Just now",
+    "content": "# Weekly update · Northwind\n\nHi Dana,\n\nThe ingest load test passed, the client dashboard is ready for review, and our own apps now use API v2.\n\nWe need your answer on the queue and dashboard empty state before the next rollout."
+  },
+  {
+    "kind": "document",
+    "name": "onboarding-outline.md",
+    "updated": "Just now",
+    "content": "# onboarding outline\n\nThree short emails that walk a new Northwind account to its first sync.\n\n## Progress\n\n- Writing the second email\n- First email drafted\n- Outline agreed in the thread"
+  },
+  {
+    "kind": "document",
+    "name": "webhooks-plan.md",
+    "updated": "Just now",
+    "content": "# webhooks plan\n\nRetry failed billing webhooks and tell the client when one gives up.\n\n## Progress\n\n- Deploying to staging\n- All 48 tests pass\n- Added a dead letter queue and an alert"
+  },
+  {
+    "kind": "code",
+    "name": "deploy.yaml",
+    "language": "YAML",
+    "updated": "Just now",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: northwind-ingest\nspec:\n  replicas: 2\n  template:\n    spec:\n      containers:\n        - name: ingest\n          image: northwind/ingest:staging\n"
+  },
+  {
+    "kind": "document",
+    "name": "migration-plan.md",
+    "updated": "Just now",
+    "content": "# API migration\n\nOur applications now run on v2. Two clients still use v1, around 4% of traffic.\n\n## Next\n\nDecide the v1 end date, then write to the clients."
+  },
+  {
+    "kind": "table",
+    "name": "v1-traffic.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "table",
+    "name": "triage-eval.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "folder",
+    "name": "prompts",
+    "updated": "Ingest pipeline · 4 items",
+    "entries": [
+      {
+        "name": "summarise.md",
+        "size": "1.2 KB",
+        "bytes": 1200,
+        "modified": "Today",
+        "kind": "document"
+      },
+      {
+        "name": "classify.md",
+        "size": "0.8 KB",
+        "bytes": 800,
+        "modified": "Yesterday",
+        "kind": "document"
+      }
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "launch-outline.md",
+    "updated": "Just now",
+    "content": "# launch outline\n\nAnnounce the open-source release of the eval kit.\n\n## Progress\n\n- Asked you which tone the post should have\n- Outline ready, with the benchmark numbers"
+  },
+  {
+    "kind": "table",
+    "name": "benchmarks.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Model",
+        "Cases",
+        "Accuracy",
+        "Latency (ms)"
+      ],
+      [
+        "Atlas",
+        "2400",
+        "94%",
+        "320"
+      ],
+      [
+        "Birch",
+        "2400",
+        "91%",
+        "180"
+      ],
+      [
+        "Cedar",
+        "2400",
+        "93%",
+        "240"
+      ]
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "auth-refactor.md",
+    "updated": "Just now",
+    "content": "# auth refactor\n\nOne sign-in flow for web and mobile before the demo.\n\n## Progress\n\n- Deployed to staging before the demo\n- Merged into main – 41 files, all checks green"
+  },
+  {
+    "kind": "document",
+    "name": "rate-limits.md",
+    "updated": "Just now",
+    "content": "# rate limits\n\nPer-client rate limits on the public API.\n\n## Progress\n\n- Live for every client\n- Limits per plan agreed"
+  },
+  {
+    "kind": "document",
+    "name": "docs-outline.md",
+    "updated": "Just now",
+    "content": "# docs outline\n\nA docs site for the eval kit, ready before the launch.\n\n## Progress\n\n- Published with four guides\n- Structure agreed in the thread"
+  },
+  {
+    "kind": "table",
+    "name": "canary-metrics.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "rollout-plan.md",
+    "updated": "Just now",
+    "content": "# Staging rollout\n\nDeploy two replicas, watch the canary for 20 minutes, then run the smoke test.\n\nRollback if p95 exceeds 100 ms or the error rate rises above 0.1%."
+  },
+  {
+    "kind": "document",
+    "name": "smoke-test.md",
+    "updated": "Just now",
+    "content": "# Smoke test\n\n- Submit a sample order event\n- Confirm it is stored\n- Replay the last hour\n- Check canary metrics"
+  },
+  {
+    "kind": "document",
+    "name": "summarise.md",
+    "updated": "Just now",
+    "content": "# summarise\n\nWorkspace notes\n\n## Progress\n\nReady for review."
+  },
+  {
+    "kind": "document",
+    "name": "classify.md",
+    "updated": "Just now",
+    "content": "# classify\n\nWorkspace notes\n\n## Progress\n\nReady for review."
+  }
+];
+
+export const defaultTaskSources: WorkspaceSource[] = [{name:"staging",description:"Ingest pipeline",artifact:"staging",kind:"folder"},{name:"benchmarks.csv",description:"Benchmark suite",artifact:"benchmarks.csv",kind:"table"},{name:"migration-plan.md",description:"API migration",artifact:"migration-plan.md",kind:"document"}];
+export type AgentTasksLabels = TaskListLabels & TaskInspectorLabels & { create?: string; placeholder?: string };
+export type AgentTasksScreenProps = Omit<AppShellProps,"children"|"panel"|"panelTitle"|"navigation"|"project"|"defaultProject"|"onProjectChange"> & {
+  tasks?: AgentTask[]; defaultTasks?: AgentTask[]; onTasksChange?: (tasks: AgentTask[]) => void;
+  projects?: string[];
+  tab?: TaskListTab; defaultTab?: TaskListTab; onTabChange?: (tab: TaskListTab) => void;
+  selected?: string | null; defaultSelected?: string | null; onSelectedChange?: (id: string | null) => void; onSelect?: (id: string) => void;
+  onCreate?: (task: AgentTask) => void;
+  createOpen?: boolean; defaultCreateOpen?: boolean; onCreateOpenChange?: (open: boolean) => void;
+  project?: string; defaultProject?: string; onProjectChange?: (project: string) => void;
+  collapsedProjects?: string[]; defaultCollapsedProjects?: string[]; onCollapsedProjectsChange?: (projects: string[]) => void;
+  onOpenInbox?: (taskId: string,itemId?: string) => void;
+  onOpenArtifact?: (taskId: string,name: string) => void;
+  onArtifactChange?: (name: string,file: ArtifactFile) => void;
+  files?: ArtifactFile[]; defaultFiles?: ArtifactFile[]; onFilesChange?: (files: ArtifactFile[]) => void;
+  openFiles?: string[]; defaultOpenFiles?: string[]; onOpenFilesChange?: (names: string[]) => void;
+  activeFile?: string; defaultActiveFile?: string; onActiveFileChange?: (name: string) => void;
+  suggested?: WorkspaceSource[]; labels?: AgentTasksLabels;
+  onOpenTool?: (tool: WorkspaceToolKind) => void; renderTool?: (tool: WorkspaceToolKind) => ReactNode; onOpenUrl?: (url: string) => void;
+};
+
+/** A task/project overview with a persistent task tab and editable artifact tabs in the shell's work area. */
+export function AgentTasksScreen({tasks:tasksProp,defaultTasks,onTasksChange,projects:projectOrder,tab:tabProp,defaultTab="active",onTabChange,selected:selectedProp,defaultSelected="ingest",onSelectedChange,onSelect,onCreate,createOpen:createProp,defaultCreateOpen=false,onCreateOpenChange,project:projectProp,defaultProject,onProjectChange,collapsedProjects,defaultCollapsedProjects,onCollapsedProjectsChange,onOpenInbox,onOpenArtifact,onArtifactChange,files:filesProp,defaultFiles=defaultAgentTaskFiles,onFilesChange,openFiles:openedProp,defaultOpenFiles, onOpenFilesChange,activeFile:activeProp,defaultActiveFile,onActiveFileChange,panelOpen:panelProp,defaultPanelOpen=true,onPanelOpenChange,suggested=defaultTaskSources,labels={},onOpenTool,renderTool,onOpenUrl,onNavigate,className,style,...shellProps}:AgentTasksScreenProps) {
+  const [initialTasks]=useState(()=>defaultTasks??createDefaultAgentTasks());
+  const [tasks,setTasks]=useControllable(tasksProp,initialTasks,onTasksChange),[tab,setTab]=useControllable(tabProp,defaultTab,onTabChange),[selected,setSelected]=useControllable<string|null>(selectedProp,defaultSelected,onSelectedChange),[creating,setCreating]=useControllable(createProp,defaultCreateOpen,onCreateOpenChange);
+  const projects=[...new Set([...(projectOrder??[]),...tasks.map(task=>task.project||"Workspace")])];
+  const [project,setProject]=useControllable(projectProp,defaultProject??projects[0]??"Workspace",onProjectChange);
+  const [files,setFiles]=useControllable(filesProp,defaultFiles,onFilesChange),[opened,setOpened]=useControllable(openedProp,defaultOpenFiles??(defaultSelected?["task"]:[]),onOpenFilesChange),[active,setActive]=useControllable(activeProp,defaultActiveFile??defaultOpenFiles?.[0]??(defaultSelected?"task":""),onActiveFileChange),[panelOpen,setPanelOpen]=useControllable(panelProp,false,onPanelOpenChange);
+  const [focusRequest,setFocusRequest]=useState(0),[freshIds,setFreshIds]=useState<string[]>([]),[notice,setNotice]=useState("");
+  const [startTabs,setStartTabs]=useState<string[]>([]),[toolTabs,setToolTabs]=useState<{id:string;kind:WorkspaceToolKind}[]>([]),[toolValues,setToolValues]=useState<Record<string,string>>({}),[toolLines,setToolLines]=useState<Record<string,string[]>>({});
+  const root=useRef<HTMLDivElement>(null),sequence=useRef(0),layout=useRef<boolean|undefined>(undefined),fileRef=useRef(files);fileRef.current=files;
+  const current=tasks.find(task=>task.id===selected)??null;
+  useLayoutEffect(()=>{const el=root.current;if(!el)return;const measure=()=>{const narrow=el.getBoundingClientRect().width<900;if(panelProp===undefined){if(layout.current===undefined)setPanelOpen(defaultPanelOpen&&opened.some(name=>name!=="task"||!!current)&&!narrow);else if(narrow&&!layout.current)setPanelOpen(false);}layout.current=narrow;};measure();const observer=new ResizeObserver(measure);observer.observe(el);return()=>observer.disconnect();},[panelProp]);
+  useEffect(()=>{if(!freshIds.length)return;const timer=setTimeout(()=>setFreshIds([]),500);return()=>clearTimeout(timer);},[freshIds]);
+  const closePanel=()=>{setPanelOpen(false);requestAnimationFrame(()=>{const rows=[...(root.current?.querySelectorAll<HTMLButtonElement>("[data-task-key]")??[])];rows.find(row=>row.dataset.taskKey===`task:${selected}`)?.focus({preventScroll:true});});};
+  const openInbox=(taskId:string,itemId?:string)=>onOpenInbox?onOpenInbox(taskId,itemId):onNavigate?.("Inbox");
+  const openTask=(id:string,keyboard=false)=>{setSelected(id);if(!opened.includes("task"))setOpened([...opened,"task"]);setActive("task");setPanelOpen(true);setFocusRequest(previous=>keyboard?previous+1:0);onSelect?.(id);};
+  const updateFiles=(next:ArtifactFile[])=>{const previous=fileRef.current;fileRef.current=next;setFiles(next);next.forEach(file=>{if(JSON.stringify(previous.find(item=>item.name===file.name))!==JSON.stringify(file))onArtifactChange?.(file.name,file);});};
+  const openArtifact=(name:string,replace?:string)=>{if(!fileRef.current.some(file=>file.name===name)){const file:ArtifactFile={kind:"document",name,content:`# ${name}\n\n`,updated:"Just now"};updateFiles([...fileRef.current,file]);}const next=replace?opened.map(id=>id===replace?name:id):[...opened,name];setOpened([...new Set(next)]);if(replace)setStartTabs(tabs=>tabs.filter(id=>id!==replace));setActive(name);setPanelOpen(true);onOpenArtifact?.(selected??"",name);};
+  const changeOpened=(next:string[])=>{setOpened(next);setStartTabs(tabs=>tabs.filter(id=>next.includes(id)));setToolTabs(tabs=>tabs.filter(tab=>next.includes(tab.id)));if(!next.length)closePanel();};
+  const newTab=()=>{const id=`new-${++sequence.current}`;setStartTabs(tabs=>[...tabs,id]);setOpened([...opened,id]);setActive(id);setPanelOpen(true);};
+  const openTool=(kind:WorkspaceToolKind,replace?:string)=>{const id=replace??`tool-${++sequence.current}`;if(replace)setStartTabs(tabs=>tabs.filter(tab=>tab!==replace));else setOpened([...opened,id]);setToolTabs(tabs=>[...tabs.filter(tab=>tab.id!==id),{id,kind}]);setActive(id);setPanelOpen(true);onOpenTool?.(kind);};
+  const openUrl=(value:string)=>{try{const url=new URL(/^[a-z][a-z\d+.-]*:/i.test(value)?value:`https://${value}`);if(!["http:","https:"].includes(url.protocol))throw new Error("Invalid address");if(onOpenUrl)onOpenUrl(url.href);else window.open(url.href,"_blank","noopener,noreferrer");}catch{setNotice("Enter a valid web address");}};
+  const create=(draft:TaskDraft)=>{const now=Date.now(),task:AgentTask={id:`task-${now}-${++sequence.current}`,title:draft.title.split("\n")[0],goal:draft.title,project:draft.project,status:"planning",updatedAt:now,started:"Today",history:["You asked for it – the orchestrator is planning the steps"]};const index=tasks.findIndex(item=>item.project===task.project);setTasks(index<0?[...tasks,task]:[...tasks.slice(0,index),task,...tasks.slice(index)]);setTab("active");setSelected(task.id);setFreshIds([task.id]);if(!opened.includes("task"))setOpened([...opened,"task"]);setActive("task");setPanelOpen(true);setFocusRequest(0);setNotice(`Task created in ${task.project}`);onCreate?.(task);};
+  const toggleCreate=()=>{if(creating)root.current?.querySelector<HTMLTextAreaElement>(".ui-tcr textarea")?.focus({preventScroll:true});else setCreating(true);};
+  const closeCreate=()=>{setCreating(false);requestAnimationFrame(()=>root.current?.querySelector<HTMLButtonElement>(".ui-tls__new")?.focus({preventScroll:true}));};
+  const navigation:AppRailItem[]=[{label:"Thread",icon:<Icon name="chat"/>},{label:"Inbox",icon:<Icon name="inbox"/>,count:tasks.reduce((count,task)=>count+agentTaskNeeds(task),0)},{label:"Tasks",icon:<Icon name="tasks"/>},{label:"Memory",icon:<Icon name="memory"/>},{label:"Settings",icon:<Icon name="settings"/>,section:"Workspace"}];
+  const searchGroups:CommandMenuGroup[]=[{id:"tasks",label:labels.tasks??"Tasks",commands:[{id:"create-task",label:labels.newTask??"New task",icon:<Icon name="plus"/>,onSelect:toggleCreate},...tasks.map(task=>({id:`task:${task.id}`,label:task.title,description:`${task.project} · ${agentTaskStatus(task,Date.now())}`,icon:<Icon name="tasks"/>,onSelect:()=>openTask(task.id,true)}))]},{id:"workspace",label:"Workspace",commands:navigation.map(item=>({id:`navigate:${item.label}`,label:item.label,icon:item.icon,onSelect:()=>onNavigate?.(item.label)}))}];
+  const extraTabs:ArtifactWorkspaceTab[]=[{id:"task",label:current?.title??"Task",icon:<Icon name="tasks" size={14}/>,content:<TaskInspector task={current} labels={labels} onOpenInbox={openInbox} onOpenArtifact={openArtifact} onShowAgents={()=>onNavigate?.("Agent Orchestration")} focusRequest={focusRequest}/>} ,...startTabs.map(id=>({id,label:"New tab",icon:<Icon name="globe" size={14}/>,content:<WorkspaceStart suggested={suggested} onOpenSource={source=>openArtifact(source.artifact??source.name,id)} onOpenTool={kind=>openTool(kind,id)} onOpenUrl={value=>{openTool("browser",id);setToolValues(values=>({...values,[id]:value}));openUrl(value);}}/>})),...toolTabs.map(({id,kind})=>({id,label:kind==="terminal"?"Terminal":kind==="browser"?"Browser":"Notes",icon:<Icon name={kind==="terminal"?"terminal":kind==="browser"?"globe":"compose"} size={14}/>,content:renderTool?.(kind)??<WorkspaceTool kind={kind} value={toolValues[id]??""} onValueChange={value=>setToolValues(values=>({...values,[id]:value}))} lines={toolLines[id]} onLinesChange={lines=>setToolLines(values=>({...values,[id]:lines}))} onOpenUrl={openUrl}/>}))];
+  return <div ref={root} data-task-shortcuts="" className={["ui-ats",className].filter(Boolean).join(" ")} style={style}><style href="ui-agent-tasks" precedence="default">{css}</style><AppShell {...shellProps} defaultChats={shellProps.defaultChats??[]} className="ui-ats__shell" defaultActive={shellProps.defaultActive??"Tasks"} navigation={navigation} commands={shellProps.commands??searchGroups} onNavigate={onNavigate} panelOpen={panelOpen} onPanelOpenChange={setPanelOpen} defaultPanelWidth={shellProps.defaultPanelWidth??410} panelTitle="Task" panel={<ArtifactWorkspace files={files} onFilesChange={updateFiles} openFiles={opened} onOpenFilesChange={changeOpened} activeFile={active} onActiveFileChange={setActive} tabs={extraTabs} onNewTab={newTab} onClose={closePanel} closeLabel="Close task" onOpenFile={name=>onOpenArtifact?.(selected??"",name)}/> }><TaskList tasks={tasks} projects={projectOrder} tab={tab} onTabChange={setTab} selected={selected} onSelect={(id,options)=>openTask(id,options.keyboard)} collapsedProjects={collapsedProjects} defaultCollapsedProjects={defaultCollapsedProjects} onCollapsedProjectsChange={onCollapsedProjectsChange} onOpenInbox={openInbox} onNewTask={toggleCreate} createOpen={creating} freshIds={freshIds} labels={labels} createForm={creating?<TaskCreate projects={projects} project={project} onProjectChange={setProject} onCreate={create} onClose={closeCreate} createLabel={labels.create} placeholder={labels.placeholder}/>:undefined}/></AppShell><span className="ui-ats__sr" role="status" aria-live="polite">{notice}</span></div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-ats{width:100%;height:100%;min-height:0;box-sizing:border-box;container:ui-ats / inline-size;font-family:"Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}.ui-ats,.ui-ats *,.ui-ats *::before,.ui-ats *::after{box-sizing:border-box}.ui-ats__shell{height:100%}.ui-ats .ui-aw__tab{font-size:13px!important;padding-right:28px}.ui-ats__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(prefers-reduced-motion:reduce){.ui-ats,.ui-ats *{scroll-behavior:auto!important}}

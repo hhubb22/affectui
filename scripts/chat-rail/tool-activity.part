@@ -1,0 +1,76 @@
+export type ToolActivityItem = {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  status: "running" | "done" | "failed" | "stopped";
+  startedAt?: number;
+  duration?: number;
+  error?: string;
+};
+
+export type ToolActivityProps = {
+  tools: ToolActivityItem[];
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onRetry?: (id: string) => void;
+  className?: string;
+};
+
+/** A quiet, collapsible tool trace; active calls expand and count time, finished calls settle into one line. */
+export function ToolActivity({ tools: rawTools, open: openProp, defaultOpen, onOpenChange, onRetry, className }: ToolActivityProps) {
+  const tools = (Array.isArray(rawTools) ? rawTools : []).filter(Boolean);
+  const running = tools.some(tool => tool.status === "running");
+  const failed = tools.filter(tool => tool.status === "failed").length;
+  const [manual, setManual] = useState<boolean | undefined>(defaultOpen);
+  const [settling, setSettling] = useState(false);
+  const wasRunning = useRef(running);
+  const [now, setNow] = useState(0);
+  const id = useId();
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now()); const timer = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  useEffect(() => {
+    const finished = wasRunning.current && !running; wasRunning.current = running;
+    if (!finished) return;
+    setSettling(true); const timer = window.setTimeout(() => setSettling(false), 650);
+    return () => window.clearTimeout(timer);
+  }, [running]);
+  const open = openProp ?? manual ?? (running || settling || failed > 0);
+  const elapsed = (tool: ToolActivityItem) => tool.status === "running" ? Math.max(0, (now || tool.startedAt || 0) - (tool.startedAt ?? now)) : (tool.duration ?? 0);
+  const total = Math.max(0, ...tools.map(elapsed));
+  const stopped = tools.some(tool => tool.status === "stopped");
+  const label = running ? `Running ${tools.length === 1 ? "a tool" : `${tools.length} tools in parallel`}` : stopped ? `Stopped · ${tools.filter(tool => tool.status === "done").length} of ${tools.length} ran` : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : durationLabel(total)}`;
+  return <div className={["ui-ta", className].filter(Boolean).join(" ")} data-open={open} data-state={running ? "running" : failed ? "failed" : "done"}>
+    <style href="ui-tool-activity" precedence="default">{css}</style>
+    <button type="button" className="ui-ta__head" aria-expanded={open} aria-controls={`${id}-tools`} onClick={() => { if (openProp === undefined) setManual(!open); onOpenChange?.(!open); }}>
+      <span className="ui-ta__status" data-spinning={running || undefined}><Icon name={running ? "play" : failed ? "warning" : "check"} size={14}/></span>
+      <span className="ui-ta__title" data-text={label} data-shimmer={running || undefined}>{label}</span><span className="ui-ta__chevron"><Icon name="chevron" size={12}/></span>
+    </button>
+    <div id={`${id}-tools`} className="ui-ta__wrap" inert={!open}><ul className="ui-ta__list">
+      {tools.map((tool, index) => {
+        const status = ["running", "done", "failed", "stopped"].includes(tool.status) ? tool.status : "done";
+        return <li className="ui-ta__tool" data-status={status} key={tool.id} style={{ "--ui-ta-index": index } as CSSProperties}>
+          <span className="ui-ta__mark" data-spinning={status === "running" || undefined}><Icon name={status === "running" ? "play" : status === "failed" ? "warning" : status === "stopped" ? "stop" : "check"} size={12}/></span>
+          <span className="ui-ta__icon" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{tool.icon ?? <Icon name={index ? "globe" : "search"} size={13}/>}</span>
+          <span className="ui-ta__label" dir="auto" title={tool.error ?? tool.label}>{tool.label}{tool.error && <small>{tool.error}</small>}</span>
+          <span className="ui-ta__time">{durationLabel(elapsed(tool))}</span>
+          {status === "failed" && onRetry && <button type="button" className="ui-ta__retry" onClick={() => onRetry(tool.id)}>Retry</button>}
+        </li>;
+      })}
+    </ul></div>
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-ta{--ui-ta-ink:rgba(0,0,0,.88);--ui-ta-text:rgba(0,0,0,.45);--ui-ta-faint:rgba(0,0,0,.27);--ui-ta-line:rgba(0,0,0,.06);--ui-ta-ok:#1a9a52;--ui-ta-danger:#e5484d;--ui-ta-focus:rgba(0,96,226,.35);--ui-ta-ease:cubic-bezier(.22,1,.36,1);font:13px/1.5 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-ta-text);container-type:inline-size;-webkit-font-smoothing:antialiased}
+.ui-ta,.ui-ta *,.ui-ta *::before,.ui-ta *::after{box-sizing:border-box}.ui-ta button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}.ui-ta button:focus-visible{outline:2px solid var(--ui-ta-focus);outline-offset:2px}.ui-ta button:active:not(:disabled){transform:scale(.97)}
+.ui-ta__head{display:flex;align-items:center;gap:8px;min-height:28px;padding:0;text-align:left}.ui-ta__status,.ui-ta__mark{display:flex;align-items:center;color:var(--ui-ta-ok)}.ui-ta[data-state="failed"] .ui-ta__status,.ui-ta__tool[data-status="failed"] .ui-ta__mark{color:var(--ui-ta-danger)}.ui-ta__title{position:relative;white-space:nowrap;font-variant-numeric:tabular-nums}.ui-ta__chevron{display:flex;opacity:0;transition:transform 280ms var(--ui-ta-ease),opacity 160ms}.ui-ta__head:hover .ui-ta__chevron,.ui-ta__head:focus-visible .ui-ta__chevron{opacity:1}.ui-ta[data-open="true"] .ui-ta__chevron{transform:rotate(180deg)}
+.ui-ta__wrap{display:grid;grid-template-rows:0fr;transition:grid-template-rows 360ms var(--ui-ta-ease)}.ui-ta[data-open="true"] .ui-ta__wrap{grid-template-rows:1fr}.ui-ta__list{overflow:hidden;min-height:0;list-style:none;padding:0 0 0 4px;margin:0}.ui-ta__tool{display:flex;align-items:center;gap:8px;min-height:28px;position:relative;padding:2px 0 2px 17px;opacity:0;transform:translateY(-5px);transition:opacity 200ms,transform 320ms var(--ui-ta-ease);transition-delay:calc(var(--ui-ta-index)*35ms)}.ui-ta[data-open="true"] .ui-ta__tool{opacity:1;transform:none}.ui-ta__tool::before{content:"";position:absolute;left:1px;top:0;bottom:0;border-left:1px solid var(--ui-ta-line)}.ui-ta__mark{position:absolute;left:-5px;background:var(--ui-ta-card,#fff)}.ui-ta__icon{display:flex;color:var(--ui-ta-faint)}.ui-ta__label{min-width:0;flex:1;overflow-wrap:anywhere}.ui-ta__label small{display:block;color:var(--ui-ta-danger);font-size:12px}.ui-ta__time{font-size:11px;font-variant-numeric:tabular-nums;color:var(--ui-ta-faint)}.ui-ta__retry{font-size:12px!important;text-decoration:underline}.ui-ta [data-spinning] svg{animation:ui-ta-spin 1s linear infinite;color:var(--ui-ta-text)}.ui-ta__title[data-shimmer]::after{content:attr(data-text) / "";position:absolute;inset:0;color:transparent;background:linear-gradient(100deg,transparent 25%,var(--ui-ta-ink) 50%,transparent 75%);background-size:240% 100%;background-clip:text;-webkit-background-clip:text;animation:ui-ta-shimmer 2s linear infinite}
+@keyframes ui-ta-spin{to{transform:rotate(360deg)}}@keyframes ui-ta-shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+@container(max-width:320px){.ui-ta__tool{gap:6px}.ui-ta__time{font-size:10px}}
+@media(pointer:coarse){.ui-ta__head{min-height:36px}.ui-ta__tool{min-height:34px}.ui-ta__retry{min-height:32px}}
+@media(prefers-reduced-motion:reduce){.ui-ta *,.ui-ta *::after{animation:none!important;transition:none!important}.ui-ta__tool{transform:none}.ui-ta__title[data-shimmer]::after{display:none}}
+:where(.dark,[data-theme="dark"]) .ui-ta{--ui-ta-ink:rgba(255,255,255,.9);--ui-ta-text:rgba(255,255,255,.46);--ui-ta-faint:rgba(255,255,255,.3);--ui-ta-line:rgba(255,255,255,.08);--ui-ta-card:#1c1c1e;--ui-ta-ok:#3ec27a;--ui-ta-danger:#ff6369;--ui-ta-focus:rgba(77,141,255,.5)}

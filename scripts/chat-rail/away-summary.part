@@ -1,0 +1,36 @@
+export type AwaySummaryProps = {
+  tasks?: ThreadTask[];
+  decisions?: { id: string; question: string }[];
+  since?: number;
+  onOpenTask?: (id: string) => void;
+  onOpenDecision?: (id: string) => void;
+  onOpenTasks?: () => void;
+  onOpenInbox?: () => void;
+  onMarkRead?: () => void;
+  className?: string;
+};
+
+/** A return-to-thread summary, followed by the unread boundary and a mark-as-read action. */
+export function AwaySummary({ tasks = [], decisions = [], since, onOpenTask, onOpenDecision, onOpenTasks, onOpenInbox, onMarkRead, className }: AwaySummaryProps) {
+  const done = tasks.filter(task => task.done);
+  return <div className={["ui-ay", className].filter(Boolean).join(" ")}>
+    <style href="ui-away-summary" precedence="default">{css}</style>
+    <section className="ui-ay__card" aria-label="While you were away"><header><span className="ui-ay__title">While you were away</span><span className="ui-ay__counts">{done.length} done · {decisions.length} need you</span></header>
+      <div className="ui-ay__rows">{done.map(task => <button type="button" className="ui-ay__row" key={task.id} onClick={() => onOpenTask?.(task.id)}><span className="ui-ay__check"><Icon name="check" size={13}/></span><strong dir="auto">{task.title}</strong><small dir="auto">{task.status}</small></button>)}{decisions.map(decision => <button type="button" className="ui-ay__row" data-question="" key={decision.id} onClick={() => onOpenDecision?.(decision.id)}><span className="ui-ay__dot"/><strong dir="auto">{decision.question}</strong><small>Needs you</small></button>)}</div>
+      <footer>{onOpenTasks && <button type="button" onClick={onOpenTasks}>Open Tasks<Icon name="arrow" size={12}/></button>}{onOpenInbox && <button type="button" onClick={onOpenInbox}>Open Inbox<Icon name="arrow" size={12}/></button>}</footer>
+    </section>
+    {(since != null || onMarkRead) && <div className="ui-ay__boundary"><span>{since != null && Number.isFinite(since) ? `New since ${new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(since)}` : "New activity"}</span>{onMarkRead && <button type="button" onClick={onMarkRead}><Icon name="check" size={11}/>Mark as read</button>}</div>}
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-ay{--ui-ay-card:#fff;--ui-ay-ink:rgba(0,0,0,.88);--ui-ay-muted:rgba(0,0,0,.45);--ui-ay-faint:rgba(0,0,0,.27);--ui-ay-line:rgba(0,0,0,.06);--ui-ay-fill:rgba(0,0,0,.025);--ui-ay-focus:rgba(0,96,226,.35);font:13px/1.5 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-ay-ink);width:100%;container:ui-ay / inline-size;-webkit-font-smoothing:antialiased;animation:ui-ay-in 420ms cubic-bezier(.22,1,.36,1) both}
+.ui-ay,.ui-ay *,.ui-ay *::before,.ui-ay *::after{box-sizing:border-box}.ui-ay button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}.ui-ay button:focus-visible{outline:2px solid var(--ui-ay-focus);outline-offset:-2px}.ui-ay button:active:not(:disabled){transform:scale(.97)}.ui-ay__card{border-radius:14px;background:var(--ui-ay-card);box-shadow:0 0 0 .5px var(--ui-ay-line);padding:12px}.ui-ay__card>header{display:flex;align-items:center;gap:10px;padding:0 2px 10px}.ui-ay__title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:500}.ui-ay__title svg{color:var(--ui-ay-muted)}.ui-ay__counts{margin-left:auto;font-size:11px;color:var(--ui-ay-muted);font-variant-numeric:tabular-nums}.ui-ay__rows{display:flex;flex-direction:column;gap:1px}.ui-ay__row{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;text-align:left;padding:5px 3px;border-radius:5px}.ui-ay__row:hover{background:var(--ui-ay-fill)}.ui-ay__row strong{font-size:12px;font-weight:400;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-ay__row small{margin-left:auto;font-size:11px;color:var(--ui-ay-muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-ay__row>svg{color:var(--ui-ay-faint);flex:none}.ui-ay__check{display:flex;color:#1a9a52}.ui-ay__dot{width:5px;height:5px;margin:0 4px;flex:none;border-radius:50%;background:#e8a20c}.ui-ay__card>footer{display:flex;justify-content:flex-end;gap:14px;margin-top:8px}.ui-ay__card>footer button{display:flex;align-items:center;gap:5px;min-height:24px;font-size:11px;color:var(--ui-ay-muted);padding:3px;border-radius:4px}.ui-ay__boundary{display:flex;align-items:center;gap:10px;margin:18px 0;color:var(--ui-ay-muted);font-size:11px;font-variant-numeric:tabular-nums}.ui-ay__boundary::before,.ui-ay__boundary::after{content:"";height:.5px;background:var(--ui-ay-line);flex:1}.ui-ay__boundary button{font-size:11px;color:var(--ui-ay-muted);padding:3px;border-radius:4px}
+@keyframes ui-ay-in{from{opacity:0;transform:translateY(8px)}}
+@container ui-ay (max-width:420px){.ui-ay__row{align-items:flex-start;flex-wrap:wrap;gap:5px}.ui-ay__row strong{flex:1}.ui-ay__row small{flex-basis:calc(100% - 24px);margin-left:20px;order:4}.ui-ay__card>header{flex-wrap:wrap}.ui-ay__counts{margin-left:22px}}
+@media(pointer:coarse){.ui-ay__row{min-height:36px}.ui-ay__card>footer button,.ui-ay__boundary button{min-height:36px}}
+@media(prefers-reduced-motion:reduce){.ui-ay,.ui-ay *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-ay{--ui-ay-card:#1c1c1e;--ui-ay-ink:rgba(255,255,255,.9);--ui-ay-muted:rgba(255,255,255,.46);--ui-ay-faint:rgba(255,255,255,.3);--ui-ay-line:rgba(255,255,255,.08);--ui-ay-fill:rgba(255,255,255,.04);--ui-ay-focus:rgba(77,141,255,.5)}
+
+.ui-ay__card{display:flex;flex-direction:column;gap:6px;padding:12px 8px 8px;border-radius:12px}.ui-ay__card>header{align-items:baseline;gap:8px;padding:0 6px 2px}.ui-ay__counts{margin-left:0;font-size:12px}.ui-ay__rows{gap:0}.ui-ay__row{height:32px;min-height:32px;gap:10px;padding:0 6px}.ui-ay__row strong{font-size:13px;flex:0 1 auto}.ui-ay__row small{font-size:12px;margin-left:0;flex:0 100 auto}.ui-ay__row[data-question] small{margin-left:auto;flex:none;font-size:10px;padding:2px 6px;border-radius:3px;background:rgba(232,162,12,.12);color:#b47a06}.ui-ay__card>footer{justify-content:flex-start;gap:4px;margin-top:0;padding-top:2px}.ui-ay__card>footer button{font-size:12px;padding:3px 6px;min-height:28px}.ui-ay__check{display:grid;place-items:center;width:14px;height:14px;flex:none;border:1px solid #0095ff;border-radius:50%}.ui-ay__check>svg{display:none}.ui-ay__check:after{content:"";width:8px;height:8px;border-radius:50%;background:#0095ff}.ui-ay__boundary:before{order:0}.ui-ay__boundary>span{order:1}.ui-ay__boundary:after{order:2}.ui-ay__boundary>button{order:3;display:flex;align-items:center;gap:5px}
+@media(pointer:coarse){.ui-ay__row{height:auto;min-height:36px}.ui-ay__card>footer button{min-height:36px}}

@@ -1,0 +1,738 @@
+export function createDefaultInboxItems(now=Date.now()):InboxItem[] {
+  return [
+    {id:"queue",kind:"decision",task:"Ingest pipeline",at:now-4*60000,question:"Which queue should the ingest service use?",context:"Events arrive in bursts of up to 20k a minute. The service needs retries, and a way to replay a day of events after a bad deploy.",options:[
+      {id:"kafka",title:"Kafka",summary:"A durable log – replay is built in",recommended:true,pros:["Replays any day after a bad deploy","Takes the bursts with room to spare"],cons:["One more cluster to run","Overkill below a thousand events a minute"]},
+      {id:"sqs",title:"SQS",summary:"Managed, nothing to operate",pros:["No servers, pay per message","Retries and dead letters built in"],cons:["No replay – a message is gone once read","Ordering only in FIFO queues"]},
+      {id:"pg",title:"Postgres queue",summary:"Use the database you already have",pros:["Nothing new to deploy","Jobs and data in one transaction"],cons:["Won't keep up with the bursts","Replay means writing it yourself"]}]},
+    {id:"empty-state",kind:"pick",task:"Client dashboard",at:now-18*60000,unread:true,question:"Which empty state for the dashboard?",context:"New accounts land on an empty dashboard until their first sync finishes, about ten minutes.",options:[{id:"illustration",title:"Illustration",wireframe:"illustration"},{id:"checklist",title:"Setup checklist",wireframe:"checklist"},{id:"sample",title:"Sample data",wireframe:"data"}]},
+    {id:"weekly",kind:"approval",task:"Weekly update",at:now-42*60000,unread:true,question:"Send the weekly update to Northwind?",context:"Drafted from this week's merged work and the two open questions. It goes out from your address.",facts:[{label:"To",value:"Dana Reyes, Northwind"},{label:"Subject",value:"Week 45: ingest is live, dashboard in review"},{label:"Body",value:"Ingest runs on staging and took Tuesday's spike without losing an event…"}]},
+    {id:"tone",kind:"question",task:"Launch post",at:now-3600000,question:"What tone should the launch post have?",context:"The post announces the client portal on Thursday. The draft is ready apart from its voice.",suggestions:["Calm and factual","Warm, a little playful","Short, for developers"]},
+    {id:"api",kind:"decision",task:"API migration",at:now-3*3600000,question:"Keep the old API until March or drop it now?",context:"Two clients still call v1, about 4% of traffic. Keeping it means every fix lands twice.",options:[{id:"keep",title:"Keep it until March",summary:"Clients move at their own pace",pros:["No rushed migrations for the two clients","Time to ship a migration guide"],cons:["Every fix lands in two versions","Three more months of v1 tests"]},{id:"drop",title:"Drop it now",summary:"One codebase from next week",pros:["Half the surface to maintain","The new auth applies everywhere"],cons:["Two clients have to move this week"]}]},
+    {id:"model",kind:"decision",task:"Support triage",at:now-86400000,question:"Which model should summarise support tickets?",options:[{id:"small",title:"The small model",summary:"With a weekly eval",pros:["A tenth of the cost per ticket","Fast enough to run on every ticket"]},{id:"large",title:"The large model",summary:"Better on long threads"}],done:{answer:{option:"small"},at:now-86400000,history:["Runs on 2 of 5 support queues","First weekly eval: 94% match a human summary"],artifacts:["triage-eval.csv"]}},
+    {id:"auth",kind:"approval",task:"Auth refactor",at:now-86400000,question:"Merge the auth refactor before the demo?",facts:[{label:"Branch",value:"auth-refactor → main"},{label:"Change",value:"41 files, all checks green"}],done:{answer:"approve",at:now-86400000,history:["Merged into main","Deployed to staging before the demo"],artifacts:["auth-refactor.md"]}},
+    {id:"chart",kind:"pick",task:"Client dashboard",at:now-2*86400000,question:"Which chart for the usage page?",options:[{id:"bars",title:"Bars",summary:"One bar per day, easy to compare",wireframe:"bars"},{id:"line",title:"Line",wireframe:"line"}],done:{answer:{option:"bars"},at:now-2*86400000,history:["Usage page shipped with daily bars","Northwind's team opened it 31 times this week"],artifacts:["usage-page.png","screens"]}}
+  ];
+}
+
+export const defaultInboxTasks: Record<string,InboxTask> = {
+  "Ingest pipeline": {
+    "goal": "Take in Northwind's order events and keep a day of them to replay after a bad deploy.",
+    "project": "Northwind",
+    "started": "Mon, Nov 3",
+    "steps": [
+      {
+        "label": "Draft the event schema",
+        "done": true
+      },
+      {
+        "label": "Load test at 20k a minute",
+        "done": true
+      },
+      {
+        "label": "Pick a queue"
+      },
+      {
+        "label": "Deploy to staging"
+      }
+    ],
+    "artifacts": [
+      "ingest-design.md",
+      "load-test-results.csv",
+      "event-schema.json",
+      "staging"
+    ]
+  },
+  "Client dashboard": {
+    "goal": "A usage dashboard Northwind's team opens every morning.",
+    "project": "Northwind",
+    "started": "Tue, Oct 28",
+    "steps": [
+      {
+        "label": "Usage page",
+        "done": true
+      },
+      {
+        "label": "Empty state"
+      },
+      {
+        "label": "Alerts page"
+      }
+    ],
+    "artifacts": [
+      "dashboard-spec.md",
+      "usage-sample.csv",
+      "screens"
+    ]
+  },
+  "Weekly update": {
+    "goal": "Tell Northwind what shipped this week and what needs their answer.",
+    "project": "Northwind",
+    "started": "Today",
+    "steps": [
+      {
+        "label": "Collect merged work",
+        "done": true
+      },
+      {
+        "label": "Draft the email",
+        "done": true
+      },
+      {
+        "label": "Send it"
+      }
+    ],
+    "artifacts": [
+      "weekly-update-week-45.md"
+    ]
+  },
+  "Onboarding emails": {
+    "goal": "Three short emails that walk a new Northwind account to its first sync.",
+    "project": "Northwind",
+    "started": "Thu, Nov 5",
+    "steps": [
+      {
+        "label": "Outline the three emails",
+        "done": true
+      },
+      {
+        "label": "Write the drafts"
+      },
+      {
+        "label": "Test with two accounts"
+      }
+    ],
+    "artifacts": [
+      "onboarding-outline.md"
+    ]
+  },
+  "Billing webhooks": {
+    "goal": "Retry failed billing webhooks and tell the client when one gives up.",
+    "project": "Platform",
+    "started": "Wed, Nov 4",
+    "steps": [
+      {
+        "label": "Retry with backoff",
+        "done": true
+      },
+      {
+        "label": "Dead letter and alert",
+        "done": true
+      },
+      {
+        "label": "Tests",
+        "done": true
+      },
+      {
+        "label": "Deploy to staging"
+      }
+    ],
+    "artifacts": [
+      "webhooks-plan.md",
+      "deploy.yaml"
+    ]
+  },
+  "API migration": {
+    "goal": "Move every client from the v1 API to v2 without breaking a running integration.",
+    "project": "Platform",
+    "started": "Mon, Oct 20",
+    "steps": [
+      {
+        "label": "Ship v2",
+        "done": true
+      },
+      {
+        "label": "Move our own apps",
+        "done": true
+      },
+      {
+        "label": "Decide on the v1 end date"
+      },
+      {
+        "label": "Write to the clients"
+      }
+    ],
+    "artifacts": [
+      "migration-plan.md",
+      "v1-traffic.csv"
+    ]
+  },
+  "Support triage": {
+    "goal": "Sort and summarise incoming support tickets before anyone reads them.",
+    "project": "Platform",
+    "started": "Thu, Oct 30",
+    "steps": [
+      {
+        "label": "Pick a model",
+        "done": true
+      },
+      {
+        "label": "Weekly eval",
+        "done": true
+      },
+      {
+        "label": "Roll out to all queues"
+      }
+    ],
+    "artifacts": [
+      "triage-eval.csv",
+      "prompts"
+    ]
+  },
+  "Launch post": {
+    "goal": "Announce the open-source release of the eval kit.",
+    "project": "Evalkit",
+    "started": "Wed, Nov 5",
+    "steps": [
+      {
+        "label": "Outline",
+        "done": true
+      },
+      {
+        "label": "Pick the tone"
+      },
+      {
+        "label": "First draft"
+      },
+      {
+        "label": "Schedule"
+      }
+    ],
+    "artifacts": [
+      "launch-outline.md",
+      "benchmarks.csv"
+    ]
+  },
+  "Benchmark suite": {
+    "goal": "Run the kit against five open models so the launch post has real numbers.",
+    "project": "Evalkit",
+    "started": "Tue, Nov 4",
+    "steps": [
+      {
+        "label": "Pick the models",
+        "done": true
+      },
+      {
+        "label": "Prepare the datasets",
+        "done": true
+      },
+      {
+        "label": "Run the evals",
+        "done": true
+      },
+      {
+        "label": "Check the outliers"
+      },
+      {
+        "label": "Write up"
+      }
+    ],
+    "artifacts": [
+      "benchmarks.csv"
+    ]
+  },
+  "Usage page": {
+    "goal": "Show Northwind their daily usage, one bar per day.",
+    "project": "Northwind",
+    "started": "Tue, Oct 28",
+    "steps": [
+      {
+        "label": "Query",
+        "done": true
+      },
+      {
+        "label": "Chart",
+        "done": true
+      },
+      {
+        "label": "Ship",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "usage-page.png"
+    ]
+  },
+  "Auth refactor": {
+    "goal": "One sign-in flow for web and mobile before the demo.",
+    "project": "Platform",
+    "started": "Fri, Oct 24",
+    "steps": [
+      {
+        "label": "Refactor",
+        "done": true
+      },
+      {
+        "label": "Merge",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "auth-refactor.md"
+    ]
+  },
+  "Rate limits": {
+    "goal": "Per-client rate limits on the public API.",
+    "project": "Platform",
+    "started": "Thu, Oct 29",
+    "steps": [
+      {
+        "label": "Limits per plan",
+        "done": true
+      },
+      {
+        "label": "Headers and docs",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "rate-limits.md"
+    ]
+  },
+  "Docs site": {
+    "goal": "A docs site for the eval kit, ready before the launch.",
+    "project": "Evalkit",
+    "started": "Mon, Nov 2",
+    "steps": [
+      {
+        "label": "Structure",
+        "done": true
+      },
+      {
+        "label": "Guides",
+        "done": true
+      },
+      {
+        "label": "Publish",
+        "done": true
+      }
+    ],
+    "artifacts": [
+      "docs-outline.md"
+    ]
+  }
+};
+export const defaultInboxFiles: ArtifactFile[] = [
+  {
+    "kind": "document",
+    "name": "ingest-design.md",
+    "updated": "Just now",
+    "content": "# Ingest pipeline\n\nTake in Northwind’s order events and keep a day of them to replay after a bad deploy.\n\n## Event format\n\nJSON with a version field. The load test passed at 20k events per minute, p95 under 100 ms.\n\n## Staging rollout\n\n1. Pick a queue\n2. Deploy to staging\n3. Run the smoke test\n4. Review the canary metrics"
+  },
+  {
+    "kind": "table",
+    "name": "load-test-results.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Events / min",
+        "p95 (ms)",
+        "Errors",
+        "Result"
+      ],
+      [
+        "10000",
+        "54",
+        "0.01%",
+        "Passed"
+      ],
+      [
+        "20000",
+        "96",
+        "0.02%",
+        "Passed"
+      ],
+      [
+        "30000",
+        "142",
+        "0.08%",
+        "Backlog"
+      ]
+    ]
+  },
+  {
+    "kind": "code",
+    "name": "event-schema.json",
+    "language": "JSON",
+    "updated": "Ingest pipeline",
+    "content": "{\n  \"version\": 1,\n  \"event\": \"order.created\",\n  \"order_id\": \"nw_0142\",\n  \"occurred_at\": \"2026-11-08T12:04:00Z\",\n  \"payload\": {\n    \"total\": 149,\n    \"currency\": \"USD\"\n  }\n}"
+  },
+  {
+    "kind": "folder",
+    "name": "staging",
+    "updated": "Ingest pipeline · 4 items",
+    "entries": [
+      {
+        "name": "canary-metrics.csv",
+        "size": "9 KB",
+        "bytes": 9000,
+        "modified": "12:04",
+        "kind": "table"
+      },
+      {
+        "name": "deploy.yaml",
+        "size": "1.3 KB",
+        "bytes": 1300,
+        "modified": "13:00",
+        "kind": "code"
+      },
+      {
+        "name": "rollout-plan.md",
+        "size": "4.1 KB",
+        "bytes": 4100,
+        "modified": "Nov 6",
+        "kind": "document"
+      },
+      {
+        "name": "smoke-test.md",
+        "size": "2.9 KB",
+        "bytes": 2900,
+        "modified": "12:53",
+        "kind": "document"
+      }
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "dashboard-spec.md",
+    "updated": "Just now",
+    "content": "# dashboard spec\n\nA usage dashboard Northwind's team opens every morning.\n\n## Progress\n\n- Drew three empty states for you to pick from\n- Usage page shipped with daily bars\n- Northwind opened it 31 times this week"
+  },
+  {
+    "kind": "table",
+    "name": "usage-sample.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "image",
+    "name": "usage-page.png",
+    "alt": "Northwind daily usage bar chart",
+    "updated": "Client dashboard",
+    "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%22440%22%20viewBox%3D%220%200%20720%20440%22%3E%3Crect%20width%3D%22720%22%20height%3D%22440%22%20rx%3D%2216%22%20fill%3D%22%23fff%22%2F%3E%3Ctext%20x%3D%2236%22%20y%3D%2248%22%20font-family%3D%22sans-serif%22%20font-size%3D%2222%22%20fill%3D%22%23171717%22%3ENorthwind%20%C2%B7%20Daily%20usage%3C%2Ftext%3E%3Ctext%20x%3D%2236%22%20y%3D%2276%22%20font-family%3D%22sans-serif%22%20font-size%3D%2213%22%20fill%3D%22%238f8f8f%22%3EEvents%20processed%20this%20week%3C%2Ftext%3E%3Cpath%20d%3D%22M52%20120H684M52%20190H684M52%20260H684M52%20330H684%22%20stroke%3D%22%23eee%22%2F%3E%3Cg%20fill%3D%22%230190fe%22%3E%3Crect%20x%3D%2276%22%20y%3D%22240%22%20width%3D%2246%22%20height%3D%22120%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22160%22%20y%3D%22200%22%20width%3D%2246%22%20height%3D%22160%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22244%22%20y%3D%22225%22%20width%3D%2246%22%20height%3D%22135%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22328%22%20y%3D%22140%22%20width%3D%2246%22%20height%3D%22220%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22412%22%20y%3D%22175%22%20width%3D%2246%22%20height%3D%22185%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22496%22%20y%3D%22105%22%20width%3D%2246%22%20height%3D%22255%22%20rx%3D%226%22%2F%3E%3Crect%20x%3D%22580%22%20y%3D%22165%22%20width%3D%2246%22%20height%3D%22195%22%20rx%3D%226%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23999%22%20font-family%3D%22sans-serif%22%20font-size%3D%2212%22%3E%3Ctext%20x%3D%2286%22%20y%3D%22388%22%3EMon%3C%2Ftext%3E%3Ctext%20x%3D%22170%22%20y%3D%22388%22%3ETue%3C%2Ftext%3E%3Ctext%20x%3D%22254%22%20y%3D%22388%22%3EWed%3C%2Ftext%3E%3Ctext%20x%3D%22338%22%20y%3D%22388%22%3EThu%3C%2Ftext%3E%3Ctext%20x%3D%22422%22%20y%3D%22388%22%3EFri%3C%2Ftext%3E%3Ctext%20x%3D%22506%22%20y%3D%22388%22%3ESat%3C%2Ftext%3E%3Ctext%20x%3D%22590%22%20y%3D%22388%22%3ESun%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E"
+  },
+  {
+    "kind": "document",
+    "name": "weekly-update-week-45.md",
+    "updated": "Just now",
+    "content": "# Weekly update · Northwind\n\nHi Dana,\n\nThe ingest load test passed, the client dashboard is ready for review, and our own apps now use API v2.\n\nWe need your answer on the queue and dashboard empty state before the next rollout."
+  },
+  {
+    "kind": "document",
+    "name": "onboarding-outline.md",
+    "updated": "Just now",
+    "content": "# onboarding outline\n\nThree short emails that walk a new Northwind account to its first sync.\n\n## Progress\n\n- Writing the second email\n- First email drafted\n- Outline agreed in the thread"
+  },
+  {
+    "kind": "document",
+    "name": "webhooks-plan.md",
+    "updated": "Just now",
+    "content": "# webhooks plan\n\nRetry failed billing webhooks and tell the client when one gives up.\n\n## Progress\n\n- Deploying to staging\n- All 48 tests pass\n- Added a dead letter queue and an alert"
+  },
+  {
+    "kind": "code",
+    "name": "deploy.yaml",
+    "language": "YAML",
+    "updated": "Just now",
+    "content": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: northwind-ingest\nspec:\n  replicas: 2\n  template:\n    spec:\n      containers:\n        - name: ingest\n          image: northwind/ingest:staging\n"
+  },
+  {
+    "kind": "document",
+    "name": "migration-plan.md",
+    "updated": "Just now",
+    "content": "# API migration\n\nOur applications now run on v2. Two clients still use v1, around 4% of traffic.\n\n## Next\n\nDecide the v1 end date, then write to the clients."
+  },
+  {
+    "kind": "table",
+    "name": "v1-traffic.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "table",
+    "name": "triage-eval.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "folder",
+    "name": "prompts",
+    "updated": "Ingest pipeline · 4 items",
+    "entries": [
+      {
+        "name": "summarise.md",
+        "size": "1.2 KB",
+        "bytes": 1200,
+        "modified": "Today",
+        "kind": "document"
+      },
+      {
+        "name": "classify.md",
+        "size": "0.8 KB",
+        "bytes": 800,
+        "modified": "Yesterday",
+        "kind": "document"
+      }
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "launch-outline.md",
+    "updated": "Just now",
+    "content": "# launch outline\n\nAnnounce the open-source release of the eval kit.\n\n## Progress\n\n- Asked you which tone the post should have\n- Outline ready, with the benchmark numbers"
+  },
+  {
+    "kind": "table",
+    "name": "benchmarks.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Model",
+        "Cases",
+        "Accuracy",
+        "Latency (ms)"
+      ],
+      [
+        "Atlas",
+        "2400",
+        "94%",
+        "320"
+      ],
+      [
+        "Birch",
+        "2400",
+        "91%",
+        "180"
+      ],
+      [
+        "Cedar",
+        "2400",
+        "93%",
+        "240"
+      ]
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "auth-refactor.md",
+    "updated": "Just now",
+    "content": "# auth refactor\n\nOne sign-in flow for web and mobile before the demo.\n\n## Progress\n\n- Deployed to staging before the demo\n- Merged into main – 41 files, all checks green"
+  },
+  {
+    "kind": "document",
+    "name": "rate-limits.md",
+    "updated": "Just now",
+    "content": "# rate limits\n\nPer-client rate limits on the public API.\n\n## Progress\n\n- Live for every client\n- Limits per plan agreed"
+  },
+  {
+    "kind": "document",
+    "name": "docs-outline.md",
+    "updated": "Just now",
+    "content": "# docs outline\n\nA docs site for the eval kit, ready before the launch.\n\n## Progress\n\n- Published with four guides\n- Structure agreed in the thread"
+  },
+  {
+    "kind": "table",
+    "name": "canary-metrics.csv",
+    "updated": "Just now",
+    "rows": [
+      [
+        "Time",
+        "Events",
+        "p95 (ms)"
+      ],
+      [
+        "12:00",
+        "18000",
+        "86"
+      ],
+      [
+        "12:10",
+        "20000",
+        "96"
+      ],
+      [
+        "12:20",
+        "19500",
+        "89"
+      ]
+    ]
+  },
+  {
+    "kind": "document",
+    "name": "rollout-plan.md",
+    "updated": "Just now",
+    "content": "# Staging rollout\n\nDeploy two replicas, watch the canary for 20 minutes, then run the smoke test.\n\nRollback if p95 exceeds 100 ms or the error rate rises above 0.1%."
+  },
+  {
+    "kind": "document",
+    "name": "smoke-test.md",
+    "updated": "Just now",
+    "content": "# Smoke test\n\n- Submit a sample order event\n- Confirm it is stored\n- Replay the last hour\n- Check canary metrics"
+  },
+  {
+    "kind": "document",
+    "name": "summarise.md",
+    "updated": "Just now",
+    "content": "# summarise\n\nWorkspace notes\n\n## Progress\n\nReady for review."
+  },
+  {
+    "kind": "document",
+    "name": "classify.md",
+    "updated": "Just now",
+    "content": "# classify\n\nWorkspace notes\n\n## Progress\n\nReady for review."
+  },
+  {
+    "kind": "folder",
+    "name": "screens",
+    "entries": [
+      {
+        "name": "usage-page.png",
+        "kind": "image",
+        "bytes": 48200
+      },
+      {
+        "name": "dashboard-spec.md",
+        "kind": "document",
+        "bytes": 1800
+      }
+    ],
+    "updated": "Today"
+  }
+];
+export const defaultInboxOpenArtifacts: {task:string;name:string}[] = [{task:"Ingest pipeline",name:"ingest-design.md"},{task:"Ingest pipeline",name:"load-test-results.csv"}];
+export const defaultInboxSources:WorkspaceSource[] = [{name:"staging",description:"Ingest pipeline",artifact:"staging",kind:"folder"},{name:"triage-eval.csv",description:"Support triage",artifact:"triage-eval.csv",kind:"table"},{name:"dashboard-spec.md",description:"Client dashboard",artifact:"dashboard-spec.md",kind:"document"}];
+
+export type InboxLabels = InboxListLabels & InboxItemLabels & InboxTaskContextLabels & { caughtUp?: string; tasks?: string; running?: (count:number)=>string; noAnswers?: string; noAnswersDescription?: string; back?: string; deferred?: string; reopened?: (count:number)=>string };
+export type InboxScreenProps = Omit<AppShellProps,"children"|"panel"|"panelTitle"|"navigation"|"onSelect"> & {
+  items?: InboxItem[]; defaultItems?: InboxItem[]; onItemsChange?: (items:InboxItem[])=>void;
+  tab?: InboxTab; defaultTab?: InboxTab; onTabChange?: (tab:InboxTab)=>void;
+  selected?: string|null; defaultSelected?: string|null; onSelectedChange?: (id:string|null)=>void; onSelect?: (id:string|null)=>void;
+  drafts?: Record<string,InboxDraft>; defaultDrafts?: Record<string,InboxDraft>; onDraftsChange?: (drafts:Record<string,InboxDraft>)=>void;
+  onDecide?: (id:string,answer:InboxAnswer)=>void; onLater?: (id:string)=>void; onReopen?: (id:string)=>void;
+  tasks?: Record<string,InboxTask>; running?: number;
+  files?: ArtifactFile[]; defaultFiles?: ArtifactFile[]; onFilesChange?: (files:ArtifactFile[])=>void; onArtifactChange?: (name:string,file:ArtifactFile)=>void;
+  openFiles?: string[]; defaultOpenFiles?: string[]; defaultOpenArtifacts?: {task:string;name:string}[]; onOpenFilesChange?: (names:string[])=>void;
+  activeFile?: string; defaultActiveFile?: string; onActiveFileChange?: (name:string)=>void;
+  onOpenArtifact?: (task:string,name:string)=>void; suggested?: WorkspaceSource[]; labels?: InboxLabels;
+  onOpenTool?: (tool:WorkspaceToolKind)=>void; renderTool?: (tool:WorkspaceToolKind)=>ReactNode; onOpenUrl?: (url:string)=>void;
+};
+
+/** One question at a time, with a persistent editable work area and the task behind every answer. */
+export function InboxScreen({items:itemsProp,defaultItems,onItemsChange,tab:tabProp,defaultTab="open",onTabChange,selected:selectedProp,defaultSelected,onSelectedChange,onSelect,drafts:draftsProp,defaultDrafts={},onDraftsChange,onDecide,onLater,onReopen,tasks=defaultInboxTasks,running=3,files:filesProp,defaultFiles=defaultInboxFiles,onFilesChange,onArtifactChange,openFiles:openedProp,defaultOpenFiles,defaultOpenArtifacts=defaultInboxOpenArtifacts,onOpenFilesChange,activeFile:activeProp,defaultActiveFile="task",onActiveFileChange,panelOpen:panelProp,defaultPanelOpen=true,onPanelOpenChange,onOpenArtifact,suggested=defaultInboxSources,labels={},onOpenTool,renderTool,onOpenUrl,onNavigate,className,style,...shellProps}:InboxScreenProps) {
+  const [initial]=useState(()=>{const items=defaultItems??itemsProp??createDefaultInboxItems(),deep=items.find(item=>item.id===(selectedProp??defaultSelected)),tab=deep?(deep.done?"done":"open"):defaultTab;return {items,tab,selected:defaultSelected===null?null:deep?.id??items.find(item=>!!item.done===(tab==="done"))?.id??null};});
+  const [items,setItems]=useControllable(itemsProp,initial.items,onItemsChange),[tabValue,setTab]=useControllable<InboxTab>(tabProp,initial.tab,onTabChange),[selected,setSelected]=useControllable<string|null>(selectedProp,initial.selected,onSelectedChange),[drafts,setDrafts]=useControllable(draftsProp,defaultDrafts,onDraftsChange);
+  const [files,setFiles]=useControllable(filesProp,defaultFiles,onFilesChange),[opened,setOpened]=useControllable(openedProp,defaultOpenFiles??["task",...defaultOpenArtifacts.map(file=>file.name)],onOpenFilesChange),[active,setActive]=useControllable(activeProp,defaultActiveFile,onActiveFileChange),[panelOpen,setPanelOpen]=useControllable(panelProp,false,onPanelOpenChange);
+  const [pending,setPending]=useState<{item:InboxItem;answer:InboxAnswer;collapsing:boolean}|null>(null),[detail,setDetail]=useState(!!defaultSelected||!!selectedProp),[focusRequest,setFocusRequest]=useState(0),[notice,setNotice]=useState(""),[clock,setClock]=useState(()=>Date.now()),[toast,setToast]=useState<{id:number;text:string}|null>(null);
+  const [startTabs,setStartTabs]=useState<string[]>([]),[toolTabs,setToolTabs]=useState<{id:string;kind:WorkspaceToolKind}[]>([]),[toolValues,setToolValues]=useState<Record<string,string>>({}),[toolLines,setToolLines]=useState<Record<string,string[]>>({});
+  const root=useRef<HTMLDivElement>(null),canvas=useRef<HTMLDivElement>(null),narrow=useRef(false),layout=useRef<boolean|undefined>(undefined),sequence=useRef(0),timers=useRef<ReturnType<typeof setTimeout>[]>([]),sending=useRef(false),fileRef=useRef(files),itemsRef=useRef(items),selectedRef=useRef(selected),draftsRef=useRef(drafts),owners=useRef<Record<string,string>>(Object.fromEntries(defaultOpenArtifacts.map(file=>[file.name,file.task])));
+  fileRef.current=files;itemsRef.current=items;selectedRef.current=selected;draftsRef.current=drafts;
+  const tab=tabValue==="done"?"done":"open",list=items.filter(item=>!!item.done===(tab==="done")),current=items.find(item=>item.id===selected&&!!item.done===(tab==="done"))??null,shown=pending?.item??current;
+  const taskName=shown?.task,contextTask=taskName?tasks[taskName]:undefined;
+  const showToast=(text:string)=>{const id=++sequence.current;setToast({id,text});timers.current.push(setTimeout(()=>setToast(value=>value?.id===id?null:value),2200));};
+  const select=(id:string|null,focus=false)=>{if(selectedRef.current!==id){selectedRef.current=id;setSelected(id);onSelect?.(id);}if(id)setDetail(true);setFocusRequest(value=>focus?value+1:0);};
+  const choose=(id:string,focus=false)=>{if(sending.current)return;const item=itemsRef.current.find(item=>item.id===id);if(!item)return;const nextTab=item.done?"done":"open";if(nextTab!==tab)setTab(nextTab);select(id,focus);};
+  const changeTab=(next:InboxTab)=>{if(sending.current)return;setTab(next);select(itemsRef.current.find(item=>!!item.done===(next==="done"))?.id??null);setDetail(false);};
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),60000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>()=>timers.current.forEach(clearTimeout),[]);
+  useEffect(()=>{if(sending.current)return;if((selected!==null&&!list.some(item=>item.id===selected))||(selected===null&&selectedProp!==null&&list.length>0))select(list[0]?.id??null);},[items,tab,selected]);
+  useEffect(()=>{if(!current?.unread||current.done||pending)return;const id=current.id,timer=setTimeout(()=>{const latest=itemsRef.current;if(latest.some(item=>item.id===id&&item.unread))setItems(latest.map(item=>item.id===id?{...item,unread:false}:item));},600);return()=>clearTimeout(timer);},[current?.id,current?.unread,pending]);
+  useLayoutEffect(()=>{const frame=root.current,body=canvas.current;if(!frame||!body)return;const measure=()=>{narrow.current=body.getBoundingClientRect().width<640;const small=frame.getBoundingClientRect().width<900;if(panelProp===undefined){if(layout.current===undefined)setPanelOpen(defaultPanelOpen&&opened.length>0&&!small);else if(small&&!layout.current)setPanelOpen(false);}layout.current=small;};measure();const observer=new ResizeObserver(measure);observer.observe(frame);observer.observe(body);return()=>observer.disconnect();},[panelProp]);
+  const back=()=>{setDetail(false);requestAnimationFrame(()=>[...(canvas.current?.querySelectorAll<HTMLButtonElement>("[data-inbox-row]")??[])].find(row=>row.dataset.inboxRow===selectedRef.current)?.focus({preventScroll:true}));};
+  const keyboard=useRef(back);keyboard.current=back;
+  useEffect(()=>{const key=(event:globalThis.KeyboardEvent)=>{if(event.defaultPrevented||event.key!=="Escape"||!narrow.current||isEditing(event.target)||(event.target as HTMLElement)?.closest('[role="menu"],[role="dialog"]')||(document.activeElement===document.body?document.querySelector("[data-inbox-scope]")!==canvas.current:!root.current?.contains(event.target as Node))||canvas.current?.closest("[inert]"))return;event.preventDefault();keyboard.current();};document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);},[]);
+  const changeDraft=(value:InboxDraft)=>{if(!shown)return;const next={...draftsRef.current,[shown.id]:value};draftsRef.current=next;setDrafts(next);};
+  const decide=(answer:InboxAnswer)=>{const item=current;if(!item||item.done||sending.current)return;sending.current=true;const position=itemsRef.current.filter(entry=>!entry.done).findIndex(entry=>entry.id===item.id),snapshot={...item,done:undefined};setPending({item:snapshot,answer,collapsing:false});setFocusRequest(value=>value+1);const left=itemsRef.current.filter(entry=>!entry.done&&entry.id!==item.id).length;setNotice(left?`Sent. ${left} left.`:"Sent. You're all caught up.");onDecide?.(item.id,answer);
+    timers.current.push(setTimeout(()=>setPending(value=>value?{...value,collapsing:true}:null),900));
+    timers.current.push(setTimeout(()=>{const latest=itemsRef.current,oldIndex=position,remaining=latest.filter(entry=>entry.id!==item.id),found=latest.find(entry=>entry.id===item.id);if(found){const done={...found,unread:false,done:found.done??{answer,at:Date.now()}};const firstDone=remaining.findIndex(entry=>entry.done);setItems(firstDone<0?[...remaining,done]:[...remaining.slice(0,firstDone),done,...remaining.slice(firstDone)]);}sending.current=false;setPending(null);if(selectedRef.current===item.id){const open=remaining.filter(entry=>!entry.done);select(open[Math.max(0,Math.min(oldIndex,open.length-1))]?.id??null,true);}},1180));
+  };
+  const later=()=>{if(!current||current.done||sending.current)return;const open=items.filter(item=>!item.done),index=open.findIndex(item=>item.id===current.id),remaining=open.filter(item=>item.id!==current.id);setItems([...remaining,current,...items.filter(item=>item.done)]);select(remaining[index]?.id??remaining[0]?.id??current.id,true);onLater?.(current.id);const message=labels.deferred??"Moved to the end of the list";setNotice(message);showToast(message);};
+  const reopen=()=>{if(!current?.done||sending.current)return;const item={...current,done:undefined,unread:false},nextDrafts={...draftsRef.current};delete nextDrafts[item.id];draftsRef.current=nextDrafts;setDrafts(nextDrafts);setItems([item,...items.filter(entry=>entry.id!==item.id)]);setTab("open");select(item.id,true);onReopen?.(item.id);const count=items.filter(entry=>!entry.done).length+1;setNotice(labels.reopened?.(count)??`Reopened. ${count} open.`);};
+  const updateFiles=(next:ArtifactFile[])=>{const previous=fileRef.current;fileRef.current=next;setFiles(next);next.forEach(file=>{if(JSON.stringify(previous.find(item=>item.name===file.name))!==JSON.stringify(file))onArtifactChange?.(file.name,file);});};
+  const changePanel=(open:boolean)=>{if(open&&!opened.length){setOpened(["task"]);setActive("task");}setPanelOpen(open);};
+  const closePanel=()=>{setPanelOpen(false);setFocusRequest(value=>value+1);};
+  const changeOpened=(next:string[])=>{setOpened(next);setStartTabs(tabs=>tabs.filter(id=>next.includes(id)));setToolTabs(tabs=>tabs.filter(tab=>next.includes(tab.id)));if(!next.length)closePanel();};
+  const openArtifact=(name:string,replace?:string,owner=taskName??"")=>{if(!fileRef.current.some(file=>file.name===name))updateFiles([...fileRef.current,{kind:"document",name,content:`# ${name}\n\n`,updated:"Just now"}]);owners.current[name]=owner;setOpened([...new Set(replace?opened.map(id=>id===replace?name:id):[...opened,name])]);if(replace)setStartTabs(tabs=>tabs.filter(id=>id!==replace));setActive(name);setPanelOpen(true);onOpenArtifact?.(owner,name);};
+  const openedFile=(name:string)=>{const owner=owners.current[active]??taskName??"";owners.current[name]=owner;onOpenArtifact?.(owner,name);};
+  const newTab=()=>{const id=`new-${++sequence.current}`;setStartTabs(tabs=>[...tabs,id]);setOpened([...opened,id]);setActive(id);setPanelOpen(true);};
+  const openTool=(kind:WorkspaceToolKind,replace?:string)=>{const id=replace??`tool-${++sequence.current}`;if(replace)setStartTabs(tabs=>tabs.filter(tab=>tab!==replace));else setOpened([...opened,id]);setToolTabs(tabs=>[...tabs.filter(tab=>tab.id!==id),{id,kind}]);setActive(id);setPanelOpen(true);onOpenTool?.(kind);};
+  const openUrl=(value:string)=>{try{const url=new URL(/^[a-z][a-z\d+.-]*:/i.test(value)?value:`https://${value}`);if(!["http:","https:"].includes(url.protocol))throw new Error("Invalid address");if(onOpenUrl)onOpenUrl(url.href);else window.open(url.href,"_blank","noopener,noreferrer");}catch{setNotice("Enter a valid web address");}};
+  const extraTabs:ArtifactWorkspaceTab[]=[{id:"task",label:taskName??"Task",icon:<Icon name="tasks" size={14}/>,content:<InboxTaskContext name={taskName} task={contextTask} items={items} activeId={shown?.id} onOpenItem={id=>choose(id,true)} onOpenArtifact={name=>openArtifact(name)} labels={labels} now={clock}/>} ,...startTabs.map(id=>({id,label:"New tab",icon:<Icon name="globe" size={14}/>,content:<WorkspaceStart suggested={suggested} onOpenSource={source=>openArtifact(source.artifact??source.name,id)} onOpenTool={kind=>openTool(kind,id)} onOpenUrl={value=>{openTool("browser",id);setToolValues(values=>({...values,[id]:value}));openUrl(value);}}/>})),...toolTabs.map(({id,kind})=>({id,label:kind==="terminal"?"Terminal":kind==="browser"?"Browser":"Notes",icon:<Icon name={kind==="terminal"?"terminal":kind==="browser"?"globe":"compose"} size={14}/>,content:renderTool?.(kind)??<WorkspaceTool kind={kind} value={toolValues[id]??""} onValueChange={value=>setToolValues(values=>({...values,[id]:value}))} lines={toolLines[id]} onLinesChange={lines=>setToolLines(values=>({...values,[id]:lines}))} onOpenUrl={openUrl}/>}))];
+  const navigation:AppRailItem[]=[{label:"Thread",icon:<Icon name="chat"/>},{label:"Inbox",icon:<Icon name="inbox"/>,count:items.filter(item=>!item.done).length},{label:"Tasks",icon:<Icon name="tasks"/>},{label:"Memory",icon:<Icon name="memory"/>},{label:"Settings",icon:<Icon name="settings"/>,section:"Workspace"}];
+  const commands:CommandMenuGroup[]=[{id:"inbox",label:labels.inbox??"Inbox",commands:items.map(item=>({id:item.id,label:item.question,description:item.task,icon:<InboxGlyph kind={item.done?"done":item.kind}/>,onSelect:()=>choose(item.id,true)}))},{id:"workspace",label:"Workspace",commands:navigation.map(item=>({id:`navigate:${item.label}`,label:item.label,icon:item.icon,onSelect:()=>onNavigate?.(item.label)}))}];
+  return <div ref={root} className={["ui-ibs__frame",className].filter(Boolean).join(" ")} style={style}><style href="ui-inbox" precedence="default">{css}</style><AppShell {...shellProps} className="ui-ibs__shell" defaultChats={shellProps.defaultChats??[]} defaultActive={shellProps.defaultActive??"Inbox"} navigation={navigation} commands={shellProps.commands??commands} onNavigate={onNavigate} panelOpen={panelOpen} onPanelOpenChange={changePanel} defaultPanelWidth={shellProps.defaultPanelWidth??410} panelTitle="Task" panel={<ArtifactWorkspace files={files} onFilesChange={updateFiles} openFiles={opened} onOpenFilesChange={changeOpened} activeFile={active} onActiveFileChange={setActive} tabs={extraTabs} onNewTab={newTab} onOpenFile={openedFile} onClose={closePanel} closeLabel="Close task"/>}>
+    <div ref={canvas} className="ui-ibs" data-inbox-scope="" data-detail={detail||undefined} aria-busy={!!pending}><div className="ui-ibs__list"><InboxList items={items} tab={tab} onTabChange={changeTab} selected={selected} onSelect={id=>choose(id)} sendingId={pending?.item.id} collapsingId={pending?.collapsing?pending.item.id:undefined} disabled={!!pending} labels={labels} now={clock}/></div><div className="ui-ibs__reading"><header className="ui-ibs__mobile-head"><button type="button" onClick={back}><Icon name="chevron" size={14}/>{labels.back??labels.inbox??"Inbox"}</button></header><div className="ui-ibs__scroll">{shown?<InboxItemView key={`${shown.id}:${shown.done?"done":"open"}`} item={shown} draft={drafts[shown.id]??{option:shown.options?.find(option=>option.recommended)?.id,text:""}} onDraftChange={changeDraft} onSubmit={decide} onLater={later} onReopen={reopen} onOpenArtifact={name=>openArtifact(name)} phase={pending?"sent":"answer"} sentAnswer={pending?.answer} focusRequest={focusRequest} labels={labels} now={clock}/>:<div className="ui-ibs__empty"><InboxEmptyState variant={tab} running={running} title={tab==="open"?labels.caughtUp:labels.noAnswers} description={tab==="open"?(labels.running?.(running)??`${running} ${running===1?"task keeps":"tasks keep"} running in the background`):labels.noAnswersDescription} tasksLabel={labels.tasks} onOpenTasks={()=>onNavigate?.("Tasks")} focusRequest={focusRequest}/></div>}</div></div></div>
+    {toast&&<div className="ui-ibs__toast" key={toast.id} aria-hidden="true"><Icon name="check" size={14}/><span>{toast.text}</span></div>}
+    <span className="ui-ibs__sr" role="status" aria-live="polite">{notice}</span>
+  </AppShell></div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-ibs__frame{width:100%;height:100%;min-height:0;container:ui-ibs-frame / inline-size;font-family:"Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}.ui-ibs__frame,.ui-ibs__frame *,.ui-ibs__frame *::before,.ui-ibs__frame *::after{box-sizing:border-box}.ui-ibs__shell{height:100%}.ui-ibs{--ui-ibs-ink:rgba(0,0,0,.88);--ui-ibs-muted:rgba(0,0,0,.45);--ui-ibs-line:rgba(0,0,0,.06);--ui-ibs-focus:rgba(0,96,226,.7);height:100%;min-height:0;width:100%;container:ui-ibs / inline-size;display:flex;color:var(--ui-ibs-ink)}.ui-ibs__list{flex:none;width:320px;min-height:0}.ui-ibs__reading{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}.ui-ibs__scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--ui-ibs-line) transparent}.ui-ibs__mobile-head{display:none;height:48px;flex:none;align-items:center;padding:0 48px}.ui-ibs__mobile-head button{display:flex;align-items:center;gap:8px;height:32px;padding:0 4px;border:0;background:none;color:var(--ui-ibs-muted);font:500 13px/20px "Inter",ui-sans-serif,system-ui,sans-serif;cursor:pointer}.ui-ibs__mobile-head button>svg{transform:rotate(180deg)}.ui-ibs__mobile-head button:active{transform:scale(.97)}.ui-ibs__mobile-head button:focus-visible{outline:2px solid var(--ui-ibs-focus);outline-offset:2px}.ui-ibs__empty{display:grid;place-items:center;min-height:100%;padding-bottom:48px}.ui-ibs__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.ui-ibs__frame .ui-aw__tabs{flex:1}.ui-ibs__frame .ui-aw__tab-wrap{flex:1 1 0;max-width:166px}.ui-ibs__frame .ui-aw__tab{width:100%;font-size:13px!important;padding-right:24px}.ui-ibs__frame .ui-aw__tab>span:first-child{flex:none}.ui-ibs__frame .ui-aw__tab-wrap:not([data-active]) .ui-aw__tab-close{opacity:0}.ui-ibs__frame .ui-aw__tab-wrap:hover .ui-aw__tab-close,.ui-ibs__frame .ui-aw__tab-wrap:focus-within .ui-aw__tab-close{opacity:1}
+@container ui-ibs (max-width:639.99px){.ui-ibs__list{width:100%}.ui-ibs__reading{display:none}.ui-ibs[data-detail] .ui-ibs__list{display:none}.ui-ibs[data-detail] .ui-ibs__reading{display:flex}.ui-ibs__mobile-head{display:flex}.ui-ibs__empty{padding-bottom:0}}
+.ui-ibs__toast{position:absolute;z-index:40;left:50%;bottom:20px;translate:-50% 0;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);height:36px;padding:0 14px 0 12px;border-radius:999px;background:var(--ui-as-ink,#171717);color:var(--ui-as-card,#fff);font-size:13px;line-height:20px;box-shadow:0 10px 24px -8px rgba(0,0,0,.35);animation:ui-ibs-toast 2200ms cubic-bezier(.22,1,.36,1) both}.ui-ibs__toast>svg{flex:none}.ui-ibs__toast>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes ui-ibs-toast{0%{opacity:0;transform:translateY(12px) scale(.96)}12%,85%{opacity:1;transform:none}100%{opacity:0;transform:translateY(6px)}}
+@media(pointer:coarse){.ui-ibs__mobile-head button{min-height:36px}}
+@media(prefers-reduced-motion:reduce){.ui-ibs__frame,.ui-ibs__frame *{scroll-behavior:auto!important}.ui-ibs__toast{animation:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-ibs{--ui-ibs-ink:rgba(255,255,255,.9);--ui-ibs-muted:rgba(255,255,255,.46);--ui-ibs-line:rgba(255,255,255,.08);--ui-ibs-focus:rgba(77,141,255,.8)}

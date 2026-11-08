@@ -1,0 +1,87 @@
+export type CommandMenuItem = { id: string; label: string; description?: string; icon?: ReactNode; shortcut?: string; disabled?: boolean; onSelect?: () => void };
+export type CommandMenuGroup = { id: string; label: string; commands: CommandMenuItem[] };
+export type CommandMenuProps = {
+  groups?: CommandMenuGroup[];
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onClose?: () => void;
+  onRun?: (id: string) => void;
+  placeholder?: string;
+  /** Render the searchable list in place, without a modal backdrop. */
+  inline?: boolean;
+  className?: string;
+};
+
+const defaultCommands: CommandMenuGroup[] = [
+  { id: "suggestions", label: "Suggestions", commands: [
+    { id: "email", label: "Write an email", description: "Gmail", shortcut: "1" },
+    { id: "assistant", label: "Ask assistant", description: "Summaries, drafts, answers", shortcut: "2" },
+    { id: "task", label: "Create a task", description: "Tasks", shortcut: "3" },
+    { id: "document", label: "New document", shortcut: "N" },
+  ] },
+  { id: "general", label: "General", commands: [{ id: "invite", label: "Invite teammates", shortcut: "I" }, { id: "upload", label: "Upload files", shortcut: "U" }, { id: "appearance", label: "Change appearance" }] },
+];
+
+/** Search grouped commands with roving focus, shortcuts, a focus trap and focus restoration. */
+export function CommandMenu({ groups = defaultCommands, open: openProp, defaultOpen = true, onOpenChange, onClose, onRun, placeholder = "Type a command or search…", inline = false, className }: CommandMenuProps) {
+  const [open, setOpen] = useControllable(openProp, defaultOpen, onOpenChange);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const source = (Array.isArray(groups) ? groups : []).filter(Boolean);
+  const shown = source.map(group => ({ ...group, commands: (Array.isArray(group.commands) ? group.commands : []).filter(command => command && `${command.label} ${command.description ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) })).filter(group => group.commands.length);
+  const commands = shown.flatMap(group => group.commands).filter(command => !command.disabled);
+  const index = Math.min(selected, Math.max(0, commands.length - 1));
+  const close = () => { setOpen(false); onClose?.(); };
+  const closeRef = useRef(close); closeRef.current = close;
+  const run = (command: CommandMenuItem) => { command.onSelect?.(); onRun?.(command.id); if (!inline) close(); };
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    input.current?.focus({ preventScroll: true }); setQuery(""); setSelected(0);
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeRef.current(); } };
+    document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("keydown", escape, true); if (!inline && previous?.isConnected) previous.focus({ preventScroll: true }); };
+  }, [open, inline]);
+  useEffect(() => { panel.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" }); }, [index, query]);
+  if (!open) return null;
+  const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const next = event.key === "ArrowDown" ? (index + 1) % commands.length : event.key === "ArrowUp" ? (index - 1 + commands.length) % commands.length : event.key === "Home" && !query ? 0 : event.key === "End" && !query ? commands.length - 1 : null;
+    if (next !== null && commands.length) { event.preventDefault(); setSelected(next); return; }
+    if (event.key === "Enter" && commands[index]) { event.preventDefault(); run(commands[index]); }
+    if (event.key === "Tab" && !inline) { event.preventDefault(); setSelected((index + (event.shiftKey ? commands.length - 1 : 1)) % Math.max(1, commands.length)); input.current?.focus(); }
+    if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
+      const command = commands.find(item => item.shortcut === event.key); if (command) { event.preventDefault(); run(command); }
+    }
+  };
+  return <div className={["ui-cm", className].filter(Boolean).join(" ")} data-inline={inline || undefined} onKeyDown={onKey}>
+    <style href="ui-command-menu" precedence="default">{css}</style>
+    {!inline && <button type="button" className="ui-cm__backdrop" aria-label="Close search" tabIndex={-1} onClick={close}/>}
+    <div ref={panel} className="ui-cm__panel" role={inline ? undefined : "dialog"} aria-modal={!inline || undefined} aria-label="Search">
+      <div className="ui-cm__search"><Icon name="search" size={19}/><input ref={input} value={query} onChange={event => { setQuery(event.target.value); setSelected(0); }} placeholder={placeholder} role="combobox" aria-label="Search commands" aria-expanded="true" aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={commands[index] ? `${id}-${commands[index].id}` : undefined}/><button type="button" onClick={close} aria-label="Close search"><kbd>Esc</kbd></button></div>
+      <div className="ui-cm__list" id={`${id}-list`} role="listbox" aria-label="Commands">
+        {shown.map(group => <div role="group" aria-labelledby={`${id}-${group.id}-label`} className="ui-cm__group" key={group.id}>
+          <div className="ui-cm__label" id={`${id}-${group.id}-label`}>{group.label}</div>
+          {group.commands.map(command => <button type="button" role="option" tabIndex={-1} aria-selected={commands[index]?.id === command.id} disabled={command.disabled} id={`${id}-${command.id}`} className="ui-cm__item" key={command.id} onPointerMove={() => setSelected(Math.max(0, commands.findIndex(item => item.id === command.id)))} onClick={() => run(command)}>
+            <span className="ui-cm__icon" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{command.icon ?? <Icon name={command.id === "email" ? "document" : command.id === "assistant" ? "spark" : command.id === "task" ? "tasks" : "folder"}/>}</span>
+            <span className="ui-cm__text"><span dir="auto">{command.label}</span>{command.description && <small dir="auto">{command.description}</small>}</span>{command.shortcut && <kbd>{/^[1-9]$/.test(command.shortcut) ? "⌘ " : ""}{command.shortcut}</kbd>}
+          </button>)}
+        </div>)}
+        {!commands.length && <p className="ui-cm__empty" role="status">No commands found for “{query}”.</p>}
+      </div>
+      <footer className="ui-cm__foot"><span><kbd>↑</kbd> <kbd>↓</kbd> to navigate</span><span><kbd>↵</kbd> to select</span><span><kbd>⌘ K</kbd> to open</span></footer>
+    </div>
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-cm{--ui-cm-card:#fff;--ui-cm-ink:rgba(0,0,0,.88);--ui-cm-text:rgba(0,0,0,.61);--ui-cm-muted:rgba(0,0,0,.45);--ui-cm-line:rgba(0,0,0,.06);--ui-cm-fill:rgba(0,0,0,.04);--ui-cm-focus:rgba(0,96,226,.35);--ui-cm-shadow:0 0 0 .5px rgba(0,0,0,.08),0 24px 80px -20px rgba(0,0,0,.24);position:fixed;inset:0;z-index:100;display:grid;align-items:start;justify-items:center;padding:clamp(24px,12vh,120px) 16px 24px;font:13px/1.5 "Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ui-cm-ink);-webkit-font-smoothing:antialiased;container-type:inline-size}
+.ui-cm,.ui-cm *,.ui-cm *::before,.ui-cm *::after{box-sizing:border-box}.ui-cm button,.ui-cm input{font:inherit;color:inherit}.ui-cm button{border:0;cursor:pointer;background:none}.ui-cm button:focus-visible{outline:2px solid var(--ui-cm-focus);outline-offset:-2px}.ui-cm button:active:not(:disabled){transform:scale(.97)}.ui-cm__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.2)!important;animation:ui-cm-fade 180ms both}.ui-cm__panel{width:min(560px,100%);max-height:100%;position:relative;display:flex;flex-direction:column;border-radius:14px;background:var(--ui-cm-card);box-shadow:var(--ui-cm-shadow);overflow:hidden;animation:ui-cm-in 280ms cubic-bezier(.22,1,.36,1) both}.ui-cm__search{display:flex;align-items:center;gap:12px;min-height:58px;padding:0 16px;border-bottom:.5px solid var(--ui-cm-line);color:var(--ui-cm-muted)}.ui-cm__search input{flex:1;width:0;border:0;outline:none;background:transparent;color:var(--ui-cm-ink);font-size:15px}.ui-cm__search input::placeholder{color:var(--ui-cm-muted)}.ui-cm kbd{font:11px/1.5 inherit;font-family:inherit;color:var(--ui-cm-muted);padding:1px 4px;border:.5px solid var(--ui-cm-line);border-radius:4px;white-space:nowrap}.ui-cm__list{overflow:auto;overscroll-behavior:contain;max-height:min(540px,65vh);padding:6px}.ui-cm__group+.ui-cm__group{margin-top:8px}.ui-cm__label{padding:9px 10px 5px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--ui-cm-muted)}.ui-cm__item{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;text-align:left;padding:8px 10px;border-radius:7px;transition:background-color 120ms}.ui-cm__item[aria-selected="true"]{background:var(--ui-cm-fill)}.ui-cm__item:disabled{opacity:.4;cursor:default}.ui-cm__icon{display:grid;place-items:center;width:28px;height:28px;flex:none;border-radius:7px;color:var(--ui-cm-muted);box-shadow:0 0 0 .5px var(--ui-cm-line)}.ui-cm__text{display:flex;flex:1;min-width:0;flex-direction:column}.ui-cm__text>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ui-cm__text small{font-size:11px;color:var(--ui-cm-muted)}.ui-cm__foot{display:flex;gap:18px;padding:11px 16px;border-top:.5px solid var(--ui-cm-line);font-size:11px;color:var(--ui-cm-muted)}.ui-cm__foot span:last-child{margin-left:auto}.ui-cm__empty{padding:32px 16px;color:var(--ui-cm-muted);text-align:center;overflow-wrap:anywhere}.ui-cm[data-inline]{position:relative;inset:auto;padding:0;display:block}.ui-cm[data-inline] .ui-cm__panel{width:100%}
+@keyframes ui-cm-fade{from{opacity:0}}@keyframes ui-cm-in{from{opacity:0;transform:translateY(8px) scale(.98)}}
+@container(max-width:400px){.ui-cm__foot{gap:10px}.ui-cm__foot span:last-child{display:none}.ui-cm__search{padding-inline:12px}.ui-cm__panel{border-radius:10px}}
+@media(pointer:coarse){.ui-cm__item{min-height:52px}.ui-cm__search{min-height:60px}.ui-cm__search button{min-width:36px;min-height:36px}}
+@media(prefers-reduced-motion:reduce){.ui-cm,.ui-cm *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-cm{--ui-cm-card:#1c1c1e;--ui-cm-ink:rgba(255,255,255,.9);--ui-cm-text:rgba(255,255,255,.62);--ui-cm-muted:rgba(255,255,255,.46);--ui-cm-line:rgba(255,255,255,.08);--ui-cm-fill:rgba(255,255,255,.08);--ui-cm-focus:rgba(77,141,255,.5);--ui-cm-shadow:0 0 0 .5px rgba(255,255,255,.12),0 24px 80px -20px rgba(0,0,0,.6)}

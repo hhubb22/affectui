@@ -1,0 +1,23 @@
+{
+  "name": "affectui-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node scripts/sync-chat-rail.mjs",
+    "check:generated": "node scripts/sync-chat-rail.mjs --check",
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run check:generated && npm run typecheck && vite build",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "playwright": "1.64.1",
+    "prettier": "3.9.10",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6"
+  }
+}

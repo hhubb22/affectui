@@ -1,0 +1,111 @@
+export const defaultThreadTaskDetails: Record<string, ThreadTaskDetail> = {
+  dashboard: { goal: "A usage dashboard Northwind's team opens every morning.", project: "Northwind", started: "Tue, Oct 28", steps: [{ label: "Usage page", done: true }, { label: "Empty state" }, { label: "Alerts page" }], history: ["Drew three empty states for you to pick from", "Usage page shipped with daily bars", "Northwind opened it 31 times this week"], decided: [{ question: "Which chart for the usage page?", answer: "Bars" }] },
+  api: { goal: "Move our own applications to the new API without breaking existing clients.", project: "Platform", started: "Mon, Oct 27", steps: [{ label: "Compatibility layer", done: true }, { label: "Move our own apps" }, { label: "Move partners" }, { label: "Retire old endpoints" }], history: ["Compatibility layer is live", "Started moving our own apps"], artifacts: ["ingest-design.md"] },
+  ingest: { goal: "Bring the ingest pipeline to staging, then run a smoke test before production.", project: "Northwind", started: "Tue, Nov 4", steps: [{ label: "Design the pipeline", done: true }, { label: "Run the load test", done: true }, { label: "Pick a queue" }, { label: "Deploy to staging" }], history: ["Load test passed at 20k events per minute", "Staging cluster is ready"], artifacts: ["load-test-results.csv", "ingest-design.md", "deploy.yaml"] },
+  weekly: { goal: "Send Northwind a concise weekly progress update.", project: "Northwind", steps: [{ label: "Draft the update", done: true }, { label: "Review and send" }], artifacts: ["weekly-update.md"] },
+  auth: { goal: "Make authentication easier to maintain.", project: "Platform", steps: [{ label: "Refactor", done: true }, { label: "Stage", done: true }], history: ["Merged and on staging"] },
+  usage: { goal: "Show the team how their usage changes over time.", project: "Northwind", steps: [{ label: "Design", done: true }, { label: "Build", done: true }, { label: "Ship", done: true }], history: ["Shipped to Northwind"] },
+  docs: { goal: "Publish the first four Evalkit guides.", project: "Evalkit", steps: [{ label: "Write", done: true }, { label: "Review", done: true }, { label: "Publish", done: true }], history: ["Published with four guides"] },
+};
+const threadTaskCatalog: Record<string, ThreadTask> = {
+  dashboard: { id: "dashboard", title: "Client dashboard", status: "Drawing the empty states", steps: { done: 1, total: 3 } },
+  api: { id: "api", title: "API migration", status: "Moving our own apps", steps: { done: 1, total: 4 }, tone: "active" },
+  ingest: { id: "ingest", title: "Ingest pipeline", status: "Picking a queue", steps: { done: 2, total: 4 } },
+  weekly: { id: "weekly", title: "Weekly update", status: "Ready for review", steps: { done: 1, total: 2 } },
+  auth: { id: "auth", title: "Auth refactor", status: "Merged and on staging", steps: { done: 2, total: 2 }, done: true },
+  usage: { id: "usage", title: "Usage page", status: "Shipped to Northwind", steps: { done: 3, total: 3 }, done: true },
+  docs: { id: "docs", title: "Docs site", status: "Published with four guides", steps: { done: 3, total: 3 }, done: true },
+};
+export const threadScreenArtifacts: ArtifactFile[] = [
+  { kind: "table", name: "load-test-results.csv", updated: "Just now", rows: [["Events / min", "p95 (ms)", "Errors", "Result"], ["10000", "54", "0.01%", "Passed"], ["20000", "96", "0.02%", "Passed"], ["30000", "142", "0.08%", "Backlog"]] },
+  { kind: "document", name: "ingest-design.md", updated: "Just now", content: "# Ingest pipeline\n\nNorthwind needs a durable ingest service with predictable latency during bursts.\n\n## Constraints\n\n- Handle 20,000 events per minute\n- Keep p95 under 100 ms\n- Preserve events across deploys\n\n## Rollout\n\nDeploy to staging, run the smoke test, then review before production." },
+  { kind: "code", name: "deploy.yaml", language: "YAML", updated: "Just now", content: "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: northwind-ingest\nspec:\n  replicas: 2\n  template:\n    spec:\n      containers:\n        - name: ingest\n          image: northwind/ingest:staging\n          env:\n            - name: QUEUE\n              value: kafka\n" },
+  { kind: "document", name: "weekly-update.md", updated: "Just now", content: "# Weekly update\n\nIngest is ready for staging. The dashboard empty states are in review, and the API migration is moving forward.\n\nNext: confirm the queue, deploy and run the smoke test." },
+];
+const dashboardDecision: ThreadDecision = { id: "empty-state", kind: "pick", taskId: "dashboard", task: "Client dashboard", question: "Which empty state for the dashboard?", options: [{ id: "illustration", title: "Illustration", wireframe: "illustration" }, { id: "checklist", title: "Setup checklist", recommended: true, wireframe: "checklist" }, { id: "data", title: "Sample data", wireframe: "data" }] };
+const sampleTime = (hour: number, minute: number) => Date.UTC(2026, 10, 8, hour, minute);
+
+function threadScreenMessages(preset: ThreadPreset): AgentMessage[] {
+  const base: AgentMessage[] = [
+    { id: "morning", role: "user", at: sampleTime(9,12), text: "Morning. Northwind first this week – the ingest pipeline, the client dashboard and the weekly update. Keep the API migration moving on the side." },
+    { id: "plan", role: "agent", at: sampleTime(9,12), parts: [
+      { kind: "tools", id: "brief-tools", tools: [{ id: "brief", label: "Read the Northwind brief", status: "done", duration: 800 }, { id: "tasks", label: "Looked through the open tasks", status: "done", duration: 1400 }, { id: "history", label: "Read last week's thread", status: "done", duration: 2100 }] },
+      { kind: "text", text: "On it. I split it into four tasks and started them side by side – you'll only hear from me when something needs a decision." },
+      { kind: "task", task: threadTaskCatalog.dashboard }, { kind: "task", task: threadTaskCatalog.api },
+    ] },
+    { id: "load-question", role: "user", at: sampleTime(11,52), text: "How did the ingest load test go?" },
+    { id: "load-answer", role: "agent", at: sampleTime(11,52), parts: [{ kind: "tools", id: "load-tools", tools: [{ id: "read-load", label: "Read load-test-results.csv", status: "done", duration: 600 }, { id: "compare-load", label: "Compared it with last week's run", status: "done", duration: 1100 }] }, { kind: "text", text: "It passed at 20k events a minute: p95 stayed under 100 ms and errors at 0.02%. Past 30k it starts to fall behind – well above Northwind's bursts." }, { kind: "artifacts", names: ["load-test-results.csv", "ingest-design.md"] }] },
+  ];
+  if (preset === "live") return base;
+  if (preset === "away" || preset === "scrolled") return [...base,
+    { id: "away-completed", role: "agent", at: sampleTime(12,22), parts: [{ kind: "text", text: "While you were out: the auth refactor is merged and on staging, the usage page shipped to Northwind, and the Evalkit docs are published." }, ...["auth", "usage", "docs"].map(id => ({ kind: "task" as const, task: threadTaskCatalog[id] }))] },
+    { id: "away-questions", role: "agent", at: sampleTime(12,24), parts: [{ kind: "text", text: "Two things need you before I can go on." }, { kind: "decision", ask: { id: "empty-state", question: dashboardDecision.question, task: "Client dashboard" } }, { kind: "decision", ask: { id: "weekly", question: defaultThreadDecisions[1].question, task: "Weekly update" } }] },
+  ];
+  const stage: AgentMessage = { id: "staging", role: "agent", at: sampleTime(13,1), parts: [
+    { kind: "tools", id: "stage-tools", tools: [{ id: "design", label: "Read ingest-design.md", status: "done", duration: 1200 }, { id: "cluster", label: "Checked the staging cluster", status: "done", duration: 2600 }, { id: "queue-tools", label: "Compared Kafka, SQS and a Postgres queue", status: "done", duration: 4200 }] },
+    { kind: "text", text: "Staging is ready and the load test holds. One thing I can't decide for you: which queue the service runs on. Kafka keeps a day of events to replay after a bad deploy; SQS is less to run but can't replay. I'd pick Kafka." }, { kind: "task", task: threadTaskCatalog.ingest },
+    { kind: "decision", ask: { id: "queue", question: defaultThreadDecisions[0].question, task: "Ingest pipeline" } },
+    { kind: "text", text: "Once you've picked, I'll deploy to staging and run the smoke test. The deploy plan is ready:" }, { kind: "artifacts", names: ["deploy.yaml", "ingest-design.md"] },
+  ] };
+  const question: AgentMessage = { id: "stage-question", role: "user", at: sampleTime(13,0), text: "Good. Get ingest onto staging today – and tell me what you need from me." };
+  if (preset === "offline") return [...base, question, { ...stage, streaming: true, parts: stage.parts!.slice(0,2).map(part => part.kind === "text" ? { ...part, text: "Staging is ready and the load test holds. One thing I can't decide for you: which queue the service runs on." } : part) }, { id: "offline-message", role: "user", at: sampleTime(13,2), text: "Use Kafka if replay holds up – I'll confirm after lunch.", status: "queued" }];
+  if (preset === "error") return [...base, question, { ...stage, parts: [{ kind: "tools", id: "failed-tools", tools: [{ id: "read", label: "Read ingest-design.md", status: "done", duration: 1200 }, { id: "cluster", label: "Checked the staging cluster", status: "failed", duration: 30000, error: "Timed out after 30s" }, { id: "compare", label: "Compared Kafka, SQS and a Postgres queue", status: "done", duration: 4200 }] }, { kind: "error", text: "Couldn't reach the staging cluster – the check timed out after 30 seconds.", retry: true }] }, { id: "failed-message", role: "user", at: sampleTime(13,3), text: "Also send Dana the load test numbers.", status: "failed" }];
+  return [...base, question, stage];
+}
+
+export type AgentThreadScreenProps = Omit<AppShellProps, "children" | "panel" | "navigation" | "title"> & Omit<AgentThreadProps, "className" | "mode" | "simulate" | "onSend" | "decisionRequest"> & {
+  simulate?: ThreadPreset | false;
+  onSend?: (text: string, attachments: ThreadAttachment[]) => void;
+  tasks?: Record<string, ThreadTaskDetail>;
+  defaultTasks?: Record<string, ThreadTaskDetail>;
+  onTasksChange?: (tasks: Record<string, ThreadTaskDetail>) => void;
+  onShowTask?: (id: string) => void;
+  files?: ArtifactFile[];
+  defaultFiles?: ArtifactFile[];
+  onFilesChange?: (files: ArtifactFile[]) => void;
+  openFiles?: string[];
+  defaultOpenFiles?: string[];
+  onOpenFilesChange?: (names: string[]) => void;
+  activeFile?: string;
+  defaultActiveFile?: string;
+  onActiveFileChange?: (name: string) => void;
+};
+
+/** A complete orchestrator thread, including single navigation sidebar and tabbed task/artifact workspace. */
+export function AgentThreadScreen({ messages: messagesProp, defaultMessages, onMessagesChange, onSend, onStop, onRetry, title = "Today", assistantName = "Orchestrator", running = { running: 9, needs: 5 }, decisions: decisionsProp, defaultDecisions, onDecisionsChange, onDecide, onLater, folded, defaultFolded, onFoldedChange, connection, defaultConnection, onConnectionChange, onReconnect, lastSeen, defaultLastSeen, onLastSeenChange, awayAfter, onMarkRead, uploads, defaultUploads, onUploadsChange, upload, transcribe, composerProps, composer, simulate: simulateProp, onOpenTask, onOpenInbox, onOpenFile, onShowTask, tasks: tasksProp, defaultTasks = defaultThreadTaskDetails, onTasksChange, files: filesProp, defaultFiles = threadScreenArtifacts, onFilesChange, openFiles: openProp, defaultOpenFiles = [], onOpenFilesChange, activeFile: activeProp, defaultActiveFile = "", onActiveFileChange, panelOpen: panelProp, defaultPanelOpen = false, onPanelOpenChange, onNavigate, className, ...shellProps }: AgentThreadScreenProps) {
+  const validPresets: ThreadPreset[] = ["live", "decision", "scrolled", "offline", "uploading", "dictating", "away", "error"];
+  const preset = typeof simulateProp === "string" && validPresets.includes(simulateProp) ? simulateProp : "live";
+  const demo = simulateProp === false ? false : simulateProp ?? (messagesProp === undefined && onSend === undefined ? "live" : false);
+  const [messages, setMessages] = useControllable(messagesProp, defaultMessages ?? threadScreenMessages(preset), onMessagesChange);
+  const initialDecisions = defaultDecisions ?? (preset === "decision" ? defaultThreadDecisions : preset === "away" || preset === "scrolled" ? [dashboardDecision, defaultThreadDecisions[1]] : preset === "uploading" || preset === "dictating" ? [defaultThreadDecisions[0]] : []);
+  const [decisions, setDecisions] = useControllable(decisionsProp, initialDecisions, onDecisionsChange);
+  const [tasks, setTasks] = useControllable(tasksProp, defaultTasks, onTasksChange);
+  const [files, setFiles] = useControllable(filesProp, defaultFiles, onFilesChange);
+  const [opened, setOpened] = useControllable(openProp, defaultOpenFiles, onOpenFilesChange);
+  const [activeFile, setActiveFile] = useControllable(activeProp, defaultActiveFile, onActiveFileChange);
+  const [panelOpen, setPanelOpen] = useControllable(panelProp, defaultPanelOpen, onPanelOpenChange);
+  const [taskId, setTaskId] = useState("");
+  const taskArea = useRef<HTMLDivElement>(null);
+  const [answeredCount, setAnsweredCount] = useState(0), [focusRequest, setFocusRequest] = useState<{ id: string; sequence: number } | undefined>();
+  const needsBaseline = useRef({ needs: running.needs, answered: 0 });
+  if (needsBaseline.current.needs !== running.needs) needsBaseline.current = { needs: running.needs, answered: answeredCount };
+  const currentTask = messages.flatMap(message => message.parts?.filter((part): part is Extract<AgentMessagePart,{kind:"task"}> => part.kind === "task").map(part => part.task) ?? []).filter(task => task.id === taskId).at(-1) ?? threadTaskCatalog[taskId];
+  const openFile = (name: string) => { if (!files.some(file => file.name === name)) { onOpenFile?.(name); return; } if (!opened.includes(name)) setOpened([...opened, name]); setActiveFile(name); setPanelOpen(true); onOpenFile?.(name); };
+  const openTask = (id: string) => { setTaskId(id); if (!opened.includes("task")) setOpened([...opened, "task"]); setActiveFile("task"); setPanelOpen(true); onOpenTask?.(id); };
+  const focusDecision = (id: string) => { if (taskArea.current?.closest("[data-overlay-boundary]")?.querySelector("main[inert]")) setPanelOpen(false); setFocusRequest(previous => ({ id, sequence: (previous?.sequence ?? 0) + 1 })); };
+  const decide = (id: string, answer: ThreadDecisionAnswer) => {
+    const decision = decisions.find(decision => decision.id === id); setAnsweredCount(count => count + 1);
+    if (decision?.taskId) { const previous = tasks[decision.taskId] ?? {}; const label = answer === "approve" ? "Approved" : answer === "decline" ? "Declined" : answer.text ?? decision.options?.find(option => option.id === answer.option)?.title ?? "Answered"; setTasks({ ...tasks, [decision.taskId]: { ...previous, decided: [{ question: decision.question, answer: label, at: Date.now() }, ...previous.decided ?? []] } }); }
+    onDecide?.(id, answer);
+  };
+  const initialUploads: ThreadUpload[] = defaultUploads ?? (preset === "offline" ? [{ id: "saved-voice", name: "Voice note", kind: "voice", seconds: 12, size: 192000, progress: 1, state: "waiting" }] : preset === "uploading" ? [{ id: "video", name: "standup-nov-7.mov", size: 48000000, progress: .2, state: "uploading" }, { id: "metrics", name: "q4-metrics.csv", size: 94000, progress: 0, state: "failed" }] : []);
+  const navigation: AppRailItem[] = [{ label: "Thread", icon: <Icon name="chat"/> }, { label: "Inbox", icon: <Icon name="inbox"/>, count: Math.max(0, safeNumber(running.needs, decisions.length) - (answeredCount - needsBaseline.current.answered)) }, { label: "Tasks", icon: <Icon name="tasks"/> }, { label: "Memory", icon: <Icon name="memory"/> }, { label: "Settings", icon: <Icon name="settings"/>, section: "Workspace" }];
+  return <AppShell {...shellProps} defaultActive={shellProps.defaultActive ?? "Thread"} className={["ui-tsr", className].filter(Boolean).join(" ")} navigation={navigation} onNavigate={onNavigate} panelOpen={panelOpen} onPanelOpenChange={setPanelOpen} panelTitle="Artifacts" panel={<ArtifactWorkspace files={files} onFilesChange={setFiles} openFiles={opened} onOpenFilesChange={setOpened} activeFile={activeFile} onActiveFileChange={setActiveFile} onClose={() => setPanelOpen(false)} tabs={currentTask ? [{ id: "task", label: currentTask.title, icon: <Icon name="tasks" size={14}/>, content: <div ref={taskArea} className="ui-tsr__task-area"><TaskDetails task={currentTask} detail={tasks[taskId]} decision={decisions.find(decision => decision.taskId === taskId)} onDecide={focusDecision} onOpenFile={openFile} onShow={id => onShowTask ? onShowTask(id) : onNavigate?.("Tasks")}/></div> }] : []}/> }>
+    <style href="ui-agent-thread-screen" precedence="default">{css}</style>
+    <AgentThread decisionRequest={focusRequest} mode="orchestrator" title={title} assistantName={assistantName} messages={messages} onMessagesChange={setMessages} running={running} decisions={decisions} onDecisionsChange={setDecisions} onDecide={decide} onLater={onLater} folded={folded} defaultFolded={defaultFolded ?? ["scrolled", "uploading", "dictating"].includes(preset)} onFoldedChange={onFoldedChange} connection={connection} defaultConnection={defaultConnection ?? (preset === "offline" ? "offline" : undefined)} onConnectionChange={onConnectionChange} onReconnect={onReconnect} lastSeen={lastSeen} defaultLastSeen={defaultLastSeen ?? (preset === "away" ? sampleTime(12,4) : undefined)} onLastSeenChange={onLastSeenChange} awayAfter={awayAfter} onMarkRead={onMarkRead} uploads={uploads} defaultUploads={initialUploads} onUploadsChange={onUploadsChange} upload={upload} transcribe={transcribe} onOpenTask={openTask} onOpenFile={openFile} onOpenInbox={onOpenInbox} onNavigate={onNavigate} onStop={onStop} onRetry={onRetry} simulate={demo} composer={composer} composerProps={{ placeholder: "Ask for anything…", ...composerProps }} onSend={(text, options) => onSend?.(text, options.attachments.map(file => ({ ...file, kind: "file" })))}/>
+  </AppShell>;
+}
+
+/* ---------- Styles ---------- */
+.ui-tsr{min-height:480px}.ui-tsr__task-area{height:100%;min-height:0}.ui-tsr .ui-th__head{z-index:2}.ui-tsr .ui-th__foot{z-index:3}
+@media(prefers-reduced-motion:reduce){.ui-tsr{scroll-behavior:auto}}
