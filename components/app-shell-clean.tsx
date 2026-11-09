@@ -719,7 +719,7 @@ const defaultAppShellLabels = {
   account: "Account",
   language: "Language",
   appearance: "Appearance",
-  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  theme: (value: "light" | "dark" | "system") => value.charAt(0).toUpperCase() + value.slice(1),
   action: (action: string) => action,
   goTo: "Go to",
   copied: "Conversation title copied",
@@ -932,6 +932,7 @@ export function AppShell({
     const el = root.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const next = entry.contentRect.width < 900;
       if (next !== narrowRef.current) {
         narrowRef.current = next;

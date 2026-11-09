@@ -584,7 +584,7 @@ export function ChatComposer({
   const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
   const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
   const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
-  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0];
+  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0]!;
   const [plan, setPlan] = useControllable(planProp, defaultPlanMode, onPlanModeChange);
   const [attachments, setAttachments] = useControllable(attachmentsProp, defaultAttachments, onAttachmentsChange);
   const [menu, setMenu] = useState<"model" | "approval" | "add" | "apps" | null>(null);

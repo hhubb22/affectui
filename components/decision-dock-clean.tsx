@@ -592,7 +592,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.previous}
-                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
@@ -600,7 +600,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.next}
-                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>

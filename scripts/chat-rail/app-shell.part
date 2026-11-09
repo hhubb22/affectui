@@ -4,7 +4,7 @@ export type AppShellUser = { name: string; email?: string; avatar?: string };
 const defaultAppShellLabels = {
   sidebar: "Sidebar", openSidebar: "Open sidebar", closeSidebar: "Close sidebar", collapseSidebar: "Collapse sidebar", resizeSidebar: "Resize sidebar", panelTitle: "Artifacts", openPanel: (title: string) => `Open ${title.toLowerCase()}`, closePanel: (title: string) => `Close ${title.toLowerCase()}`, resizePanel: (title: string) => `Resize ${title.toLowerCase()}`,
   apps: "Apps", unreadCount: (label: string, count: number) => `${label}, ${count} unread`, search: "Search", searchHint: "Search (⌘K)", searchPlaceholder: "Search…", workspace: "Workspace", conversations: "Conversations", newChat: "New chat", chats: "Chats", pinned: "Pinned", projects: "Projects", allProjects: "All projects", noProject: "No project", projectName: "Project name", createProject: "Create project", newProject: "New project", moveToProject: "Move to project", empty: "No chats yet. Start a new conversation.", chatName: "Chat name", unread: "Unread", options: (title: string) => `Options for ${title}`, pin: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} ${title}`,
-  account: "Account", language: "Language", appearance: "Appearance", theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1), action: (action: string) => action, goTo: "Go to", copied: "Conversation title copied", copyFailed: "Couldn't copy. Please try again.",
+  account: "Account", language: "Language", appearance: "Appearance", theme: (value: "light" | "dark" | "system") => value.charAt(0).toUpperCase() + value.slice(1), action: (action: string) => action, goTo: "Go to", copied: "Conversation title copied", copyFailed: "Couldn't copy. Please try again.",
 };
 export type AppShellLabels = typeof defaultAppShellLabels;
 export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & {
@@ -116,6 +116,7 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
   useLayoutEffect(() => {
     const el = root.current; if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const next = entry.contentRect.width < 900;
       if (next !== narrowRef.current) { narrowRef.current = next; setNarrow(next); if (next) { setPanelOpen(false); setSidebarOpen(false); } }
     }); observer.observe(el); return () => observer.disconnect();

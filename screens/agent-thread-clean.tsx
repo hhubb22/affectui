@@ -770,7 +770,7 @@ const defaultAppShellLabels = {
   account: "Account",
   language: "Language",
   appearance: "Appearance",
-  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  theme: (value: "light" | "dark" | "system") => value.charAt(0).toUpperCase() + value.slice(1),
   action: (action: string) => action,
   goTo: "Go to",
   copied: "Conversation title copied",
@@ -983,6 +983,7 @@ export function AppShell({
     const el = root.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const next = entry.contentRect.width < 900;
       if (next !== narrowRef.current) {
         narrowRef.current = next;
@@ -3786,7 +3787,7 @@ export function ChatComposer({
   const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
   const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
   const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
-  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0];
+  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0]!;
   const [plan, setPlan] = useControllable(planProp, defaultPlanMode, onPlanModeChange);
   const [attachments, setAttachments] = useControllable(attachmentsProp, defaultAttachments, onAttachmentsChange);
   const [menu, setMenu] = useState<"model" | "approval" | "add" | "apps" | null>(null);
@@ -4762,7 +4763,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.previous}
-                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
@@ -4770,7 +4771,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.next}
-                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
@@ -5050,7 +5051,7 @@ function useThreadConnection({
   }, [managed]);
   useEffect(() => {
     if (managed || status !== "offline") return;
-    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)]!;
     const deadline = Date.now() + seconds * 1000;
     setRetryIn(seconds);
     const interval = setInterval(() => {
@@ -6387,7 +6388,7 @@ export function AgentThread({
       [0, 1200, 1200],
       [1, 1400, 2600],
       [2, 1600, 4200],
-    ]) {
+    ] as const) {
       if (!(await pause(wait, token))) return;
       update((messages) =>
         messages.map((message) =>
@@ -6437,7 +6438,7 @@ export function AgentThread({
                 },
                 {
                   kind: "decision",
-                  ask: { id: "queue", question: defaultThreadDecisions[0].question, task: "Ingest pipeline" },
+                  ask: { id: "queue", question: defaultThreadDecisions[0]!.question, task: "Ingest pipeline" },
                 },
                 {
                   kind: "text",
@@ -6450,7 +6451,7 @@ export function AgentThread({
       ),
     );
     if (!decisionsRef.current.some((decision) => decision.id === "queue"))
-      updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]]);
+      updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]!]);
     setFolded(false);
     setLocalRunning(false);
   };
@@ -6743,7 +6744,7 @@ export function AgentThread({
                     ) : (
                       <div className="ui-thc__assistant" data-streaming={message.streaming || undefined}>
                         {messageIndex === 0 ||
-                        list[messageIndex - 1].role === "user" ||
+                        list[messageIndex - 1]!.role === "user" ||
                         messageIndex === boundaryIndex ? (
                           <div className="ui-thc__who">
                             <span

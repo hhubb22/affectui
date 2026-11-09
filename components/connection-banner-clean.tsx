@@ -355,7 +355,7 @@ function useThreadConnection({
   }, [managed]);
   useEffect(() => {
     if (managed || status !== "offline") return;
-    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)]!;
     const deadline = Date.now() + seconds * 1000;
     setRetryIn(seconds);
     const interval = setInterval(() => {
