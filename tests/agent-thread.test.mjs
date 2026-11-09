@@ -916,6 +916,28 @@ for (const style of ["classic", "clean"]) {
     assert.equal(await button("发送消息").isDisabled(), true);
   });
 
+  test(`${style}: application-owned command shortcuts disable the shell listener, including body focus`, async () => {
+    await managedFixture("shell", style);
+    const search = page.getByRole("combobox", { name: "Search commands", exact: true });
+    for (const focus of ["body", "main"]) {
+      await page.evaluate((selector) => {
+        document.querySelector(selector).tabIndex = -1;
+        document.querySelector(selector).focus();
+      }, focus);
+      await page.keyboard.press("Control+k");
+      assert.equal(await search.count(), 0);
+    }
+    await button("Toggle shell shortcut").click();
+    await page.evaluate(() => document.body.focus());
+    await page.keyboard.press("Control+k");
+    assert.equal(await search.count(), 1);
+    await page.keyboard.press("Escape");
+    await button("Toggle shell shortcut").click();
+    await page.evaluate(() => document.body.focus());
+    await page.keyboard.press("Control+k");
+    assert.equal(await search.count(), 0);
+  });
+
   test(`${style}: shell slots retain layout/resizing, drawer focus and Escape; screen APIs do not leak to DOM`, async () => {
     await managedFixture("shell", style);
     const bounds = await page.evaluate(() => {

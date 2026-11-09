@@ -94,6 +94,7 @@ export default function ManagedFixtures({
     [collapsed, setCollapsed] = useState(false),
     [emptySlots, setEmptySlots] = useState(false);
   const [customBounds, setCustomBounds] = useState(false);
+  const [shellShortcut, setShellShortcut] = useState(false);
   const [timelineMode, setTimelineMode] = useState<
     "builtin" | "caller" | "hidden"
   >(variant === "managed-timeline" ? "caller" : "builtin");
@@ -322,6 +323,7 @@ export default function ManagedFixtures({
   const shellProps: Clean.AppShellProps = {
     sidebar: emptySlots ? null : sidebar,
     header: emptySlots ? null : header,
+    globalShortcut: shellShortcut,
     sidebarCollapsed: collapsed,
     onSidebarCollapsedChange: setCollapsed,
     sidebarBounds: customBounds ? { min: 220, max: 380 } : undefined,
@@ -359,6 +361,7 @@ export default function ManagedFixtures({
         }}
       >
         <button onClick={() => setCustomBounds(true)}>Custom bounds</button>
+        <button onClick={() => setShellShortcut((value) => !value)}>Toggle shell shortcut</button>
         <button
           onClick={() =>
             updateDecision({

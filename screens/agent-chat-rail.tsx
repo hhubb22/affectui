@@ -3230,6 +3230,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   navigation?: AppRailItem[];
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
+  /** Register the built-in Mod+K listener. Disable when the application owns its command palette. */
+  globalShortcut?: boolean;
   sidebarCollapsed?: boolean;
   defaultSidebarCollapsed?: boolean;
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
@@ -3311,6 +3313,7 @@ export function AppShell({
   onNavigate,
   navigation,
   commands: commandGroupsProp,
+  globalShortcut = true,
   sidebarCollapsed: collapsedProp,
   defaultSidebarCollapsed = false,
   onSidebarCollapsedChange,
@@ -3463,7 +3466,7 @@ export function AppShell({
       const state = live.current;
       const inside = state.root?.contains(document.activeElement) || document.activeElement === document.body;
       if (!inside || event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (globalShortcut && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen((open) => !open);
       }
@@ -3474,7 +3477,7 @@ export function AppShell({
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, []);
+  }, [globalShortcut]);
   useEffect(() => {
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;

@@ -24,6 +24,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   navigation?: AppRailItem[];
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
+  /** Register the built-in Mod+K listener. Disable when the application owns its command palette. */
+  globalShortcut?: boolean;
   sidebarCollapsed?: boolean;
   defaultSidebarCollapsed?: boolean;
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
@@ -80,7 +82,7 @@ export const defaultChatRail = { items: [
 ], bottom: [{ label: "Notifications", icon: <Icon name="bell" size={19}/>, count: 2 }, { label: "Settings", icon: <Icon name="settings" size={19}/> }], active: "Chats" };
 
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
-export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, workspace = "Fieldwork", user = { name: "Alex Morgan", email: "alex@fieldwork.com" }, rail = false, active: activeProp, defaultActive = "Chats", onActiveChange, onNavigate, navigation, commands: commandGroupsProp, sidebarCollapsed: collapsedProp, defaultSidebarCollapsed = false, onSidebarCollapsedChange, chats: chatsProp, defaultChats: initialChats = defaultChats, onChatsChange, activeChat: activeChatProp, defaultActiveChat = "fabric", onOpenChat, onNewChat, onChatAction, projects: projectsProp, defaultProjects = defaultChatProjects, onProjectsChange, project: projectProp, defaultProject = "", onProjectChange, sidebarWidth: sidebarWidthProp, defaultSidebarWidth = 272, onSidebarWidthChange, sidebarBounds = { min: 200, max: 420 }, sidebarOpen: sidebarOpenProp, defaultSidebarOpen = false, onSidebarOpenChange, panel, panelTitle: panelTitleProp, panelOpen: panelOpenProp, defaultPanelOpen = true, onPanelOpenChange, panelWidth: panelWidthProp, defaultPanelWidth = 455, onPanelWidthChange, panelBounds = { min: 300, max: 640 }, theme: themeProp, defaultTheme = "system", onThemeChange, layout = "inset", children, className, onKeyDown, style, ...rest }: AppShellProps) {
+export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, workspace = "Fieldwork", user = { name: "Alex Morgan", email: "alex@fieldwork.com" }, rail = false, active: activeProp, defaultActive = "Chats", onActiveChange, onNavigate, navigation, commands: commandGroupsProp, globalShortcut = true, sidebarCollapsed: collapsedProp, defaultSidebarCollapsed = false, onSidebarCollapsedChange, chats: chatsProp, defaultChats: initialChats = defaultChats, onChatsChange, activeChat: activeChatProp, defaultActiveChat = "fabric", onOpenChat, onNewChat, onChatAction, projects: projectsProp, defaultProjects = defaultChatProjects, onProjectsChange, project: projectProp, defaultProject = "", onProjectChange, sidebarWidth: sidebarWidthProp, defaultSidebarWidth = 272, onSidebarWidthChange, sidebarBounds = { min: 200, max: 420 }, sidebarOpen: sidebarOpenProp, defaultSidebarOpen = false, onSidebarOpenChange, panel, panelTitle: panelTitleProp, panelOpen: panelOpenProp, defaultPanelOpen = true, onPanelOpenChange, panelWidth: panelWidthProp, defaultPanelWidth = 455, onPanelWidthChange, panelBounds = { min: 300, max: 640 }, theme: themeProp, defaultTheme = "system", onThemeChange, layout = "inset", children, className, onKeyDown, style, ...rest }: AppShellProps) {
   const labels = { ...defaultAppShellLabels, ...labelsProp };
   const panelTitle = panelTitleProp ?? labels.panelTitle;
   const [collapsed, setCollapsed] = useControllable(collapsedProp, defaultSidebarCollapsed, onSidebarCollapsedChange);
@@ -132,10 +134,10 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
       const state = live.current;
       const inside = state.root?.contains(document.activeElement) || document.activeElement === document.body;
       if (!inside || event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(open => !open); }
+      if (globalShortcut && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(open => !open); }
       if (event.key === "Escape" && state.narrow && (state.sidebarOpen || state.panelOpen)) { event.preventDefault(); closeDrawerRef.current(); }
     }; document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key);
-  }, []);
+  }, [globalShortcut]);
   useEffect(() => {
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;
