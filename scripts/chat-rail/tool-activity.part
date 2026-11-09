@@ -8,7 +8,10 @@ export type ToolActivityItem = {
   error?: string;
 };
 
+const defaultToolActivityLabels = { retry: "Retry", running: (count: number) => `Running ${count === 1 ? "a tool" : `${count} tools in parallel`}`, stopped: (done: number, count: number) => `Stopped · ${done} of ${count} ran`, completed: (count: number, failed: number, duration: string) => `Ran ${count} ${count === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : duration}`, duration: durationLabel };
+export type ToolActivityLabels = typeof defaultToolActivityLabels;
 export type ToolActivityProps = {
+  labels?: Partial<ToolActivityLabels>;
   tools: ToolActivityItem[];
   open?: boolean;
   defaultOpen?: boolean;
@@ -18,7 +21,8 @@ export type ToolActivityProps = {
 };
 
 /** A quiet, collapsible tool trace; active calls expand and count time, finished calls settle into one line. */
-export function ToolActivity({ tools: rawTools, open: openProp, defaultOpen, onOpenChange, onRetry, className }: ToolActivityProps) {
+export function ToolActivity({ tools: rawTools, open: openProp, defaultOpen, onOpenChange, onRetry, labels: labelsProp, className }: ToolActivityProps) {
+  const labels = { ...defaultToolActivityLabels, ...labelsProp };
   const tools = (Array.isArray(rawTools) ? rawTools : []).filter(Boolean);
   const running = tools.some(tool => tool.status === "running");
   const failed = tools.filter(tool => tool.status === "failed").length;
@@ -42,7 +46,7 @@ export function ToolActivity({ tools: rawTools, open: openProp, defaultOpen, onO
   const elapsed = (tool: ToolActivityItem) => tool.status === "running" ? Math.max(0, (now || tool.startedAt || 0) - (tool.startedAt ?? now)) : (tool.duration ?? 0);
   const total = Math.max(0, ...tools.map(elapsed));
   const stopped = tools.some(tool => tool.status === "stopped");
-  const label = running ? `Running ${tools.length === 1 ? "a tool" : `${tools.length} tools in parallel`}` : stopped ? `Stopped · ${tools.filter(tool => tool.status === "done").length} of ${tools.length} ran` : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : durationLabel(total)}`;
+  const label = running ? labels.running(tools.length) : stopped ? labels.stopped(tools.filter(tool => tool.status === "done").length, tools.length) : labels.completed(tools.length, failed, labels.duration(total));
   return <div className={["ui-ta", className].filter(Boolean).join(" ")} data-open={open} data-state={running ? "running" : failed ? "failed" : "done"}>
     <style href="ui-tool-activity" precedence="default">{css}</style>
     <button type="button" className="ui-ta__head" aria-expanded={open} aria-controls={`${id}-tools`} onClick={() => { if (openProp === undefined) setManual(!open); onOpenChange?.(!open); }}>
@@ -56,8 +60,8 @@ export function ToolActivity({ tools: rawTools, open: openProp, defaultOpen, onO
           <span className="ui-ta__mark" data-spinning={status === "running" || undefined}><Icon name={status === "running" ? "play" : status === "failed" ? "warning" : status === "stopped" ? "stop" : "check"} size={12}/></span>
           <span className="ui-ta__icon" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{tool.icon ?? <Icon name={index ? "globe" : "search"} size={13}/>}</span>
           <span className="ui-ta__label" dir="auto" title={tool.error ?? tool.label}>{tool.label}{tool.error && <small>{tool.error}</small>}</span>
-          <span className="ui-ta__time">{durationLabel(elapsed(tool))}</span>
-          {status === "failed" && onRetry && <button type="button" className="ui-ta__retry" onClick={() => onRetry(tool.id)}>Retry</button>}
+          <span className="ui-ta__time">{labels.duration(elapsed(tool))}</span>
+          {status === "failed" && onRetry && <button type="button" className="ui-ta__retry" onClick={() => onRetry(tool.id)}>{labels.retry}</button>}
         </li>;
       })}
     </ul></div>

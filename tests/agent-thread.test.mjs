@@ -469,3 +469,446 @@ test("every new component works alone in both styles and the full screen renders
     assert.match(html, /Message composer/);
   }
 });
+
+async function managedFixture(component, style) {
+  await page.goto(`${base}/?component=managed-${component}&style=${style}`, {
+    waitUntil: "networkidle",
+  });
+}
+const runtimeEvents = async () =>
+  JSON.parse(
+    await page.getByRole("status", { name: "Runtime events" }).textContent(),
+  );
+const managedInput = () =>
+  page.getByRole("textbox", { name: "消息", exact: true });
+
+for (const style of ["classic", "clean"]) {
+  test(`${style}: managed approval waits for external confirmation, recovers from failure and preserves all option IDs`, async () => {
+    await managedFixture("thread", style);
+    assert.equal(await page.getByRole("option").count(), 7);
+    assert.equal(
+      await page.getByRole("textbox", { name: "其他答案" }).count(),
+      0,
+    );
+    await page.getByRole("option").nth(2).click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector('output[aria-label="Runtime events"]')
+        .textContent.includes("answer:transport-complete"),
+    );
+    assert.equal(
+      await page.locator("[data-message-id]").count(),
+      4,
+      "No optimistic answer message",
+    );
+    assert.equal(await page.locator('[data-status="submitting"]').count(), 1);
+    assert.equal(
+      await page
+        .getByRole("group", { name: "允许哪一种操作？" })
+        .getAttribute("aria-busy"),
+      "true",
+    );
+    assert.equal(
+      await page
+        .getByRole("option")
+        .evaluateAll((items) => items.every((item) => item.disabled)),
+      true,
+    );
+    await page.keyboard.press("1");
+    await page.keyboard.press("Enter");
+    assert.equal(
+      (await runtimeEvents()).filter((event) =>
+        event.startsWith("answer:permission:"),
+      ).length,
+      1,
+    );
+    assert.equal(await page.locator('[data-answer="permission"]').count(), 0);
+    assert.equal(
+      await page.getByRole("log", { name: "对话" }).getAttribute("aria-busy"),
+      "true",
+    );
+    await button("Fail answer").click();
+    assert.equal(
+      await page.getByRole("alert").textContent(),
+      "服务失败，请重试",
+    );
+    assert.ok(
+      await page
+        .getByRole("group", { name: "允许哪一种操作？" })
+        .getAttribute("aria-describedby"),
+    );
+    await page.getByRole("option").nth(6).click();
+    assert.ok(
+      (await runtimeEvents()).includes(
+        'answer:permission:{"option":"policy:7"}',
+      ),
+    );
+    await button("Confirm answer").click();
+    assert.equal(await page.getByRole("option").count(), 0);
+    assert.equal(
+      await page
+        .getByRole("group", { name: "允许哪一种操作？" })
+        .getByRole("status")
+        .textContent(),
+      "策略 7",
+    );
+    assert.equal(
+      await page.locator("[data-message-id]").count(),
+      4,
+      "Even confirmation does not invent a message",
+    );
+    assert.ok(
+      (await runtimeEvents()).includes(
+        'answer:permission:{"option":"deny:request"}',
+      ),
+    );
+  });
+
+  test(`${style}: managed dock guards disabled/expired, repeat/IME and supports keyboard access beyond nine options`, async () => {
+    await managedFixture("dock", style);
+    await button("Disable answer").click();
+    await page.keyboard.press("2");
+    assert.deepEqual(await runtimeEvents(), []);
+    await button("Expire answer").click();
+    assert.equal(await page.getByRole("option").count(), 0);
+    assert.equal(
+      await page.getByRole("group").getByRole("status").textContent(),
+      "请求已过期",
+    );
+    await button("Await answer").click();
+    await button("More options").click();
+    assert.equal(await page.getByRole("option").count(), 10);
+    await page.getByRole("option").first().focus();
+    await page.keyboard.down("Enter");
+    await page.keyboard.up("Enter");
+    await button("Await answer").click();
+    await page.getByRole("option").first().focus();
+    await page.dispatchEvent('[role="option"]', "keydown", {
+      key: "Enter",
+      repeat: true,
+    });
+    await page.dispatchEvent('[role="option"]', "keydown", {
+      key: "1",
+      isComposing: true,
+    });
+    assert.equal(
+      (await runtimeEvents()).filter((event) =>
+        event.startsWith("answer:permission:"),
+      ).length,
+      1,
+    );
+    await page.keyboard.press("End");
+    assert.equal(
+      await page
+        .getByRole("option")
+        .last()
+        .evaluate((el) => el === document.activeElement),
+      true,
+    );
+    await page.keyboard.press("Enter");
+    assert.ok(
+      (await runtimeEvents()).includes('answer:permission:{"option":"ten"}'),
+    );
+    await button("Await answer").click();
+    await page.getByRole("option").first().focus();
+    await page.keyboard.press("9");
+    assert.ok(
+      (await runtimeEvents()).includes('answer:permission:{"option":"nine"}'),
+    );
+    await button("Await answer").click();
+    await button("Allow custom answer").click();
+    await page.getByRole("textbox", { name: "其他答案" }).fill("稍后处理");
+    await page.getByRole("textbox", { name: "其他答案" }).press("Enter");
+    assert.ok(
+      (await runtimeEvents()).includes('answer:permission:{"text":"稍后处理"}'),
+    );
+    assert.equal(
+      await page.getByRole("textbox", { name: "其他答案" }).inputValue(),
+      "稍后处理",
+    );
+  });
+
+  test(`${style}: managed send/stop/reconnect do not clear, queue, transcribe, upload or announce success`, async () => {
+    await managedFixture("thread", style);
+    await button("发送消息").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("output")
+        .textContent.includes("send:transport-complete"),
+    );
+    assert.equal(await managedInput().inputValue(), "保留草稿");
+    assert.equal(await button("移除 原生路径.csv").count(), 1);
+    assert.equal(await page.locator("[data-message-id]").count(), 4);
+    await button("Online").click();
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("offline"));
+      window.dispatchEvent(new Event("online"));
+    });
+    await page.waitForTimeout(1400);
+    assert.equal(
+      (await runtimeEvents()).filter(
+        (event) => event.startsWith("send:") && !event.includes("transport"),
+      ).length,
+      1,
+    );
+    assert.equal(
+      (await runtimeEvents()).some((event) =>
+        /unexpected|connection-write/.test(event),
+      ),
+      false,
+    );
+    assert.equal(await managedInput().inputValue(), "保留草稿");
+    await button("Offline").click();
+    await button("Retry now").click();
+    assert.ok((await runtimeEvents()).includes("reconnect-intent"));
+    assert.equal(await page.locator('[data-status="offline"]').count(), 1);
+    await button("停止").click();
+    assert.equal(await button("正在停止…").isDisabled(), true);
+    await managedInput().focus();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    assert.equal(
+      (await runtimeEvents()).filter((event) => event === "stop-intent").length,
+      1,
+    );
+    assert.equal(await page.getByText("已停止", { exact: true }).count(), 0);
+    assert.equal(await page.getByRole("log").getAttribute("aria-busy"), "true");
+    await button("Confirm stop").click();
+    assert.equal(await page.getByText("已停止", { exact: true }).count(), 1);
+    assert.equal(
+      await page.getByRole("log").getAttribute("aria-busy"),
+      "false",
+    );
+    await button("Confirm send").click();
+    assert.equal(await managedInput().inputValue(), "");
+    assert.equal(await page.locator("[data-message-id]").count(), 5);
+    assert.equal(await button("移除 原生路径.csv").count(), 0);
+  });
+
+  test(`${style}: one content hook replaces the entire body, supports null, time labels and streaming follow`, async () => {
+    await managedFixture("thread", style);
+    const rich = page.locator('[data-message-id="rich"]');
+    assert.equal(
+      await rich.getByRole("heading", { name: "中文报告" }).count(),
+      1,
+    );
+    assert.equal(await rich.locator("table").count(), 1);
+    assert.equal(await rich.locator("code").textContent(), "const answer = 42");
+    assert.equal(await rich.getByRole("math").textContent(), "x² + y²");
+    assert.equal(
+      await page
+        .getByText("Default body must be replaced", { exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page
+        .getByText("Hidden body must not render", { exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(await page.locator('[data-message-id="hidden"]').count(), 1);
+    assert.equal(
+      await page.getByText("保留默认正文", { exact: true }).count(),
+      1,
+    );
+    assert.equal(await rich.locator("time").textContent(), "本地时间 2000");
+    assert.equal(
+      await page
+        .getByText("从 本地时间 1000 起的新内容", { exact: true })
+        .count(),
+      1,
+    );
+    // Clear the caller-owned unread boundary before checking normal pinned scrolling.
+    await page.getByRole("button", { name: "Mark as read" }).click();
+    await managedInput().press("End");
+    await rich.evaluate((el) => {
+      const scroll = el.closest('[role="log"]').parentElement;
+      scroll.scrollTop = scroll.scrollHeight;
+      scroll.dispatchEvent(new Event("scroll"));
+    });
+    await button("Grow message").click();
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector('[role="log"]').parentElement;
+      return (
+        viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 2
+      );
+    });
+    assert.equal(await rich.locator("article").count(), 1);
+    assert.match(await rich.textContent(), /流式增长/);
+    await button("Failed message").click();
+    await page
+      .locator('[data-message-id="user"]')
+      .getByRole("button", { name: "Retry" })
+      .click();
+    assert.ok((await runtimeEvents()).includes("retry:user"));
+    assert.equal(
+      await page
+        .locator('[data-message-id="user"] [data-status="failed"]')
+        .count(),
+      1,
+    );
+  });
+
+  test(`${style}: composer slots/ref/events obey external keyboard handling and preserve managed attachments`, async () => {
+    await managedFixture("composer", style);
+    await button("Focus input").click();
+    assert.equal(
+      await managedInput().evaluate((el) => document.activeElement === el),
+      true,
+    );
+    await button("Callback ref").click();
+    await button("Focus input").click();
+    assert.equal(
+      await managedInput().evaluate((el) => document.activeElement === el),
+      true,
+    );
+    await managedInput().fill("/help");
+    assert.equal(await page.getByRole("listbox", { name: "命令" }).count(), 1);
+    await button("移除 原生路径.csv").click({ trial: true });
+    await managedInput().press("Enter");
+    assert.equal(await managedInput().inputValue(), "已选择命令");
+    assert.deepEqual(await runtimeEvents(), ["slash-selected"]);
+    await managedInput().press("Shift+Enter");
+    assert.match(await managedInput().inputValue(), /\n/);
+    await page.dispatchEvent("textarea", "keydown", {
+      key: "Enter",
+      isComposing: true,
+    });
+    await page.dispatchEvent("textarea", "keydown", {
+      key: "Enter",
+      repeat: true,
+    });
+    assert.deepEqual(await runtimeEvents(), ["slash-selected"]);
+    await page.dispatchEvent("textarea", "paste");
+    await page.dispatchEvent("textarea", "drop");
+    assert.deepEqual(await runtimeEvents(), [
+      "slash-selected",
+      "paste",
+      "drop",
+    ]);
+    await button("Toggle disabled").click();
+    assert.equal(
+      await managedInput().isDisabled(),
+      true,
+      "textareaProps.disabled=false cannot enable a disabled composer",
+    );
+    await button("Toggle disabled").click();
+    await button("Toggle readonly").click();
+    assert.equal(await managedInput().getAttribute("readonly"), "");
+    assert.equal(await button("发送消息").isDisabled(), true);
+    await button("Toggle readonly").click();
+    await button("Custom toolbar").click();
+    assert.equal(await button("语音输入").count(), 0);
+    assert.equal(await button("发送消息").count(), 0);
+    assert.equal(await page.locator('input[type="file"]').count(), 0);
+    await managedInput().fill("not sent by Enter");
+    await managedInput().press("Enter");
+    assert.equal(
+      (await runtimeEvents()).some((event) => event.startsWith("send:")),
+      false,
+    );
+    await button("自定义发送").click();
+    assert.ok((await runtimeEvents()).includes("custom-send"));
+    await button("Hide toolbar").click();
+    assert.equal(await button("自定义发送").count(), 0);
+    await button("Default toolbar").click();
+    await managedInput().fill("");
+    assert.equal(
+      await button("发送消息").isEnabled(),
+      true,
+      "Native path without size/File supports attachment-only sending",
+    );
+    await button("发送消息").click();
+    assert.ok((await runtimeEvents()).includes("send::/native/report.csv"));
+    assert.equal(await button("移除 原生路径.csv").count(), 1);
+    await button("Fail send").click();
+    await button("移除 原生路径.csv").click();
+    assert.equal(await button("发送消息").isDisabled(), true);
+  });
+
+  test(`${style}: shell slots retain layout/resizing, drawer focus and Escape; screen APIs do not leak to DOM`, async () => {
+    await managedFixture("shell", style);
+    const bounds = await page.evaluate(() => {
+      const find = (selector) =>
+        document.querySelector(selector).getBoundingClientRect().toJSON();
+      return {
+        header: find('[class$="__header"]'),
+        main: find("main"),
+        panel: find('[aria-label="Artifacts"]'),
+      };
+    });
+    assert.ok(bounds.header.bottom <= bounds.main.top + 1);
+    assert.ok(bounds.header.bottom <= bounds.panel.top + 1);
+    assert.ok(Math.abs(bounds.header.right - bounds.panel.right) < 2);
+    const separator = page.getByRole("separator", { name: "调整侧栏宽度" });
+    await separator.focus();
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await separator.getAttribute("aria-valuenow"), "282");
+    await button("Toggle sidebar").click();
+    assert.equal(
+      await page
+        .getByRole("complementary", { name: "应用侧栏", includeHidden: true })
+        .getAttribute("inert"),
+      "",
+    );
+    await button("打开侧栏").click();
+    await page.setViewportSize({ width: 390, height: 900 });
+    await button("打开侧栏").click();
+    await page.waitForFunction(
+      () => document.activeElement?.textContent === "会话历史",
+    );
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(
+      await page.evaluate(() => document.activeElement.textContent),
+      "最后一项",
+    );
+    await page.keyboard.press("Escape");
+    assert.equal(
+      await button("打开侧栏").evaluate((el) => el === document.activeElement),
+      true,
+    );
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await button("Empty slots").click();
+    assert.equal(
+      await page.getByRole("navigation", { name: "应用导航" }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByText("调用方标题栏", { exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByText("All projects", { exact: true }).count(),
+      0,
+      "null does not fall back to preview sidebar",
+    );
+    for (const component of ["screen", "rail"]) {
+      await managedFixture(component, style);
+      assert.equal(
+        await page.getByRole("heading", { name: "中文报告" }).count(),
+        1,
+      );
+      assert.equal(await page.getByRole("log", { name: "对话" }).count(), 1);
+      assert.equal(await page.locator("time").textContent(), "本地时间 2000");
+      assert.equal(
+        await managedInput().getAttribute("placeholder"),
+        "输入消息，或 / 选择命令",
+      );
+      assert.equal(
+        await page
+          .locator(
+            "[managed],[stopping],[threadlabels],[formattime],[rendermessagecontent],[sidebar],[header],[labels]",
+          )
+          .count(),
+        0,
+      );
+      await button("发送消息").click();
+      assert.equal(await managedInput().inputValue(), "保留草稿");
+      assert.equal(await page.locator("[data-message-id]").count(), 4);
+    }
+    await managedFixture("empty", style);
+    assert.equal(await page.locator("[data-message-id]").count(), 0);
+    assert.equal(await page.getByRole("option").count(), 0);
+  });
+}

@@ -20,7 +20,21 @@ export type AgentMessage = {
   status?: "sent" | "sending" | "queued" | "failed";
   answer?: { id: string; question: string };
 };
+const defaultAgentThreadLabels = {
+  conversation: "Conversation", emptyTitle: "What can I help you with?", emptyDescription: "Ask a question, explore an idea, or bring a file.", createdFiles: "Created files", youSaid: "You said:", youAnswered: "You answered:", answerContext: (question: string) => `Answered: ${question}`, asked: (question: string) => `Asked: ${question}`, answeredBelow: "answered below", waiting: "waiting", inInbox: "in Inbox",
+  retry: "Retry", sendFailed: "Couldn't send", queued: "Waiting to send", sending: "Sending…", stop: "Stop", stopping: "Stopping…", stopped: "Stopped", responseStopped: "Response stopped", responseComplete: "Response complete", queuedAnnouncement: "Waiting to send – it goes out when you're back online", uploadFailed: (name: string) => `Upload failed: ${name}`, voiceSaved: "Voice note saved – it will transcribe when you're back online", voiceNote: "Voice note", answeredAnnouncement: (answer: string) => `Answered: ${answer}`, laterAnnouncement: "Later – the decision waits above the composer", markedRead: "Marked as read",
+  running: "running", runningTasks: (count: number) => `${count} tasks running – open Tasks`, needsYou: (count: number) => `need${count === 1 ? "s" : ""} you`, waitingQuestions: (count: number, dock: boolean) => `${count} questions waiting – ${dock ? "show the decision" : "open Inbox"}`,
+  latest: "Back to latest", newLines: (count: number) => `${count} new lines`, jumpToLatest: (count: number, streaming: boolean) => `Jump to latest${count ? `, ${count} new lines` : ""}${streaming ? ", still writing" : ""}`,
+};
+export type AgentThreadLabels = typeof defaultAgentThreadLabels & { decisions?: Partial<DecisionDockLabels>; connection?: Partial<ConnectionBannerLabels>; uploads?: Partial<ThreadUploadsLabels>; voice?: Partial<ThreadVoiceInputLabels>; away?: Partial<AwaySummaryLabels>; tools?: Partial<ToolActivityLabels>; task?: Partial<ThreadTaskCardLabels> };
 export type AgentThreadProps = {
+  /** Caller owns all business state. default* fixtures and simulate are ignored. */
+  managed?: boolean;
+  /** A stop intent is pending; do not infer that tools have stopped. */
+  stopping?: boolean;
+  renderMessageContent?: (message: AgentMessage, defaultContent: ReactNode) => ReactNode;
+  labels?: Partial<AgentThreadLabels>;
+  formatTime?: (timestamp: number) => string;
   messages?: AgentMessage[];
   defaultMessages?: AgentMessage[];
   onMessagesChange?: (messages: AgentMessage[]) => void;
@@ -76,46 +90,54 @@ export const defaultAgentMessages: AgentMessage[] = [
 ];
 
 /** A conversation that preserves decisions, uploads and queued messages across interrupted connections. */
-export function AgentThread({ messages: messagesProp, defaultMessages = defaultAgentMessages, onMessagesChange, title = "Best fabric for a summer overshirt", assistantName = "Assistant", mode = "chat", onSend, onStop, onRetry, onOpenFile, onNavigate, onOpenTask, onOpenInbox, running, decisions: decisionsProp, defaultDecisions = [], onDecisionsChange, onDecide, onLater, decisionRequest, folded: foldedProp, defaultFolded = false, onFoldedChange, connection, defaultConnection, onConnectionChange, onReconnect, lastSeen: lastSeenProp, defaultLastSeen, onLastSeenChange, awayAfter = 5, onMarkRead, uploads: uploadsProp, defaultUploads = [], onUploadsChange, upload, transcribe, composerProps, composer, simulate = messagesProp === undefined && onSend === undefined, className }: AgentThreadProps) {
-  const [messages, setMessages] = useControllable(messagesProp, defaultMessages, onMessagesChange);
-  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+export function AgentThread({ managed = false, stopping = false, renderMessageContent, labels: labelsProp, formatTime = defaultThreadFormatTime, messages: messagesProp, defaultMessages = defaultAgentMessages, onMessagesChange, title = "Best fabric for a summer overshirt", assistantName = "Assistant", mode = "chat", onSend, onStop, onRetry, onOpenFile, onNavigate, onOpenTask, onOpenInbox, running, decisions: decisionsProp, defaultDecisions = [], onDecisionsChange, onDecide, onLater, decisionRequest, folded: foldedProp, defaultFolded = false, onFoldedChange, connection, defaultConnection, onConnectionChange, onReconnect, lastSeen: lastSeenProp, defaultLastSeen, onLastSeenChange, awayAfter = 5, onMarkRead, uploads: uploadsProp, defaultUploads = [], onUploadsChange, upload, transcribe, composerProps, composer, simulate: simulateProp = messagesProp === undefined && onSend === undefined, className }: AgentThreadProps) {
+  const simulate = !managed && simulateProp;
+  const labels = { ...defaultAgentThreadLabels, ...labelsProp };
+  const decisionLabels = { ...defaultDecisionDockLabels, ...labels.decisions };
+  const [messages, setMessages] = useControllable(managed ? messagesProp ?? [] : messagesProp, defaultMessages, onMessagesChange);
+  const [decisions, setDecisions] = useControllable(managed ? decisionsProp ?? [] : decisionsProp, defaultDecisions, onDecisionsChange);
   const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
-  const [uploads, setUploads] = useControllable(uploadsProp, defaultUploads, onUploadsChange);
+  const [uploads, setUploads] = useControllable(managed ? uploadsProp ?? [] : uploadsProp, defaultUploads, onUploadsChange);
   const [draft, setDraft] = useControllable(composerProps?.value, composerProps?.defaultValue ?? "", composerProps?.onValueChange);
-  const [lastSeen, setLastSeen] = useControllable<number | undefined>(lastSeenProp, defaultLastSeen, onLastSeenChange);
+  const [lastSeen, setLastSeen] = useControllable<number | undefined>(lastSeenProp, managed ? undefined : defaultLastSeen, onLastSeenChange);
   const [readReceipt, setReadReceipt] = useState<number | undefined>();
   const [localRunning, setLocalRunning] = useState(false), [away, setAway] = useState(false), [newCount, setNewCount] = useState(0), [announcement, setAnnouncement] = useState("");
-  const [answers, setAnswers] = useState<Record<string, string>>({}), [activeDecision, setActiveDecision] = useState(""), [focusRequest, setFocusRequest] = useState(0);
+  const [localAnswers, setAnswers] = useState<Record<string, string>>({}), [activeDecision, setActiveDecision] = useState(""), [focusRequest, setFocusRequest] = useState(0);
+  const answers: Record<string, string> = managed ? Object.fromEntries([...decisions.filter(decision => decision.status === "answered").map(decision => [decision.id, decision.answer === undefined ? decisionLabels.answered : threadDecisionAnswerLabel(decision, decision.answer, decisionLabels)]), ...messages.filter(message => message.answer).map(message => [message.answer!.id, message.text ?? decisionLabels.answered])]) : localAnswers;
   const [voicePreview, setVoicePreview] = useState(simulate === "dictating"), [voiceSeconds, setVoiceSeconds] = useState(0);
   const root = useRef<HTMLElement>(null), scroll = useRef<HTMLDivElement>(null), column = useRef<HTMLDivElement>(null), unreadBoundary = useRef<HTMLDivElement>(null), follow = useRef(simulate !== "scrolled");
   const messageRef = useRef(messages), decisionsRef = useRef(decisions), uploadsRef = useRef(uploads), draftRef = useRef(draft);
   messageRef.current = messages; decisionsRef.current = decisions; uploadsRef.current = uploads; draftRef.current = draft;
+  const managedRef = useRef(managed); managedRef.current = managed;
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()), generation = useRef(0), sequence = useRef(0), mounted = useRef(true);
   const deliveryTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const controllers = useRef<Map<string, AbortController>>(new Map()), transcribing = useRef<Set<string>>(new Set()), delivered = useRef<Set<string>>(new Set());
-  const connectionState = useThreadConnection({ connection, defaultConnection, onConnectionChange, onReconnect });
+  const connectionState = useThreadConnection({ managed, connection, defaultConnection, onConnectionChange, onReconnect });
   const connectionRef = useRef(connectionState.status); connectionRef.current = connectionState.status;
   const reduced = useReducedMotion();
   const list = (Array.isArray(messages) ? messages : []).filter(Boolean);
-  const streaming = localRunning || list.some(message => message.streaming || message.tools?.some(tool => tool.status === "running") || message.parts?.some(part => part.kind === "tools" && part.tools.some(tool => tool.status === "running")));
-  const update = (fn: (messages: AgentMessage[]) => AgentMessage[]) => { const next = fn(messageRef.current); messageRef.current = next; setMessages(next); };
-  const updateUploads = (fn: (uploads: ThreadUpload[]) => ThreadUpload[]) => { const next = fn(uploadsRef.current); uploadsRef.current = next; setUploads(next); };
-  const updateDecisions = (next: ThreadDecision[]) => { decisionsRef.current = next; setDecisions(next); };
-  const schedule = (callback: () => void, ms: number) => { const timer = setTimeout(() => { timers.current.delete(timer); if (mounted.current) callback(); }, ms); timers.current.add(timer); return timer; };
+  const streaming = !managed && localRunning || list.some(message => message.streaming || message.tools?.some(tool => tool.status === "running") || message.parts?.some(part => part.kind === "tools" && part.tools.some(tool => tool.status === "running")));
+  const update = (fn: (messages: AgentMessage[]) => AgentMessage[]) => { if (managedRef.current) return; const next = fn(messageRef.current); messageRef.current = next; setMessages(next); };
+  const updateUploads = (fn: (uploads: ThreadUpload[]) => ThreadUpload[]) => { if (managedRef.current) return; const next = fn(uploadsRef.current); uploadsRef.current = next; setUploads(next); };
+  const updateDecisions = (next: ThreadDecision[]) => { if (managedRef.current) return; decisionsRef.current = next; setDecisions(next); };
+  const schedule = (callback: () => void, ms: number) => { const timer = setTimeout(() => { timers.current.delete(timer); if (mounted.current && !managedRef.current) callback(); }, ms); timers.current.add(timer); return timer; };
   const clearTimers = () => { timers.current.forEach(timer => clearTimeout(timer)); timers.current.clear(); };
   const pause = (ms: number, token: number) => new Promise<boolean>(resolve => {
     let remaining = ms;
     const tick = () => { if (!mounted.current || token !== generation.current) { resolve(false); return; } if (connectionRef.current === "online") remaining -= 50; if (remaining <= 0) resolve(true); else schedule(tick, 50); }; schedule(tick, Math.min(50, ms));
   });
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; clearTimers(); deliveryTimers.current.forEach(timer => clearTimeout(timer)); controllers.current.forEach(controller => controller.abort()); }; }, []);
+  useEffect(() => { if (!managed) return; generation.current++; clearTimers(); controllers.current.forEach(controller => controller.abort()); controllers.current.clear(); setVoicePreview(false); }, [managed]);
   useLayoutEffect(() => { const el = scroll.current; if (!el) return; if (follow.current) el.scrollTop = el.scrollHeight; else setNewCount(count => count + 1); }, [messages]);
   useEffect(() => { const el = scroll.current, content = column.current; if (!el || !content) return; const observer = new ResizeObserver(() => { if (follow.current) el.scrollTop = el.scrollHeight; }); observer.observe(content); observer.observe(el); return () => observer.disconnect(); }, []);
   const latest = () => { follow.current = true; setAway(false); setNewCount(0); scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: reduced ? "auto" : "smooth" }); };
   const stop = () => {
+    if (stopping) return;
+    if (managed) { onStop?.(); return; }
     generation.current++; clearTimers(); setLocalRunning(false);
     const stoppedTool = (tool: ToolActivityItem) => tool.status === "running" ? { ...tool, status: "stopped" as const, duration: Math.max(0, Date.now() - (tool.startedAt ?? Date.now())) } : tool;
     update(messages => messages.map(message => message.role !== "user" && (message.streaming || message.tools?.some(tool => tool.status === "running") || message.parts?.some(part => part.kind === "tools" && part.tools.some(tool => tool.status === "running"))) ? { ...message, streaming: false, stopped: true, tools: message.tools?.map(stoppedTool), parts: message.parts?.map(part => part.kind === "tools" ? { ...part, tools: part.tools.map(stoppedTool) } : part) } : message));
-    onStop?.(); setAnnouncement("Response stopped");
+    onStop?.(); setAnnouncement(labels.responseStopped);
   };
   const streamText = async (id: string, text: string, token: number, append = false) => {
     const words = text.match(/\S+\s*/g) ?? [];
@@ -135,32 +157,34 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
     update(messages => messages.map(message => message.id === id ? { ...message, tools: message.tools?.map(tool => ({ ...tool, status: "done", duration: 1300 })) } : message));
     const response = mode === "orchestrator" ? "I've checked the project notes and the current tasks. I'll keep the work moving and bring the next decision back here when I need your input." : "Here's what I found: the sources agree on the main point, and the comparison sheet has the numbers side by side. Want me to turn it into a short brief for the supplier?";
     if (!await streamText(id, response, token)) return;
-    update(messages => messages.map(message => message.id === id ? { ...message, streaming: false } : message)); setLocalRunning(false); setAnnouncement("Response complete");
+    update(messages => messages.map(message => message.id === id ? { ...message, streaming: false } : message)); setLocalRunning(false); setAnnouncement(labels.responseComplete);
   };
   const defaults = (): ChatComposerSendOptions => ({ model: composerProps?.model ?? "auto", approval: composerProps?.approval ?? "request", planMode: composerProps?.planMode ?? false, attachments: [] });
   const pending = useRef<Map<string, ChatComposerSendOptions>>(new Map());
   const send = (text: string, options: ChatComposerSendOptions) => {
+    if (managed) { onSend?.(text, options); return; }
     const id = `message-${Date.now()}-${++sequence.current}`;
     const online = connectionRef.current === "online";
     update(messages => [...messages, { id, role: "user", text, at: Date.now(), status: online ? "sent" : "queued", attachments: options.attachments.map(file => ({ name: file.name, size: file.size })) }]);
     updateUploads(uploads => uploads.filter(file => file.kind === "voice" && file.state !== "done")); latest();
-    if (!online) { pending.current.set(id, options); setAnnouncement("Waiting to send – it goes out when you're back online"); return; }
+    if (!online) { pending.current.set(id, options); setAnnouncement(labels.queuedAnnouncement); return; }
     delivered.current.add(id); onSend?.(text, options);
     if (simulate) { if (streaming) stop(); void reply(text); }
   };
   const deliveryRef = useRef({ onSend, simulate }); deliveryRef.current = { onSend, simulate };
   useEffect(() => {
-    if (connectionState.status !== "online") return;
+    if (managed || connectionState.status !== "online") return;
     const queued = messageRef.current.filter(message => message.role === "user" && message.status === "queued" && !delivered.current.has(message.id));
     queued.forEach(message => delivered.current.add(message.id));
     if (!queued.length) return;
     update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "sending" } : message));
     const deliveryTimer = setTimeout(() => { deliveryTimers.current.delete(deliveryTimer); if (!mounted.current) return; if (connectionRef.current !== "online") { queued.forEach(message => delivered.current.delete(message.id)); update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "queued" } : message)); return; } update(messages => messages.map(message => queued.some(item => item.id === message.id) ? { ...message, status: "sent" } : message)); queued.forEach(message => { const options = pending.current.get(message.id) ?? defaults(); pending.current.delete(message.id); if (!message.answer) deliveryRef.current.onSend?.(message.text ?? "", options); }); if (deliveryRef.current.simulate && queued.some(message => !message.answer)) { update(messages => messages.map(message => message.streaming ? { ...message, streaming: false } : message)); void reply(queued.at(-1)?.text ?? ""); } }, 600); deliveryTimers.current.add(deliveryTimer);
-  }, [connectionState.status]);
+    return () => { clearTimeout(deliveryTimer); deliveryTimers.current.delete(deliveryTimer); queued.forEach(message => delivered.current.delete(message.id)); };
+  }, [managed, connectionState.status]);
   const startUpload = (item: ThreadUpload) => {
-    if (!upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online") return;
+    if (managed || !upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online") return;
     const controller = new AbortController(); controllers.current.set(item.id, controller);
-    Promise.resolve().then(() => { if (controller.signal.aborted) return; return upload(item.file!, progress => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, progress: clamp(safeNumber(progress, 0), 0, 1), state: "uploading" } : file)); }, controller.signal); }).then(() => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "done", progress: 1 } : file)); }).catch(() => { if (!controller.signal.aborted && mounted.current) { updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "failed" } : file)); setAnnouncement(`Upload failed: ${item.name}`); } }).finally(() => { if (controllers.current.get(item.id) === controller) controllers.current.delete(item.id); });
+    Promise.resolve().then(() => { if (controller.signal.aborted) return; return upload(item.file!, progress => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, progress: clamp(safeNumber(progress, 0), 0, 1), state: "uploading" } : file)); }, controller.signal); }).then(() => { if (!controller.signal.aborted && mounted.current) updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "done", progress: 1 } : file)); }).catch(() => { if (!controller.signal.aborted && mounted.current) { updateUploads(files => files.map(file => file.id === item.id ? { ...file, state: "failed" } : file)); setAnnouncement(labels.uploadFailed(item.name)); } }).finally(() => { if (controllers.current.get(item.id) === controller) controllers.current.delete(item.id); });
   };
   const attach = (files: ChatComposerAttachment[]) => {
     const added: ThreadUpload[] = files.filter(file => !uploadsRef.current.some(item => item.id === file.id)).map(file => ({ ...file, kind: "file", progress: 0, state: connectionRef.current === "online" ? "uploading" : "paused" }));
@@ -171,37 +195,37 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
   const retryUpload = (id: string) => { const file = uploadsRef.current.find(file => file.id === id); if (!file) return; if (file.kind === "voice") { updateUploads(files => files.map(file => file.id === id ? { ...file, state: "waiting" } : file)); return; } const next: ThreadUpload = { ...file, progress: 0, state: connectionRef.current === "online" ? "uploading" : "paused" }; updateUploads(files => files.map(file => file.id === id ? next : file)); startUpload(next); };
   const uploading = uploads.some(file => file.state === "uploading" || file.state === "paused");
   useEffect(() => {
-    if (!uploading || upload) return;
-    const interval = setInterval(() => updateUploads(files => files.map(file => { if (file.state !== "uploading" && file.state !== "paused") return file; if (connectionRef.current !== "online") return { ...file, state: "paused" }; const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size)); return { ...file, progress, state: progress >= 1 ? "done" : "uploading" }; })), 200);
+    if (managed || !uploading || upload) return;
+    const interval = setInterval(() => updateUploads(files => files.map(file => { if (file.state !== "uploading" && file.state !== "paused") return file; if (connectionRef.current !== "online") return { ...file, state: "paused" }; const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size ?? 1)); return { ...file, progress, state: progress >= 1 ? "done" : "uploading" }; })), 200);
     return () => clearInterval(interval);
-  }, [uploading, upload]);
+  }, [managed, uploading, upload]);
   useEffect(() => {
-    if (!upload) return;
+    if (managed || !upload) return;
     if (connectionState.status === "online") { uploadsRef.current.filter(file => file.kind !== "voice" && (file.state === "paused" || file.state === "uploading")).forEach(startUpload); return; }
     controllers.current.forEach(controller => controller.abort()); controllers.current.clear();
     if (uploadsRef.current.some(file => file.kind !== "voice" && file.state === "uploading")) updateUploads(files => files.map(file => file.kind !== "voice" && file.state === "uploading" ? { ...file, state: "paused" } : file));
-  }, [connectionState.status, upload]);
+  }, [managed, connectionState.status, upload]);
   const transcribeClip = async (clip: ThreadAttachment) => {
     if (transcribe) return transcribe(clip);
     if (!simulate) throw new Error("Provide a transcribe callback to process saved voice notes.");
     await new Promise(resolve => setTimeout(resolve, 800)); return "Also send Dana the load test numbers.";
   };
   const voice = async (blob: Blob, signal: AbortSignal) => {
-    const clip: ThreadUpload = { id: `voice-${Date.now()}`, name: "Voice note", size: blob.size, kind: "voice", file: new File([blob], "Voice note.webm", { type: blob.type }), progress: 1, seconds: Math.max(1, voiceSeconds), state: "waiting" };
-    if (connectionRef.current !== "online") { updateUploads(files => [...files, clip]); setAnnouncement("Voice note saved – it will transcribe when you're back online"); return ""; }
+    const clip: ThreadUpload = { id: `voice-${Date.now()}`, name: labels.voiceNote, size: blob.size, kind: "voice", file: new File([blob], "Voice note.webm", { type: blob.type }), progress: 1, seconds: Math.max(1, voiceSeconds), state: "waiting" };
+    if (connectionRef.current !== "online") { updateUploads(files => [...files, clip]); setAnnouncement(labels.voiceSaved); return ""; }
     const text = await transcribeClip(clip); return signal.aborted ? "" : text;
   };
   useEffect(() => {
-    if (connectionState.status !== "online") return;
+    if (managed || connectionState.status !== "online") return;
     uploads.filter(file => file.kind === "voice" && file.state === "waiting" && !transcribing.current.has(file.id)).forEach(clip => {
       transcribing.current.add(clip.id); updateUploads(files => files.map(file => file.id === clip.id ? { ...file, state: "transcribing" } : file));
-      transcribeClip(clip).then(text => { if (!mounted.current || !uploadsRef.current.some(file => file.id === clip.id)) return; setDraft(`${draftRef.current.trimEnd()}${draftRef.current.trim() ? " " : ""}${text}`); updateUploads(files => files.filter(file => file.id !== clip.id)); }).catch(() => { if (mounted.current) updateUploads(files => files.map(file => file.id === clip.id ? { ...file, state: "failed" } : file)); }).finally(() => transcribing.current.delete(clip.id));
+      transcribeClip(clip).then(text => { if (!mounted.current || managedRef.current || !uploadsRef.current.some(file => file.id === clip.id)) return; setDraft(`${draftRef.current.trimEnd()}${draftRef.current.trim() ? " " : ""}${text}`); updateUploads(files => files.filter(file => file.id !== clip.id)); }).catch(() => { if (mounted.current) updateUploads(files => files.map(file => file.id === clip.id ? { ...file, state: "failed" } : file)); }).finally(() => transcribing.current.delete(clip.id));
     });
-  }, [connectionState.status, uploads]);
+  }, [managed, connectionState.status, uploads]);
   useEffect(() => { if (!voicePreview) return; const timer = setInterval(() => setVoiceSeconds(value => value + 1), 1000); return () => clearInterval(timer); }, [voicePreview]);
   const finishVoicePreview = () => {
     setVoicePreview(false);
-    const clip: ThreadUpload = { id: `voice-preview-${Date.now()}`, name: "Voice note", kind: "voice", seconds: Math.max(1, voiceSeconds), size: Math.max(1, voiceSeconds) * 16000, progress: 1, state: "waiting" };
+    const clip: ThreadUpload = { id: `voice-preview-${Date.now()}`, name: labels.voiceNote, kind: "voice", seconds: Math.max(1, voiceSeconds), size: Math.max(1, voiceSeconds) * 16000, progress: 1, state: "waiting" };
     updateUploads(files => [...files, clip]);
   };
   const openInbox = (id?: string) => onOpenInbox ? onOpenInbox(id) : onNavigate?.("Inbox");
@@ -213,18 +237,19 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
   useEffect(() => { if (decisionRequest) showDecision(decisionRequest.id); }, [decisionRequest]);
   const answered = (id: string, answer: ThreadDecisionAnswer) => {
     const decision = decisionsRef.current.find(item => item.id === id); if (!decision) return;
-    const text = answer === "approve" ? "Approved" : answer === "decline" ? "Declined" : answer.text ?? decision.options?.find(option => option.id === answer.option)?.title ?? "Answered";
+    if (managed) { onDecide?.(id, answer); return; }
+    const text = threadDecisionAnswerLabel(decision, answer, decisionLabels);
     setAnswers(previous => ({ ...previous, [id]: text }));
     update(messages => [...messages, { id: `answer-${Date.now()}-${++sequence.current}`, role: "user", at: Date.now(), text, answer: { id, question: decision.question }, status: connectionRef.current === "online" ? "sent" : "queued" }]);
-    latest(); onDecide?.(id, answer); setAnnouncement(`Answered: ${text}`);
+    latest(); onDecide?.(id, answer); setAnnouncement(labels.answeredAnnouncement(text));
     requestAnimationFrame(() => root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }));
     if (simulate && connectionRef.current === "online") {
       schedule(() => { update(messages => [...messages, { id: `ack-${Date.now()}`, role: "agent", at: Date.now(), parts: [{ kind: "text", text: answer === "decline" ? "Understood. I'll keep the draft here until you're ready." : `Got it – ${text}. I'll take it from here.` }] }]); }, 450);
       if (decision.taskId === "ingest") schedule(() => update(messages => messages.map(message => ({ ...message, parts: message.parts?.map(part => part.kind === "task" && part.task.id === "ingest" ? { ...part, task: { ...part.task, status: "Deployed to staging · smoke test passed", done: true, steps: { done: 4, total: 4 } } } : part) }))), 1800);
     }
   };
-  const later = (id: string) => { onLater?.(id); setAnnouncement("Later – the decision waits above the composer"); requestAnimationFrame(() => root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true })); };
-  const read = () => { setReadReceipt(lastSeen); setLastSeen(undefined); onMarkRead?.(); setAnnouncement("Marked as read"); };
+  const later = (id: string) => { onLater?.(id); setAnnouncement(labels.laterAnnouncement); requestAnimationFrame(() => root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true })); };
+  const read = () => { if (managed) { onMarkRead?.(); return; } setReadReceipt(lastSeen); setLastSeen(undefined); onMarkRead?.(); setAnnouncement(labels.markedRead); };
   const boundaryIndex = lastSeen != null && lastSeen !== readReceipt ? list.findIndex(message => (message.at ?? 0) > lastSeen) : -1;
   const after = boundaryIndex >= 0 ? list.slice(boundaryIndex) : [];
   const completedTasks = new Map<string, ThreadTask>();
@@ -237,7 +262,7 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
     position(); void document.fonts?.ready.then(position);
     return () => { disposed = true; };
   }, [lastSeen]);
-  useEffect(() => { let hiddenAt = 0; const visibility = () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt >= Math.max(0, awayAfter) * 60000) setLastSeen(hiddenAt); }; document.addEventListener("visibilitychange", visibility); return () => document.removeEventListener("visibilitychange", visibility); }, [awayAfter]);
+  useEffect(() => { if (managed) return; let hiddenAt = 0; const visibility = () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt >= Math.max(0, awayAfter) * 60000) setLastSeen(hiddenAt); }; document.addEventListener("visibilitychange", visibility); return () => document.removeEventListener("visibilitychange", visibility); }, [managed, awayAfter]);
   const shortcutActions = useRef({ latest, streaming, stop, voicePreview }); shortcutActions.current = { latest, streaming, stop, voicePreview };
   useEffect(() => { const key = (event: globalThis.KeyboardEvent) => { if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isEditing(event.target)) return; if (document.activeElement !== document.body && !root.current?.contains(document.activeElement)) return; if (event.key === "End") { event.preventDefault(); shortcutActions.current.latest(); } if (event.key === "/") { event.preventDefault(); root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); } }; document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, []);
   const liveStory = async () => {
@@ -262,7 +287,7 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
     if (simulate === "scrolled") { follow.current = false; const frame = requestAnimationFrame(() => { if (scroll.current) scroll.current.scrollTop = Math.max(0, scroll.current.scrollHeight - scroll.current.clientHeight - 280); setAway(true); setNewCount(12); }); return () => cancelAnimationFrame(frame); }
   }, []);
   const retry = (id: string) => {
-    onRetry?.(id); if (!simulate) return;
+    onRetry?.(id); if (managed || !simulate) return;
     const failed = messageRef.current.find(message => message.id === id); if (!failed) return;
     if (failed.role === "user") { const options = defaults(); update(messages => messages.map(message => message.id === id ? { ...message, status: connectionRef.current === "online" ? "sent" : "queued" } : message)); if (connectionRef.current === "online") { onSend?.(failed.text ?? "", options); void reply(failed.text ?? ""); } return; }
     update(messages => messages.map(message => message.id === id ? { ...message, streaming: true, parts: message.parts?.filter(part => part.kind !== "error").map(part => part.kind === "tools" ? { ...part, tools: part.tools.map(tool => tool.status === "failed" ? { ...tool, status: "running", startedAt: Date.now() } : tool) } : part) } : message));
@@ -271,37 +296,38 @@ export function AgentThread({ messages: messagesProp, defaultMessages = defaultA
   };
   const needsBaseline = useRef({ needs: running?.needs, answered: 0 });
   if (needsBaseline.current.needs !== running?.needs) needsBaseline.current = { needs: running?.needs, answered: Object.keys(answers).length };
-  const needs = Math.max(0, safeNumber(running?.needs, decisions.length) - (Object.keys(answers).length - needsBaseline.current.answered));
-  const time = (at: number) => new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
-  const fileChips = (names: string[]) => <div className="ui-th__files" aria-label="Created files">{names.map(name => <button type="button" key={name} className="ui-th__file" title={name} onClick={() => onOpenFile?.(name)}><span data-kind={name.endsWith(".csv") ? "table" : /\.(ya?ml|json|tsx?|js)$/.test(name) ? "code" : "document"}><Icon name={name.endsWith(".csv") ? "table" : "document"} size={12}/></span><span>{name}</span></button>)}</div>;
+  const needs = Math.max(0, safeNumber(running?.needs, decisions.filter(decision => !decision.status || decision.status === "awaiting" || decision.status === "submitting").length) - (managed ? 0 : Object.keys(answers).length - needsBaseline.current.answered));
+  const fileChips = (names: string[]) => <div className="ui-th__files" aria-label={labels.createdFiles}>{names.map(name => <button type="button" key={name} className="ui-th__file" title={name} onClick={() => onOpenFile?.(name)}><span data-kind={name.endsWith(".csv") ? "table" : /\.(ya?ml|json|tsx?|js)$/.test(name) ? "code" : "document"}><Icon name={name.endsWith(".csv") ? "table" : "document"} size={12}/></span><span>{name}</span></button>)}</div>;
   const textPart = (text: string, caret: boolean) => <div className="ui-th__text" dir="auto">{text.split(/\n{2,}/).map((paragraph, index, paragraphs) => <p key={index}>{paragraph}{caret && index === paragraphs.length - 1 && <span className="ui-th__caret" aria-hidden="true"/>}</p>)}</div>;
   const completedUploads = uploads.filter(file => file.state === "done" && file.kind !== "voice");
-  const blockedUpload = uploads.some(file => file.kind !== "voice" && file.state !== "done");
-  return <section ref={root} data-thread-shortcuts="" className={["ui-th", className].filter(Boolean).join(" ")} data-orchestrator={mode === "orchestrator" || undefined} aria-label={title} onKeyDown={event => { if (event.defaultPrevented) return; if (event.key === "Escape" && voicePreview) { event.preventDefault(); setVoicePreview(false); } else if (event.key === "Escape" && streaming) { event.preventDefault(); stop(); } }}>
+  const blockedUpload = !managed && uploads.some(file => file.kind !== "voice" && file.state !== "done");
+  const content = (message: AgentMessage, defaultContent: ReactNode) => renderMessageContent ? renderMessageContent(message, defaultContent) : defaultContent;
+  return <section ref={root} data-thread-shortcuts="" className={["ui-th", className].filter(Boolean).join(" ")} data-orchestrator={mode === "orchestrator" || undefined} aria-label={title} onKeyDown={event => { if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing) return; if (event.key === "Escape" && voicePreview) { event.preventDefault(); setVoicePreview(false); } else if (event.key === "Escape" && streaming) { event.preventDefault(); stop(); } }}>
     <style href="ui-agent-thread" precedence="default">{css}</style>
-    <header className="ui-th__head"><h1 className="ui-th__sr">{title}</h1>{running && <div className="ui-th__summary"><button type="button" aria-label={`${running.running} tasks running – open Tasks`} onClick={() => onNavigate?.("Tasks")}><i className="ui-th__running-dot"/>{Math.max(0, safeNumber(running.running, 0))}<span>running</span></button>{needs > 0 && <><span className="ui-th__summary-separator">·</span><button type="button" aria-label={`${needs} questions waiting – ${decisions.length ? "show the decision" : "open Inbox"}`} onClick={() => showDecision()}><i className="ui-th__needs-dot"/>{needs}<span>need{needs === 1 ? "s" : ""} you</span></button></>}</div>}</header>
-    <ConnectionBanner managed connection={connectionState.status} retryIn={connectionState.retryIn} backOnline={connectionState.backOnline} onReconnect={connectionState.reconnect}/>
-    <div className="ui-th__body"><div ref={scroll} className="ui-th__scroll" onScroll={() => { const el = scroll.current; if (!el) return; const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40; follow.current = pinned; setAway(!pinned); if (pinned) setNewCount(0); }}><div ref={column} className="ui-th__column" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions" aria-busy={streaming}>
-      {!list.length && <div className="ui-th__empty"><span className="ui-th__empty-icon"><Icon name="spark" size={26}/></span><h2>What can I help you with?</h2><p>Ask a question, explore an idea, or bring a file.</p></div>}
-      {list.map((message, messageIndex) => <div className="ui-th__message" key={message.id}>
-        {messageIndex === boundaryIndex && <div ref={unreadBoundary} className="ui-th__unread-boundary"><AwaySummary tasks={[...completedTasks.values()]} decisions={awayDecisions} since={lastSeen} onOpenTask={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")} onOpenDecision={showDecision} onOpenTasks={() => onNavigate?.("Tasks")} onOpenInbox={() => openInbox()} onMarkRead={read}/></div>}
-        {message.role === "user" ? <div className="ui-th__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}><span className="ui-th__sr">{message.answer ? "You answered:" : "You said:"}</span>{message.answer && <span className="ui-th__answer-context" title={message.answer.question}>Answered: {message.answer.question}</span>}{message.attachments && message.attachments.length > 0 && <div className="ui-th__attachments">{message.attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="document" size={14}/>{file.name}</span>)}</div>}{message.text && <p className="ui-th__bubble" dir="auto">{message.text}</p>}{message.status && message.status !== "sent" && <span className="ui-th__send-status">{message.status === "failed" ? <><Icon name="warning" size={12}/>Couldn't send · <button type="button" onClick={() => retry(message.id)}>Retry</button></> : message.status === "queued" ? "Waiting to send" : "Sending…"}</span>}</div> : <div className="ui-th__assistant" data-streaming={message.streaming || undefined}>
-          {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? <div className="ui-th__who"><span className="ui-th__avatar" data-busy={message.streaming || undefined} aria-hidden="true">{[0, 2, 4, 6, 8].map((pixel, index) => <i key={pixel} style={{ gridArea: `${Math.floor(pixel / 3) + 1}/${pixel % 3 + 1}`, animationDelay: `${index * 130}ms` }}/>)}</span><span>{assistantName}</span>{message.at != null && Number.isFinite(message.at) && <time dateTime={new Date(message.at).toISOString()}>{time(message.at)}</time>}</div> : <span className="ui-th__sr">{assistantName}:</span>}
-          {message.tools && message.tools.length > 0 && <ToolActivity tools={message.tools} onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}/>}
-          {message.parts?.slice(0, 1).map(part => part.kind === "tools" && <ToolActivity key={part.id} tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/>)}
+    <header className="ui-th__head"><h1 className="ui-th__sr">{title}</h1>{running && <div className="ui-th__summary"><button type="button" aria-label={labels.runningTasks(running.running)} onClick={() => onNavigate?.("Tasks")}><i className="ui-th__running-dot"/>{Math.max(0, safeNumber(running.running, 0))}<span>{labels.running}</span></button>{needs > 0 && <><span className="ui-th__summary-separator">·</span><button type="button" aria-label={labels.waitingQuestions(needs, decisions.length > 0)} onClick={() => showDecision()}><i className="ui-th__needs-dot"/>{needs}<span>{labels.needsYou(needs)}</span></button></>}</div>}</header>
+    <ConnectionBanner managed labels={labels.connection} connection={connectionState.status} retryIn={managed ? undefined : connectionState.retryIn} backOnline={!managed && connectionState.backOnline} onReconnect={connectionState.reconnect}/>
+    <div className="ui-th__body"><div ref={scroll} className="ui-th__scroll" onScroll={() => { const el = scroll.current; if (!el) return; const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40; follow.current = pinned; setAway(!pinned); if (pinned) setNewCount(0); }}><div ref={column} className="ui-th__column" role="log" aria-label={labels.conversation} aria-live="polite" aria-relevant="additions" aria-busy={streaming}>
+      {!list.length && <div className="ui-th__empty"><span className="ui-th__empty-icon"><Icon name="spark" size={26}/></span><h2>{labels.emptyTitle}</h2><p>{labels.emptyDescription}</p></div>}
+      {list.map((message, messageIndex) => <div className="ui-th__message" data-message-id={message.id} key={message.id}>
+        {messageIndex === boundaryIndex && <div ref={unreadBoundary} className="ui-th__unread-boundary"><AwaySummary labels={labels.away} formatTime={formatTime} tasks={[...completedTasks.values()]} decisions={awayDecisions} since={lastSeen} onOpenTask={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")} onOpenDecision={showDecision} onOpenTasks={() => onNavigate?.("Tasks")} onOpenInbox={() => openInbox()} onMarkRead={read}/></div>}
+        {message.role === "user" ? <div className="ui-th__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}><span className="ui-th__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>{message.answer && <span className="ui-th__answer-context" title={message.answer.question}>{labels.answerContext(message.answer.question)}</span>}{content(message, <>{message.attachments && message.attachments.length > 0 && <div className="ui-th__attachments">{message.attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="document" size={14}/>{file.name}</span>)}</div>}{message.text && <p className="ui-th__bubble" dir="auto">{message.text}</p>}</>)}{message.status && message.status !== "sent" && <span className="ui-th__send-status">{message.status === "failed" ? <><Icon name="warning" size={12}/>{labels.sendFailed} · <button type="button" onClick={() => retry(message.id)}>{labels.retry}</button></> : message.status === "queued" ? labels.queued : labels.sending}</span>}</div> : <div className="ui-th__assistant" data-streaming={message.streaming || undefined}>
+          {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? <div className="ui-th__who"><span className="ui-th__avatar" data-busy={message.streaming || undefined} aria-hidden="true">{[0, 2, 4, 6, 8].map((pixel, index) => <i key={pixel} style={{ gridArea: `${Math.floor(pixel / 3) + 1}/${pixel % 3 + 1}`, animationDelay: `${index * 130}ms` }}/>)}</span><span>{assistantName}</span>{message.at != null && Number.isFinite(message.at) && <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>}</div> : <span className="ui-th__sr">{assistantName}:</span>}
+          {content(message, <>
+          {message.tools && message.tools.length > 0 && <ToolActivity labels={labels.tools} tools={message.tools} onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}/>}
+          {message.parts?.slice(0, 1).map(part => part.kind === "tools" && <ToolActivity labels={labels.tools} key={part.id} tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/>)}
           {message.text && textPart(message.text, !!message.streaming)}
-          {message.parts?.map((part, index) => index === 0 && part.kind === "tools" ? null : <div className="ui-th__part" key={`${part.kind}-${index}`}>{part.kind === "tools" ? <ToolActivity tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/> : part.kind === "text" ? textPart(part.text, !!message.streaming && index === message.parts!.length - 1 && !message.text) : part.kind === "task" ? <ThreadTaskCard task={part.task} onOpen={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")}/> : part.kind === "artifacts" ? fileChips(part.names) : part.kind === "decision" ? <button type="button" className="ui-th__asked" onClick={() => showDecision(part.ask.id)}><i data-answered={!!answers[part.ask.id] || undefined}/><span>Asked: {part.ask.question}</span><small>· {answers[part.ask.id] ? "answered below" : decisions.some(decision => decision.id === part.ask.id) ? "waiting" : "in Inbox"}</small></button> : <div className="ui-th__error" role="status"><Icon name="warning" size={14}/><span dir="auto">{part.text}</span>{part.retry && <button type="button" onClick={() => retry(message.id)}>Retry</button>}</div>}</div>)}
-          {message.files && fileChips(message.files)}{message.stopped && <span className="ui-th__stopped"><Icon name="stop" size={11}/>Stopped</span>}
+          {message.parts?.map((part, index) => index === 0 && part.kind === "tools" ? null : <div className="ui-th__part" key={`${part.kind}-${index}`}>{part.kind === "tools" ? <ToolActivity labels={labels.tools} tools={part.tools.map(tool => ({ ...tool, duration: tool.duration ?? tool.ms }))}/> : part.kind === "text" ? textPart(part.text, !!message.streaming && index === message.parts!.length - 1 && !message.text) : part.kind === "task" ? <ThreadTaskCard labels={labels.task} task={part.task} onOpen={id => onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks")}/> : part.kind === "artifacts" ? fileChips(part.names) : part.kind === "decision" ? <button type="button" className="ui-th__asked" onClick={() => showDecision(part.ask.id)}><i data-answered={!!answers[part.ask.id] || undefined}/><span>{labels.asked(part.ask.question)}</span><small>· {answers[part.ask.id] ? labels.answeredBelow : decisions.some(decision => decision.id === part.ask.id) ? labels.waiting : labels.inInbox}</small></button> : <div className="ui-th__error" role="status"><Icon name="warning" size={14}/><span dir="auto">{part.text}</span>{part.retry && <button type="button" onClick={() => retry(message.id)}>{labels.retry}</button>}</div>}</div>)}
+          {message.files && fileChips(message.files)}</>)}{message.stopped && <span className="ui-th__stopped"><Icon name="stop" size={11}/>{labels.stopped}</span>}
         </div>}
       </div>)}
-    </div></div>{away && boundaryIndex < 0 && <button type="button" className="ui-th__jump" aria-label={`Jump to latest${newCount ? `, ${newCount} new lines` : ""}${streaming ? ", still writing" : ""}`} aria-keyshortcuts="End" onClick={latest}><Icon name="arrow" size={14}/>{newCount ? `${newCount} new lines` : "Back to latest"}{streaming && <span className="ui-th__jump-live"/>}</button>}</div>
-    <footer className="ui-th__foot"><div className="ui-th__foot-column"><div className="ui-th__dock-slot" data-visible={decisions.length > 0 || undefined}><DecisionDock decisions={decisions} onDecisionsChange={updateDecisions} activeId={activeDecision} onActiveIdChange={setActiveDecision} folded={folded} onFoldedChange={setFolded} onAnswer={answered} onLater={later} focusRequest={focusRequest}/></div>
+    </div></div>{away && boundaryIndex < 0 && <button type="button" className="ui-th__jump" aria-label={labels.jumpToLatest(newCount, streaming)} aria-keyshortcuts="End" onClick={latest}><Icon name="arrow" size={14}/>{newCount ? labels.newLines(newCount) : labels.latest}{streaming && <span className="ui-th__jump-live"/>}</button>}</div>
+    <footer className="ui-th__foot"><div className="ui-th__foot-column"><div className="ui-th__dock-slot" data-visible={decisions.length > 0 || undefined}><DecisionDock managed={managed} labels={labels.decisions} decisions={decisions} onDecisionsChange={updateDecisions} activeId={activeDecision} onActiveIdChange={setActiveDecision} folded={folded} onFoldedChange={setFolded} onAnswer={answered} onLater={later} focusRequest={focusRequest}/></div>
       {(uploads.length > 0 || voicePreview || streaming) && <div className="ui-th__above">
-        {uploads.length > 0 && <div className="ui-th__upload-slot"><ThreadUploads uploads={uploads} onRemove={removeUpload} onRetry={retryUpload}/></div>}
-        {voicePreview && <div className="ui-th__upload-slot"><ThreadVoiceInput seconds={voiceSeconds} onDiscard={() => setVoicePreview(false)} onDone={finishVoicePreview}/></div>}
-        {streaming && !voicePreview && <button type="button" className="ui-th__stop" onClick={stop} aria-keyshortcuts="Escape"><Icon name="stop" size={12}/>Stop</button>}
+        {uploads.length > 0 && <div className="ui-th__upload-slot"><ThreadUploads labels={labels.uploads} uploads={uploads} onRemove={managed ? undefined : removeUpload} onRetry={managed ? undefined : retryUpload}/></div>}
+        {voicePreview && <div className="ui-th__upload-slot"><ThreadVoiceInput labels={labels.voice} seconds={voiceSeconds} onDiscard={() => setVoicePreview(false)} onDone={finishVoicePreview}/></div>}
+        {streaming && !voicePreview && <button type="button" className="ui-th__stop" disabled={stopping} aria-busy={stopping} onClick={stop} aria-keyshortcuts={stopping ? undefined : "Escape"}><Icon name="stop" size={12}/>{stopping ? labels.stopping : labels.stop}</button>}
       </div>}
-      {composer ?? <ChatComposer {...composerProps} models={composerProps?.models ?? (mode === "orchestrator" ? [] : undefined)} value={draft} onValueChange={setDraft} attachments={mode === "orchestrator" ? completedUploads : composerProps?.attachments} onAttachmentsChange={mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange} showAttachments={mode === "orchestrator" ? false : composerProps?.showAttachments} sendDisabled={blockedUpload || composerProps?.sendDisabled} transcribe={mode === "orchestrator" && (transcribe || simulate) ? voice : composerProps?.transcribe} onSend={send}/>}
+      {composer ?? <ChatComposer {...composerProps} managed={managed || composerProps?.managed} models={composerProps?.models ?? (mode === "orchestrator" ? [] : undefined)} value={draft} onValueChange={setDraft} attachments={!managed && mode === "orchestrator" ? completedUploads : composerProps?.attachments} onAttachmentsChange={!managed && mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange} showAttachments={!managed && mode === "orchestrator" ? false : composerProps?.showAttachments} sendDisabled={blockedUpload || composerProps?.sendDisabled} transcribe={managed ? undefined : mode === "orchestrator" && (transcribe || simulate) ? voice : composerProps?.transcribe} onSend={send}/>}
     </div></footer><span role="status" aria-live="polite" className="ui-th__sr">{announcement}</span>
   </section>;
 }

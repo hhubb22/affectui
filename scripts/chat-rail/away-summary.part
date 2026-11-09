@@ -1,4 +1,8 @@
+const defaultAwaySummaryLabels = { title: "While you were away", counts: (done: number, needs: number) => `${done} done · ${needs} need you`, needsYou: "Needs you", openTasks: "Open Tasks", openInbox: "Open Inbox", newSince: (time: string) => `New since ${time}`, newActivity: "New activity", markRead: "Mark as read" };
+export type AwaySummaryLabels = typeof defaultAwaySummaryLabels;
 export type AwaySummaryProps = {
+  labels?: Partial<AwaySummaryLabels>;
+  formatTime?: (timestamp: number) => string;
   tasks?: ThreadTask[];
   decisions?: { id: string; question: string }[];
   since?: number;
@@ -11,15 +15,16 @@ export type AwaySummaryProps = {
 };
 
 /** A return-to-thread summary, followed by the unread boundary and a mark-as-read action. */
-export function AwaySummary({ tasks = [], decisions = [], since, onOpenTask, onOpenDecision, onOpenTasks, onOpenInbox, onMarkRead, className }: AwaySummaryProps) {
+export function AwaySummary({ labels: labelsProp, formatTime = defaultThreadFormatTime, tasks = [], decisions = [], since, onOpenTask, onOpenDecision, onOpenTasks, onOpenInbox, onMarkRead, className }: AwaySummaryProps) {
+  const labels = { ...defaultAwaySummaryLabels, ...labelsProp };
   const done = tasks.filter(task => task.done);
   return <div className={["ui-ay", className].filter(Boolean).join(" ")}>
     <style href="ui-away-summary" precedence="default">{css}</style>
-    <section className="ui-ay__card" aria-label="While you were away"><header><span className="ui-ay__title">While you were away</span><span className="ui-ay__counts">{done.length} done · {decisions.length} need you</span></header>
-      <div className="ui-ay__rows">{done.map(task => <button type="button" className="ui-ay__row" key={task.id} onClick={() => onOpenTask?.(task.id)}><span className="ui-ay__check"><Icon name="check" size={13}/></span><strong dir="auto">{task.title}</strong><small dir="auto">{task.status}</small></button>)}{decisions.map(decision => <button type="button" className="ui-ay__row" data-question="" key={decision.id} onClick={() => onOpenDecision?.(decision.id)}><span className="ui-ay__dot"/><strong dir="auto">{decision.question}</strong><small>Needs you</small></button>)}</div>
-      <footer>{onOpenTasks && <button type="button" onClick={onOpenTasks}>Open Tasks<Icon name="arrow" size={12}/></button>}{onOpenInbox && <button type="button" onClick={onOpenInbox}>Open Inbox<Icon name="arrow" size={12}/></button>}</footer>
+    <section className="ui-ay__card" aria-label={labels.title}><header><span className="ui-ay__title">{labels.title}</span><span className="ui-ay__counts">{labels.counts(done.length, decisions.length)}</span></header>
+      <div className="ui-ay__rows">{done.map(task => <button type="button" className="ui-ay__row" key={task.id} onClick={() => onOpenTask?.(task.id)}><span className="ui-ay__check"><Icon name="check" size={13}/></span><strong dir="auto">{task.title}</strong><small dir="auto">{task.status}</small></button>)}{decisions.map(decision => <button type="button" className="ui-ay__row" data-question="" key={decision.id} onClick={() => onOpenDecision?.(decision.id)}><span className="ui-ay__dot"/><strong dir="auto">{decision.question}</strong><small>{labels.needsYou}</small></button>)}</div>
+      <footer>{onOpenTasks && <button type="button" onClick={onOpenTasks}>{labels.openTasks}<Icon name="arrow" size={12}/></button>}{onOpenInbox && <button type="button" onClick={onOpenInbox}>{labels.openInbox}<Icon name="arrow" size={12}/></button>}</footer>
     </section>
-    {(since != null || onMarkRead) && <div className="ui-ay__boundary"><span>{since != null && Number.isFinite(since) ? `New since ${new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(since)}` : "New activity"}</span>{onMarkRead && <button type="button" onClick={onMarkRead}><Icon name="check" size={11}/>Mark as read</button>}</div>}
+    {(since != null || onMarkRead) && <div className="ui-ay__boundary"><span>{since != null && Number.isFinite(since) ? labels.newSince(formatTime(since)) : labels.newActivity}</span>{onMarkRead && <button type="button" onClick={onMarkRead}><Icon name="check" size={11}/>{labels.markRead}</button>}</div>}
   </div>;
 }
 

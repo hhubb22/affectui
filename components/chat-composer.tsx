@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentPropsWithRef,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -429,7 +431,7 @@ function initials(name: string) {
 
 export type ChatComposerModel = { id: string; name: string; provider?: string; icon?: ReactNode; description?: string };
 export type ChatComposerApproval = "request" | "auto" | "full";
-export type ChatComposerAttachment = { id: string; name: string; size: number; file?: File };
+export type ChatComposerAttachment = { id: string; name: string; size?: number; file?: File };
 export type ChatComposerSendOptions = {
   model: string;
   approval: ChatComposerApproval;
@@ -437,6 +439,9 @@ export type ChatComposerSendOptions = {
   attachments: ChatComposerAttachment[];
 };
 export type ChatComposerProps = {
+  /** Sending emits an intent without clearing the draft/attachments. Voice services stay caller-owned. */
+  managed?: boolean;
+  labels?: Partial<ChatComposerLabels>;
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -465,6 +470,11 @@ export type ChatComposerProps = {
   showAttachments?: boolean;
   /** Optional footer, rendered below the input card. */
   footer?: ReactNode;
+  /** Replace the entire toolbar and its built-in actions/Enter shortcut. null hides it. */
+  toolbar?: ReactNode;
+  /** Positioned above the textarea, e.g. a caller-owned slash listbox. */
+  overlay?: ReactNode;
+  textareaProps?: Omit<ComponentPropsWithRef<"textarea">, "value" | "defaultValue" | "onChange">;
   className?: string;
 };
 
@@ -491,14 +501,60 @@ const approvalOptions: { id: ChatComposerApproval; label: string; description: s
     icon: "spark",
   },
 ];
+const defaultChatComposerLabels = {
+  attachments: "Attachments",
+  removeAttachment: (name: string) => `Remove ${name}`,
+  composer: "Message composer",
+  message: "Message",
+  placeholder: "Ask anything – it searches the web",
+  transcribing: "Transcribing…",
+  add: "Add",
+  plan: "Plan",
+  voiceRecording: "Voice recording",
+  discardRecording: "Discard recording",
+  useRecording: "Use recording",
+  voiceInput: "Voice input",
+  send: "Send message",
+  dismiss: "Dismiss message",
+  attachFiles: "Attach files",
+  permissions: "Permissions",
+  models: "Models",
+  connectApps: "Connect apps",
+  addToChat: "Add to the chat",
+  files: "Files and folders",
+  connected: (count: number) => `${count} connected`,
+  goal: "Goal",
+  goalDescription: "Set a goal to keep working toward",
+  planMode: "Plan mode",
+  planDescription: (enabled: boolean) => (enabled ? "Turn off plan mode" : "Turn on plan mode"),
+  skill: "Record a skill",
+  draw: "Draw",
+  drawDescription: "Sketch a drawing",
+  plugins: "Plugins",
+  documents: "Documents",
+  documentsDescription: "Create and edit documents",
+  pdf: "PDF",
+  pdfDescription: "Read, create and verify PDFs",
+  webSearch: "Web search",
+  approval: (id: ChatComposerApproval) => approvalOptions.find((option) => option.id === id)!.label,
+  approvalDescription: (id: ChatComposerApproval) => approvalOptions.find((option) => option.id === id)!.description,
+  voiceUnavailable: "Voice recording is unavailable in this browser.",
+  transcriptionFailed: "Couldn't transcribe this recording. Please try again.",
+  microphoneDenied: "Microphone access was declined. You can still type a message.",
+  recordingFailed: "Couldn't start recording.",
+  voiceNote: "Voice note.webm",
+};
+export type ChatComposerLabels = typeof defaultChatComposerLabels;
 
 /** A compact composer with keyboard submission, animated model/permission controls and attachment/voice input. */
 export function ChatComposer({
+  managed = false,
+  labels: labelsProp,
   value: valueProp,
   defaultValue = "",
   onValueChange,
   onSend,
-  placeholder = "Ask anything – it searches the web",
+  placeholder,
   models = composerModels,
   model: modelProp,
   defaultModel = "auto",
@@ -519,8 +575,12 @@ export function ChatComposer({
   sendDisabled = false,
   showAttachments = true,
   footer,
+  toolbar,
+  overlay,
+  textareaProps,
   className,
 }: ChatComposerProps) {
+  const labels = { ...defaultChatComposerLabels, ...labelsProp };
   const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
   const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
   const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
@@ -545,10 +605,33 @@ export function ChatComposer({
   const chunks = useRef<Blob[]>([]),
     mounted = useRef(true),
     pending = useRef<AbortController | null>(null);
+  const voiceEnabled = !managed && toolbar === undefined;
+  const voiceEnabledRef = useRef(voiceEnabled);
+  voiceEnabledRef.current = voiceEnabled;
+  const textareaRef = textareaProps?.ref;
+  const mergedRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      input.current = node;
+      if (typeof textareaRef === "function") {
+        const cleanup = textareaRef(node);
+        return () => {
+          input.current = null;
+          if (cleanup) cleanup();
+          else textareaRef(null);
+        };
+      }
+      if (textareaRef) textareaRef.current = node;
+      return () => {
+        input.current = null;
+        if (textareaRef) textareaRef.current = null;
+      };
+    },
+    [textareaRef],
+  );
   const id = useId();
   const list = (Array.isArray(models) ? models : []).filter(Boolean);
   const selectedModel = list.find((item) => item.id === model) ?? list[0];
-  const blocked = disabled || busy || transcribing;
+  const blocked = disabled || !!textareaProps?.disabled || !!textareaProps?.readOnly || busy || transcribing;
   const canSend = !blocked && !sendDisabled && (!!value.trim() || attachments.length > 0);
   useLayoutEffect(() => {
     const el = input.current;
@@ -571,16 +654,29 @@ export function ChatComposer({
     const timer = window.setInterval(() => setRecordingSeconds((seconds) => seconds + 1), 1000);
     return () => window.clearInterval(timer);
   }, [recording]);
+  useEffect(() => {
+    if (toolbar !== undefined) setMenu(null);
+    if (!voiceEnabled) {
+      pending.current?.abort();
+      recordingAction.current = false;
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      stream.current?.getTracks().forEach((track) => track.stop());
+      setRecording(false);
+      setTranscribing(false);
+    }
+  }, [toolbar, voiceEnabled]);
   const send = () => {
-    if (!canSend) return;
+    if (toolbar !== undefined || !canSend) return;
     onSend?.(value.trim(), {
       model: selectedModel?.id ?? "auto",
       approval: approval.id,
       planMode: plan,
       attachments: [...attachments],
     });
-    setValue("");
-    setAttachments([]);
+    if (!managed) {
+      setValue("");
+      setAttachments([]);
+    }
     setMenu(null);
     input.current?.focus();
   };
@@ -604,14 +700,16 @@ export function ChatComposer({
     input.current?.focus();
   };
   const startRecording = async () => {
-    if (blocked) return;
+    if (blocked || !voiceEnabled) return;
     setError("");
     setMenu(null);
     try {
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined")
-        throw new Error("Voice recording is unavailable in this browser.");
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        setError(labels.voiceUnavailable);
+        return;
+      }
       const media = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mounted.current) {
+      if (!mounted.current || !voiceEnabledRef.current) {
         media.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -625,10 +723,10 @@ export function ChatComposer({
       };
       next.onstop = async () => {
         media.getTracks().forEach((track) => track.stop());
-        if (!mounted.current || !recordingAction.current) return;
+        if (!mounted.current || !voiceEnabledRef.current || !recordingAction.current) return;
         const blob = new Blob(chunks.current, { type: next.mimeType || "audio/webm" });
         if (!transcribe) {
-          const file = new File([blob], "Voice note.webm", { type: blob.type });
+          const file = new File([blob], labels.voiceNote, { type: blob.type });
           attachFiles([file]);
           return;
         }
@@ -640,8 +738,7 @@ export function ChatComposer({
           if (mounted.current && !controller.signal.aborted)
             setValue(`${value.trimEnd()}${value.trim() ? " " : ""}${text}`);
         } catch {
-          if (mounted.current && !controller.signal.aborted)
-            setError("Couldn't transcribe this recording. Please try again.");
+          if (mounted.current && !controller.signal.aborted) setError(labels.transcriptionFailed);
         } finally {
           if (mounted.current) setTranscribing(false);
         }
@@ -653,10 +750,8 @@ export function ChatComposer({
       if (mounted.current)
         setError(
           reason instanceof DOMException && reason.name === "NotAllowedError"
-            ? "Microphone access was declined. You can still type a message."
-            : reason instanceof Error
-              ? reason.message
-              : "Couldn't start recording.",
+            ? labels.microphoneDenied
+            : labels.recordingFailed,
         );
     }
   };
@@ -690,15 +785,17 @@ export function ChatComposer({
       <style href="ui-chat-composer" precedence="default">
         {css}
       </style>
+      {overlay !== undefined && <div className="ui-cc__overlay">{overlay}</div>}
       {showAttachments && attachments.length > 0 && (
-        <ul className="ui-cc__attachments" aria-label="Attachments">
+        <ul className="ui-cc__attachments" aria-label={labels.attachments}>
           {attachments.map((file) => (
             <li key={file.id}>
               <Icon name="document" size={14} />
               <span title={file.name}>{file.name}</span>
               <button
                 type="button"
-                aria-label={`Remove ${file.name}`}
+                disabled={disabled}
+                aria-label={labels.removeAttachment(file.name)}
                 onClick={() => setAttachments(attachments.filter((item) => item.id !== file.id))}
               >
                 <Icon name="close" size={12} />
@@ -709,168 +806,184 @@ export function ChatComposer({
       )}
       <section
         className="ui-cc__body"
-        aria-label="Message composer"
+        aria-label={labels.composer}
         aria-busy={transcribing || busy}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && recording) {
+          if (!event.defaultPrevented && event.key === "Escape" && recording) {
             event.preventDefault();
             stopRecording(false);
           }
         }}
       >
         <textarea
-          ref={input}
-          className="ui-cc__message"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          aria-label="Message"
-          placeholder={transcribing ? "Transcribing…" : placeholder}
-          disabled={disabled}
-          readOnly={recording || transcribing}
+          aria-label={labels.message}
+          placeholder={transcribing ? labels.transcribing : (placeholder ?? labels.placeholder)}
           dir="auto"
           rows={2}
+          {...textareaProps}
+          ref={mergedRef}
+          className={["ui-cc__message", textareaProps?.className].filter(Boolean).join(" ")}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={disabled || textareaProps?.disabled}
+          readOnly={recording || transcribing || textareaProps?.readOnly}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat) {
+            textareaProps?.onKeyDown?.(event);
+            if (
+              !event.defaultPrevented &&
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              !event.repeat &&
+              toolbar === undefined
+            ) {
               event.preventDefault();
               send();
             }
           }}
         />
-        <div className="ui-cc__tools">
-          <div className="ui-cc__group" inert={recording}>
-            <button
-              ref={addRef}
-              type="button"
-              className="ui-cc__icon-btn"
-              aria-label="Add"
-              disabled={blocked}
-              aria-haspopup="menu"
-              aria-expanded={menu === "add" || menu === "apps"}
-              aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined}
-              onKeyDown={triggerKey("add")}
-              onClick={() => toggle("add")}
-            >
-              <Icon name="plus" />
-            </button>
-            <button
-              ref={approvalRef}
-              type="button"
-              className="ui-cc__approval"
-              data-tone={approval.id}
-              disabled={blocked}
-              aria-haspopup="menu"
-              aria-expanded={menu === "approval"}
-              aria-controls={menu === "approval" ? `${id}-menu` : undefined}
-              onKeyDown={triggerKey("approval")}
-              onClick={() => toggle("approval")}
-            >
-              <span className="ui-cc__face" key={approval.id}>
-                <Icon name={approval.icon} size={14} />
-                <span>{approval.label}</span>
-              </span>
-            </button>
-            {plan && <span className="ui-cc__plan">Plan</span>}
-          </div>
-          {recording ? (
-            <div className="ui-cc__recording" role="group" aria-label="Voice recording">
-              <span className="ui-cc__timer">
-                {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
-              </span>
-              <span className="ui-cc__wave" aria-hidden="true">
-                {Array.from({ length: 22 }, (_, index) => (
-                  <i
-                    key={index}
-                    style={{ height: `${4 + ((index * 7) % 14)}px`, animationDelay: `${index * -71}ms` }}
-                  />
-                ))}
-              </span>
+        {toolbar !== undefined ? (
+          toolbar
+        ) : (
+          <div className="ui-cc__tools">
+            <div className="ui-cc__group" inert={recording}>
               <button
+                ref={addRef}
                 type="button"
                 className="ui-cc__icon-btn"
-                aria-label="Discard recording"
-                onClick={() => stopRecording(false)}
-              >
-                <Icon name="close" />
-              </button>
-              <button
-                type="button"
-                className="ui-cc__send"
-                aria-label="Use recording"
-                onClick={() => stopRecording(true)}
-              >
-                <Icon name="check" />
-              </button>
-            </div>
-          ) : (
-            <div className="ui-cc__group ui-cc__group--end">
-              {selectedModel && (
-                <button
-                  ref={modelRef}
-                  type="button"
-                  className="ui-cc__model"
-                  disabled={blocked}
-                  aria-haspopup="menu"
-                  aria-expanded={menu === "model"}
-                  aria-controls={menu === "model" ? `${id}-menu` : undefined}
-                  onKeyDown={triggerKey("model")}
-                  onClick={() => toggle("model")}
-                >
-                  <span
-                    className="ui-cc__face"
-                    key={selectedModel.id}
-                    onErrorCapture={(event) => {
-                      if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
-                    }}
-                  >
-                    {selectedModel.icon}
-                    <span title={selectedModel.name}>{selectedModel.name}</span>
-                  </span>
-                  <Icon name="chevron" size={12} />
-                </button>
-              )}
-              <button
-                type="button"
-                className="ui-cc__icon-btn"
-                aria-label="Voice input"
+                aria-label={labels.add}
                 disabled={blocked}
-                onClick={startRecording}
+                aria-haspopup="menu"
+                aria-expanded={menu === "add" || menu === "apps"}
+                aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined}
+                onKeyDown={triggerKey("add")}
+                onClick={() => toggle("add")}
               >
-                <Icon name="mic" />
+                <Icon name="plus" />
               </button>
               <button
+                ref={approvalRef}
                 type="button"
-                className="ui-cc__send"
-                aria-label="Send message"
-                disabled={!canSend}
-                onClick={send}
+                className="ui-cc__approval"
+                data-tone={approval.id}
+                disabled={blocked}
+                aria-haspopup="menu"
+                aria-expanded={menu === "approval"}
+                aria-controls={menu === "approval" ? `${id}-menu` : undefined}
+                onKeyDown={triggerKey("approval")}
+                onClick={() => toggle("approval")}
               >
-                <Icon name="send" />
+                <span className="ui-cc__face" key={approval.id}>
+                  <Icon name={approval.icon} size={14} />
+                  <span>{labels.approval(approval.id)}</span>
+                </span>
               </button>
+              {plan && <span className="ui-cc__plan">{labels.plan}</span>}
             </div>
-          )}
-        </div>
+            {recording ? (
+              <div className="ui-cc__recording" role="group" aria-label={labels.voiceRecording}>
+                <span className="ui-cc__timer">
+                  {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
+                </span>
+                <span className="ui-cc__wave" aria-hidden="true">
+                  {Array.from({ length: 22 }, (_, index) => (
+                    <i
+                      key={index}
+                      style={{ height: `${4 + ((index * 7) % 14)}px`, animationDelay: `${index * -71}ms` }}
+                    />
+                  ))}
+                </span>
+                <button
+                  type="button"
+                  className="ui-cc__icon-btn"
+                  aria-label={labels.discardRecording}
+                  onClick={() => stopRecording(false)}
+                >
+                  <Icon name="close" />
+                </button>
+                <button
+                  type="button"
+                  className="ui-cc__send"
+                  aria-label={labels.useRecording}
+                  onClick={() => stopRecording(true)}
+                >
+                  <Icon name="check" />
+                </button>
+              </div>
+            ) : (
+              <div className="ui-cc__group ui-cc__group--end">
+                {selectedModel && (
+                  <button
+                    ref={modelRef}
+                    type="button"
+                    className="ui-cc__model"
+                    disabled={blocked}
+                    aria-haspopup="menu"
+                    aria-expanded={menu === "model"}
+                    aria-controls={menu === "model" ? `${id}-menu` : undefined}
+                    onKeyDown={triggerKey("model")}
+                    onClick={() => toggle("model")}
+                  >
+                    <span
+                      className="ui-cc__face"
+                      key={selectedModel.id}
+                      onErrorCapture={(event) => {
+                        if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                      }}
+                    >
+                      {selectedModel.icon}
+                      <span title={selectedModel.name}>{selectedModel.name}</span>
+                    </span>
+                    <Icon name="chevron" size={12} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="ui-cc__icon-btn"
+                  aria-label={labels.voiceInput}
+                  disabled={blocked || !voiceEnabled}
+                  onClick={startRecording}
+                >
+                  <Icon name="mic" />
+                </button>
+                <button
+                  type="button"
+                  className="ui-cc__send"
+                  aria-label={labels.send}
+                  disabled={!canSend}
+                  onClick={send}
+                >
+                  <Icon name="send" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
       {footer && <div className="ui-cc__footer">{footer}</div>}
       {error && (
         <p className="ui-cc__error" role="alert">
           {error}
-          <button type="button" aria-label="Dismiss message" onClick={() => setError("")}>
+          <button type="button" aria-label={labels.dismiss} onClick={() => setError("")}>
             <Icon name="close" size={12} />
           </button>
         </p>
       )}
-      <input
-        ref={fileInput}
-        type="file"
-        multiple
-        hidden
-        aria-label="Attach files"
-        onChange={(event) => {
-          attachFiles(event.target.files);
-          event.target.value = "";
-        }}
-      />
-      {menu && (
+      {toolbar === undefined && (
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          disabled={blocked}
+          aria-label={labels.attachFiles}
+          onChange={(event) => {
+            attachFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      )}
+      {toolbar === undefined && menu && (
         <FloatingMenu
           key={menu}
           anchor={anchor}
@@ -879,12 +992,12 @@ export function ChatComposer({
           id={`${id}-menu`}
           label={
             menu === "approval"
-              ? "Permissions"
+              ? labels.permissions
               : menu === "model"
-                ? "Models"
+                ? labels.models
                 : menu === "apps"
-                  ? "Connect apps"
-                  : "Add to the chat"
+                  ? labels.connectApps
+                  : labels.addToChat
           }
           side="top"
           align={menu === "model" ? "end" : "start"}
@@ -892,7 +1005,7 @@ export function ChatComposer({
         >
           {menu === "model" && (
             <>
-              <div className="ui-cc__menu-title">Models</div>
+              <div className="ui-cc__menu-title">{labels.models}</div>
               {list.map((item) => (
                 <button
                   type="button"
@@ -931,7 +1044,7 @@ export function ChatComposer({
           )}
           {menu === "approval" && (
             <>
-              <div className="ui-cc__menu-title">Permissions</div>
+              <div className="ui-cc__menu-title">{labels.permissions}</div>
               {approvalOptions.map((item) => (
                 <button
                   type="button"
@@ -949,8 +1062,8 @@ export function ChatComposer({
                     <Icon name={item.icon} />
                   </span>
                   <span className="ui-cc__option-text">
-                    <span>{item.label}</span>
-                    <small>{item.description}</small>
+                    <span>{labels.approval(item.id)}</span>
+                    <small>{labels.approvalDescription(item.id)}</small>
                   </span>
                   {approval.id === item.id && <Icon name="check" size={14} />}
                 </button>
@@ -959,15 +1072,15 @@ export function ChatComposer({
           )}
           {menu === "add" && (
             <>
-              <div className="ui-cc__menu-title">Add</div>
+              <div className="ui-cc__menu-title">{labels.add}</div>
               {(
                 [
-                  ["files", "Files and folders", "", "document"],
-                  ["apps", "Connect apps", `${connected.length} connected`, "plug"],
-                  ["goal", "Goal", "Set a goal to keep working toward", "tasks"],
-                  ["plan", "Plan mode", plan ? "Turn off plan mode" : "Turn on plan mode", "compose"],
-                  ["skill", "Record a skill", "", "play"],
-                  ["draw", "Draw", "Sketch a drawing", "compose"],
+                  ["files", labels.files, "", "document"],
+                  ["apps", labels.connectApps, labels.connected(connected.length), "plug"],
+                  ["goal", labels.goal, labels.goalDescription, "tasks"],
+                  ["plan", labels.planMode, labels.planDescription(plan), "compose"],
+                  ["skill", labels.skill, "", "play"],
+                  ["draw", labels.draw, labels.drawDescription, "compose"],
                 ] as const
               ).map(([action, label, description, icon]) => (
                 <button
@@ -988,11 +1101,11 @@ export function ChatComposer({
                   {action === "plan" && plan && <Icon name="check" size={14} />}
                 </button>
               ))}
-              <div className="ui-cc__menu-title">Plugins</div>
+              <div className="ui-cc__menu-title">{labels.plugins}</div>
               {(
                 [
-                  ["document", "Documents", "Create and edit documents"],
-                  ["pdf", "PDF", "Read, create and verify PDFs"],
+                  ["document", labels.documents, labels.documentsDescription],
+                  ["pdf", labels.pdf, labels.pdfDescription],
                 ] as const
               ).map(([action, label, description]) => (
                 <button
@@ -1015,7 +1128,7 @@ export function ChatComposer({
           )}
           {menu === "apps" && (
             <>
-              <div className="ui-cc__menu-title">Connect apps</div>
+              <div className="ui-cc__menu-title">{labels.connectApps}</div>
               {["Web search", "Google Drive", "Gmail", "Notion"].map((app) => (
                 <button
                   type="button"
@@ -1031,7 +1144,7 @@ export function ChatComposer({
                   }}
                 >
                   <Icon name={app === "Web search" ? "globe" : "plug"} />
-                  <span className="ui-cc__option-text">{app}</span>
+                  <span className="ui-cc__option-text">{app === "Web search" ? labels.webSearch : app}</span>
                   {connected.includes(app) && <Icon name="check" size={14} />}
                 </button>
               ))}
@@ -1046,6 +1159,12 @@ export function ChatComposer({
 /* ---------- Styles ---------- */
 
 const css = /* css */ `
+.ui-cc__overlay {
+  position: absolute;
+  bottom: 100%;
+  inset-inline: 0;
+  z-index: 21;
+}
 .ui-cc {
   --ui-cc-card: #fff;
   --ui-cc-tray: rgba(0, 0, 0, 0.035);

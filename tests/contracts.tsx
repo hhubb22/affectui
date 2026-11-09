@@ -118,3 +118,60 @@ const matchingInboxInterfaces: [
   Equal<InboxTaskContextClassic, InboxTaskContextClean>,
 ] = [true, true, true, true, true, true, true, true];
 void matchingInboxInterfaces;
+
+const managedThreadContract = {
+  managed: true,
+  stopping: true,
+  renderMessageContent: (_message, defaultContent) => defaultContent,
+  labels: {
+    waitingQuestions: (count) => `${count} pending`,
+    decisions: { submitting: "Pending" },
+  },
+  formatTime: (timestamp) => String(timestamp),
+} satisfies ThreadClassic & ThreadClean;
+const managedComposerContract = {
+  managed: true,
+  toolbar: null,
+  overlay: "Caller-owned overlay",
+  attachments: [{ id: "/native/file", name: "file" }],
+  textareaProps: {
+    ref: { current: null },
+    "aria-label": "Draft",
+    onKeyDown: (event) => event.preventDefault(),
+    disabled: false,
+  },
+} satisfies ComposerClassic & ComposerClean;
+const managedDockContract = {
+  managed: true,
+  decisions: [
+    {
+      id: "permission",
+      kind: "approval",
+      task: "Task",
+      question: "Allow?",
+      options: [{ id: "allow-once", title: "Once" }],
+      allowCustomAnswer: false,
+      status: "submitting",
+      error: "Try again",
+      answer: { option: "allow-once" },
+      disabled: true,
+    },
+  ],
+} satisfies DockClassic & DockClean;
+const managedScreenContract = {
+  ...managedThreadContract,
+  threadLabels: managedThreadContract.labels,
+  labels: { openSidebar: "Open navigation" },
+  sidebar: null,
+  header: "Caller-owned titlebar",
+} satisfies ThreadScreenClassic & ThreadScreenClean;
+const controlledTextareaContract: ComposerClean["textareaProps"] = {
+  // @ts-expect-error Use the existing onValueChange API, not an overriding textarea event.
+  onChange: () => {},
+};
+void [
+  managedComposerContract,
+  managedDockContract,
+  managedScreenContract,
+  controlledTextareaContract,
+];

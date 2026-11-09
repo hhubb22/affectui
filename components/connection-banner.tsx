@@ -251,6 +251,14 @@ function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
 }
 
 export type ThreadConnection = "online" | "offline" | "reconnecting";
+const defaultConnectionBannerLabels = {
+  backOnline: "Back online",
+  lost: "Connection lost – reconnecting…",
+  reconnecting: "Reconnecting…",
+  retry: "Retry now",
+  retryIn: (seconds: number) => `Retrying in ${seconds}s`,
+};
+export type ConnectionBannerLabels = typeof defaultConnectionBannerLabels;
 export type ConnectionBannerProps = {
   connection?: ThreadConnection;
   defaultConnection?: ThreadConnection;
@@ -260,6 +268,7 @@ export type ConnectionBannerProps = {
   backOnline?: boolean;
   /** Disable the built-in retry clock when a parent supplies its own connection manager. */
   managed?: boolean;
+  labels?: Partial<ConnectionBannerLabels>;
   className?: string;
 };
 
@@ -268,6 +277,7 @@ function useThreadConnection({
   defaultConnection,
   onConnectionChange,
   onReconnect,
+  managed = false,
 }: Omit<ConnectionBannerProps, "className">) {
   const [internal, setInternal] = useState<ThreadConnection>(defaultConnection ?? "online");
   const [retrying, setRetrying] = useState(false),
@@ -277,10 +287,14 @@ function useThreadConnection({
   const forced = useRef(defaultConnection === "offline"),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     mounted = useRef(true);
-  const callbacks = useRef({ connection, onReconnect, onConnectionChange });
-  callbacks.current = { connection, onReconnect, onConnectionChange };
-  const base = connection && ["online", "offline", "reconnecting"].includes(connection) ? connection : internal;
-  const status: ThreadConnection = retrying && base !== "online" ? "reconnecting" : base;
+  const callbacks = useRef({ connection, onReconnect, onConnectionChange, managed });
+  callbacks.current = { connection, onReconnect, onConnectionChange, managed };
+  const base = managed
+    ? (connection ?? "online")
+    : connection && ["online", "offline", "reconnecting"].includes(connection)
+      ? connection
+      : internal;
+  const status: ThreadConnection = !managed && retrying && base !== "online" ? "reconnecting" : base;
   const current = useRef(status);
   current.current = status;
   const setConnection = (next: ThreadConnection) => {
@@ -289,6 +303,10 @@ function useThreadConnection({
   };
   const reconnect = (manual = true) => {
     if (current.current === "reconnecting") return;
+    if (managed) {
+      onReconnect?.();
+      return;
+    }
     setRetrying(true);
     Promise.resolve()
       .then(() => callbacks.current.onReconnect?.())
@@ -297,9 +315,9 @@ function useThreadConnection({
         () => false,
       )
       .then((succeeded) => {
-        if (!mounted.current) return;
+        if (!mounted.current || callbacks.current.managed) return;
         timer.current = setTimeout(() => {
-          if (!mounted.current) return;
+          if (!mounted.current || callbacks.current.managed) return;
           if (manual && succeeded) forced.current = false;
           if (succeeded && callbacks.current.connection === undefined && navigator.onLine && !forced.current)
             setConnection("online");
@@ -312,6 +330,12 @@ function useThreadConnection({
   reconnectRef.current = reconnect;
   useEffect(() => {
     mounted.current = true;
+    if (managed) {
+      setRetrying(false);
+      return () => {
+        mounted.current = false;
+      };
+    }
     const online = () => {
       forced.current = false;
       if (callbacks.current.connection === undefined) setConnection("online");
@@ -328,9 +352,9 @@ function useThreadConnection({
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
     };
-  }, []);
+  }, [managed]);
   useEffect(() => {
-    if (status !== "offline") return;
+    if (managed || status !== "offline") return;
     const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
     const deadline = Date.now() + seconds * 1000;
     setRetryIn(seconds);
@@ -343,17 +367,17 @@ function useThreadConnection({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [status, attempt]);
+  }, [managed, status, attempt]);
   const previous = useRef(base);
   useEffect(() => {
     const was = previous.current;
     previous.current = base;
-    if (base !== "online" || was === "online") return;
+    if (managed || base !== "online" || was === "online") return;
     setAttempt(0);
     setBackOnline(true);
     const timeout = setTimeout(() => setBackOnline(false), 1800);
     return () => clearTimeout(timeout);
-  }, [base]);
+  }, [managed, base]);
   return { status, retryIn, backOnline, reconnect: () => reconnect(true) };
 }
 
@@ -366,16 +390,13 @@ export function ConnectionBanner({
   retryIn: suppliedRetry,
   backOnline: suppliedBack,
   managed = false,
+  labels: labelsProp,
   className,
 }: ConnectionBannerProps) {
-  const state = useThreadConnection({
-    connection: managed ? "online" : connection,
-    defaultConnection,
-    onConnectionChange,
-    onReconnect,
-  });
+  const labels = { ...defaultConnectionBannerLabels, ...labelsProp };
+  const state = useThreadConnection({ managed, connection, defaultConnection, onConnectionChange, onReconnect });
   const status = managed ? (connection ?? "online") : state.status;
-  const back = suppliedBack ?? state.backOnline;
+  const back = suppliedBack ?? (!managed && state.backOnline);
   if (status === "online" && !back) return null;
   return (
     <div
@@ -395,18 +416,18 @@ export function ConnectionBanner({
             <span className="ui-cn__spinner" aria-hidden="true" />
           )}
         </span>
-        <span className="ui-cn__text">{status === "online" ? "Back online" : "Connection lost – reconnecting…"}</span>
+        <span className="ui-cn__text">{status === "online" ? labels.backOnline : labels.lost}</span>
         {status !== "online" && (
           <>
             <span className="ui-cn__timer">
-              {status === "reconnecting" ? "Reconnecting…" : `Retrying in ${suppliedRetry ?? state.retryIn}s`}
+              {status === "reconnecting"
+                ? labels.reconnecting
+                : !managed || suppliedRetry !== undefined
+                  ? labels.retryIn(suppliedRetry ?? state.retryIn)
+                  : null}
             </span>
-            <button
-              type="button"
-              disabled={status === "reconnecting"}
-              onClick={() => (managed ? onReconnect?.() : state.reconnect())}
-            >
-              Retry now
+            <button type="button" disabled={status === "reconnecting"} onClick={state.reconnect}>
+              {labels.retry}
             </button>
           </>
         )}

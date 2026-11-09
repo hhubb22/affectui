@@ -261,7 +261,7 @@ function clamp(value: number, min: number, max: number) {
 export type ThreadAttachment = {
   id: string;
   name: string;
-  size: number;
+  size?: number;
   kind?: "file" | "voice";
   file?: File;
   seconds?: number;
@@ -270,24 +270,45 @@ export type ThreadUpload = ThreadAttachment & {
   progress: number;
   state: "uploading" | "paused" | "done" | "failed" | "transcribing" | "waiting";
 };
-export type ThreadUploadsProps = {
-  uploads: ThreadUpload[];
-  onRemove?: (id: string) => void;
-  onRetry?: (id: string) => void;
-  className?: string;
-};
-
-/** Upload progress, paused transfers, retryable failures and voice notes waiting for a connection. */
-export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, className }: ThreadUploadsProps) {
-  const uploads = (Array.isArray(rawUploads) ? rawUploads : []).filter(Boolean);
-  const size = (bytes: number) =>
+const defaultThreadUploadsLabels = {
+  attachments: "Attachments",
+  transcriptionFailed: "Transcription failed",
+  uploadFailed: "Upload failed",
+  retry: "Retry",
+  retryFile: (name: string) => `Retry ${name}`,
+  waiting: "Saved – will transcribe when you're back online",
+  transcribing: "Transcribing…",
+  paused: "Paused – waiting for connection",
+  uploading: (name: string) => `Uploading ${name}`,
+  remove: (name: string, uploading: boolean) => `${uploading ? "Cancel upload" : "Remove"} ${name}`,
+  size: (bytes: number) =>
     bytes >= 1e6
       ? `${Math.round(bytes / 1e6)} MB`
       : bytes >= 1000
         ? `${Math.round(bytes / 1000)} KB`
-        : `${Math.max(0, bytes)} B`;
+        : `${Math.max(0, bytes)} B`,
+};
+export type ThreadUploadsLabels = typeof defaultThreadUploadsLabels;
+export type ThreadUploadsProps = {
+  uploads: ThreadUpload[];
+  onRemove?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  labels?: Partial<ThreadUploadsLabels>;
+  className?: string;
+};
+
+/** Upload progress, paused transfers, retryable failures and voice notes waiting for a connection. */
+export function ThreadUploads({
+  uploads: rawUploads,
+  onRemove,
+  onRetry,
+  labels: labelsProp,
+  className,
+}: ThreadUploadsProps) {
+  const labels = { ...defaultThreadUploadsLabels, ...labelsProp };
+  const uploads = (Array.isArray(rawUploads) ? rawUploads : []).filter(Boolean);
   return (
-    <ul className={["ui-upc", className].filter(Boolean).join(" ")} aria-label="Attachments">
+    <ul className={["ui-upc", className].filter(Boolean).join(" ")} aria-label={labels.attachments}>
       <style href="ui-thcread-uploads-clean" precedence="default">
         {css}
       </style>
@@ -296,6 +317,7 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
           ? upload.state
           : "done";
         const progress = clamp(safeNumber(upload.progress, 0), 0, 1);
+        const size = upload.size === undefined ? "" : labels.size(upload.size);
         return (
           <li
             key={upload.id}
@@ -338,28 +360,33 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
               <span className="ui-upc__status">
                 {status === "failed" ? (
                   <>
-                    {upload.kind === "voice" ? "Transcription failed" : "Upload failed"} ·{" "}
-                    <button type="button" aria-label={`Retry ${upload.name}`} onClick={() => onRetry?.(upload.id)}>
-                      Retry
+                    {upload.kind === "voice" ? labels.transcriptionFailed : labels.uploadFailed} ·{" "}
+                    <button
+                      type="button"
+                      disabled={!onRetry}
+                      aria-label={labels.retryFile(upload.name)}
+                      onClick={() => onRetry?.(upload.id)}
+                    >
+                      {labels.retry}
                     </button>
                   </>
                 ) : status === "waiting" ? (
-                  "Saved – will transcribe when you're back online"
+                  labels.waiting
                 ) : status === "transcribing" ? (
-                  "Transcribing…"
+                  labels.transcribing
                 ) : status === "paused" ? (
-                  `Paused – waiting for connection · ${size(upload.size)}`
+                  `${labels.paused}${size ? ` · ${size}` : ""}`
                 ) : status === "uploading" ? (
-                  `${Math.round(progress * 100)}% · ${size(upload.size)}`
+                  `${Math.round(progress * 100)}%${size ? ` · ${size}` : ""}`
                 ) : (
-                  size(upload.size)
+                  size
                 )}
               </span>
               {(status === "uploading" || status === "paused") && (
                 <span
                   className="ui-upc__bar"
                   role="progressbar"
-                  aria-label={`Uploading ${upload.name}`}
+                  aria-label={labels.uploading(upload.name)}
                   aria-valuenow={Math.round(progress * 100)}
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -370,8 +397,9 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
             </span>
             <button
               type="button"
+              disabled={!onRemove}
               className="ui-upc__remove"
-              aria-label={`${status === "uploading" || status === "paused" ? "Cancel upload" : "Remove"} ${upload.name}`}
+              aria-label={labels.remove(upload.name, status === "uploading" || status === "paused")}
               onClick={() => onRemove?.(upload.id)}
             >
               <Icon name="close" size={12} />
@@ -383,20 +411,29 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
   );
 }
 
-export type ThreadVoiceInputProps = { seconds: number; onDiscard: () => void; onDone: () => void; className?: string };
+const defaultThreadVoiceInputLabels = { dictating: "Dictating", discard: "Discard recording", done: "Done" };
+export type ThreadVoiceInputLabels = typeof defaultThreadVoiceInputLabels;
+export type ThreadVoiceInputProps = {
+  seconds: number;
+  onDiscard: () => void;
+  onDone: () => void;
+  labels?: Partial<ThreadVoiceInputLabels>;
+  className?: string;
+};
 /** Preview-friendly dictation controls, also useful with a caller-owned recorder. */
-export function ThreadVoiceInput({ seconds, onDiscard, onDone, className }: ThreadVoiceInputProps) {
+export function ThreadVoiceInput({ seconds, onDiscard, onDone, labels: labelsProp, className }: ThreadVoiceInputProps) {
+  const labels = { ...defaultThreadVoiceInputLabels, ...labelsProp };
   const value = Math.max(0, Math.floor(safeNumber(seconds, 0)));
   return (
     <div
       className={["ui-upc", "ui-upc__voice", className].filter(Boolean).join(" ")}
       role="group"
-      aria-label="Dictating"
+      aria-label={labels.dictating}
     >
       <style href="ui-thcread-uploads-clean" precedence="default">
         {css}
       </style>
-      <button type="button" aria-label="Discard recording" onClick={onDiscard}>
+      <button type="button" aria-label={labels.discard} onClick={onDiscard}>
         <Icon name="close" size={16} />
       </button>
       <span className="ui-upc__red-dot" />
@@ -408,7 +445,7 @@ export function ThreadVoiceInput({ seconds, onDiscard, onDone, className }: Thre
       <span className="ui-upc__time">
         {Math.floor(value / 60)}:{String(value % 60).padStart(2, "0")}
       </span>
-      <button type="button" aria-label="Done" onClick={onDone}>
+      <button type="button" aria-label={labels.done} onClick={onDone}>
         <Icon name="check" size={16} />
       </button>
     </div>

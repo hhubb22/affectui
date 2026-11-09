@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentPropsWithRef,
   type ComponentPropsWithoutRef,
   type CSSProperties,
   type KeyboardEvent,
@@ -447,6 +449,10 @@ function durationLabel(ms: number) {
   return `${(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1000).toFixed(1)}s`;
 }
 
+function defaultThreadFormatTime(at: number) {
+  return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
+}
+
 function safeNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -725,7 +731,54 @@ export function CommandMenu({
 export type AppRailItem = { label: string; icon?: ReactNode; count?: number; disabled?: boolean; section?: string };
 export type AppChat = { id: string; title: string; project?: string; pinned?: boolean; unread?: boolean };
 export type AppShellUser = { name: string; email?: string; avatar?: string };
+const defaultAppShellLabels = {
+  sidebar: "Sidebar",
+  openSidebar: "Open sidebar",
+  closeSidebar: "Close sidebar",
+  collapseSidebar: "Collapse sidebar",
+  resizeSidebar: "Resize sidebar",
+  panelTitle: "Artifacts",
+  openPanel: (title: string) => `Open ${title.toLowerCase()}`,
+  closePanel: (title: string) => `Close ${title.toLowerCase()}`,
+  resizePanel: (title: string) => `Resize ${title.toLowerCase()}`,
+  apps: "Apps",
+  unreadCount: (label: string, count: number) => `${label}, ${count} unread`,
+  search: "Search",
+  searchHint: "Search (⌘K)",
+  searchPlaceholder: "Search…",
+  workspace: "Workspace",
+  conversations: "Conversations",
+  newChat: "New chat",
+  chats: "Chats",
+  pinned: "Pinned",
+  projects: "Projects",
+  allProjects: "All projects",
+  noProject: "No project",
+  projectName: "Project name",
+  createProject: "Create project",
+  newProject: "New project",
+  moveToProject: "Move to project",
+  empty: "No chats yet. Start a new conversation.",
+  chatName: "Chat name",
+  unread: "Unread",
+  options: (title: string) => `Options for ${title}`,
+  pin: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} ${title}`,
+  account: "Account",
+  language: "Language",
+  appearance: "Appearance",
+  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  action: (action: string) => action,
+  goTo: "Go to",
+  copied: "Conversation title copied",
+  copyFailed: "Couldn't copy. Please try again.",
+};
+export type AppShellLabels = typeof defaultAppShellLabels;
 export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & {
+  /** Replace the navigation column, retaining the aside, resizer and drawer. null hides its contents. */
+  sidebar?: ReactNode;
+  /** A row above main and panel. No row is added for undefined or null. */
+  header?: ReactNode;
+  labels?: Partial<AppShellLabels>;
   workspace?: string;
   user?: AppShellUser;
   rail?: false | { items: AppRailItem[]; bottom?: AppRailItem[]; active?: string };
@@ -803,6 +856,9 @@ export const defaultChatRail = {
 
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
 export function AppShell({
+  sidebar: sidebarContent,
+  header,
+  labels: labelsProp,
   workspace = "Fieldwork",
   user = { name: "Alex Morgan", email: "alex@fieldwork.com" },
   rail = false,
@@ -836,7 +892,7 @@ export function AppShell({
   defaultSidebarOpen = false,
   onSidebarOpenChange,
   panel,
-  panelTitle = "Artifacts",
+  panelTitle: panelTitleProp,
   panelOpen: panelOpenProp,
   defaultPanelOpen = true,
   onPanelOpenChange,
@@ -853,6 +909,8 @@ export function AppShell({
   style,
   ...rest
 }: AppShellProps) {
+  const labels = { ...defaultAppShellLabels, ...labelsProp };
+  const panelTitle = panelTitleProp ?? labels.panelTitle;
   const [collapsed, setCollapsed] = useControllable(collapsedProp, defaultSidebarCollapsed, onSidebarCollapsedChange);
   const [chats, setChats] = useControllable(chatsProp, initialChats, onChatsChange);
   const [projects, setProjects] = useControllable(projectsProp, defaultProjects, onProjectsChange);
@@ -969,13 +1027,14 @@ export function AppShell({
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;
     const previous = document.activeElement as HTMLElement | null;
-    area?.querySelector<HTMLElement>('button:not(:disabled),input,[tabindex="0"]')?.focus({ preventScroll: true });
+    const focusable =
+      'a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]';
+    area?.querySelector<HTMLElement>(focusable)?.focus({ preventScroll: true });
     const trap = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Tab" || menu || searchOpen) return;
-      const items = [
-        ...(area?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,[tabindex="0"]') ?? []),
-      ].filter(
+      const items = [...(area?.querySelectorAll<HTMLElement>(focusable) ?? [])].filter(
         (item) =>
+          item.tabIndex >= 0 &&
           !item.closest("[inert],[hidden]") &&
           item.getClientRects().length &&
           getComputedStyle(item).visibility !== "hidden",
@@ -1064,8 +1123,8 @@ export function AppShell({
     } else if (action === "copy") {
       navigator.clipboard
         ?.writeText(chat.title)
-        .then(() => setNotice("Conversation title copied"))
-        .catch(() => setNotice("Couldn't copy. Please try again."));
+        .then(() => setNotice(labels.copied))
+        .catch(() => setNotice(labels.copyFailed));
     }
     if (action !== "rename" && action !== "pin") onChatAction?.(action, chat.id);
     setMenu(null);
@@ -1132,7 +1191,7 @@ export function AppShell({
         <input
           ref={renameRef}
           className="ui-as__rename"
-          aria-label="Chat name"
+          aria-label={labels.chatName}
           value={renameValue}
           onChange={(event) => setRenameValue(event.target.value)}
           onBlur={rename}
@@ -1153,13 +1212,13 @@ export function AppShell({
           onClick={() => openChat(chat)}
         >
           <span dir="auto">{chat.title}</span>
-          {chat.unread && <i className="ui-as__unread" aria-label="Unread" />}
+          {chat.unread && <i className="ui-as__unread" aria-label={labels.unread} />}
         </button>
       )}
       <span className="ui-as__chat-tools">
         <button
           type="button"
-          aria-label={`Options for ${chat.title}`}
+          aria-label={labels.options(chat.title)}
           aria-haspopup="menu"
           aria-expanded={menu === "chat" && menuChat === chat.id}
           aria-controls={menu === "chat" && menuChat === chat.id ? `${id}-menu` : undefined}
@@ -1167,11 +1226,7 @@ export function AppShell({
         >
           <Icon name="more" size={14} />
         </button>
-        <button
-          type="button"
-          aria-label={`${chat.pinned ? "Unpin" : "Pin"} ${chat.title}`}
-          onClick={() => pinChat(chat)}
-        >
+        <button type="button" aria-label={labels.pin(chat.title, !!chat.pinned)} onClick={() => pinChat(chat)}>
           <Icon name="pin" size={12} />
         </button>
       </span>
@@ -1188,7 +1243,7 @@ export function AppShell({
       ? [
           {
             id: "workspace",
-            label: "Workspace",
+            label: labels.workspace,
             commands: navigation.map((item) => ({
               id: `navigate:${item.label}`,
               label: item.label,
@@ -1202,9 +1257,9 @@ export function AppShell({
           ...defaultCommands,
           {
             id: "go-to",
-            label: "Go to",
+            label: labels.goTo,
             commands: [
-              { id: "new-chat", label: "New chat", onSelect: onNewChat },
+              { id: "new-chat", label: labels.newChat, onSelect: onNewChat },
               ...projectList.map((name) => ({
                 id: `project:${name}`,
                 label: name,
@@ -1243,12 +1298,12 @@ export function AppShell({
       <style href="ui-agent-thread-screen" precedence="default">
         {css}
       </style>
-      <div className="ui-as__app">
+      <div className="ui-as__app" data-header={header != null || undefined}>
         <button
           ref={sideOpenRef}
           type="button"
           className="ui-as__drawer-trigger ui-as__open-side"
-          aria-label="Open sidebar"
+          aria-label={labels.openSidebar}
           aria-expanded={sidebarOpen}
           aria-controls={`${id}-sidebar`}
           onClick={() => {
@@ -1265,7 +1320,7 @@ export function AppShell({
             ref={panelOpenRef}
             type="button"
             className="ui-as__drawer-trigger ui-as__open-panel"
-            aria-label={`Open ${panelTitle.toLowerCase()}`}
+            aria-label={labels.openPanel(panelTitle)}
             aria-expanded={visiblePanel}
             aria-controls={`${id}-panel`}
             onClick={() => {
@@ -1280,7 +1335,7 @@ export function AppShell({
           <button
             type="button"
             className="ui-as__scrim"
-            aria-label={sidebarOpen ? "Close sidebar" : `Close ${panelTitle.toLowerCase()}`}
+            aria-label={sidebarOpen ? labels.closeSidebar : labels.closePanel(panelTitle)}
             tabIndex={-1}
             onClick={closeDrawer}
           />
@@ -1289,11 +1344,11 @@ export function AppShell({
           ref={sidebar}
           className="ui-as__side"
           id={`${id}-sidebar`}
-          aria-label="Sidebar"
+          aria-label={labels.sidebar}
           inert={narrow ? !sidebarOpen : collapsed}
         >
           {rail && (
-            <nav className="ui-as__rail" aria-label="Apps">
+            <nav className="ui-as__rail" aria-label={labels.apps}>
               <button
                 type="button"
                 className="ui-as__logo"
@@ -1330,7 +1385,7 @@ export function AppShell({
                   type="button"
                   className="ui-as__rail-item"
                   key={item.label}
-                  aria-label={item.count ? `${item.label}, ${item.count} unread` : item.label}
+                  aria-label={item.count ? labels.unreadCount(item.label, item.count) : item.label}
                   title={item.label}
                   disabled={item.disabled}
                   onClick={() => navigate(item.label)}
@@ -1358,187 +1413,195 @@ export function AppShell({
             </nav>
           )}
           <div className="ui-as__side-col" data-navigation={!!navigation || undefined}>
-            {navigation ? (
-              <div className="ui-as__navigation">
-                <header className="ui-as__nav-head">
-                  <button
-                    type="button"
-                    className="ui-as__nav-workspace"
-                    aria-label={workspace}
-                    aria-haspopup="menu"
-                    aria-expanded={menu === "workspace"}
-                    {...trigger("workspace")}
-                  >
-                    <span>{initials(workspace).slice(0, 1)}</span>
-                    <strong>{workspace}</strong>
-                    <Icon name="chevron" size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-as__icon-btn"
-                    aria-label="Collapse sidebar"
-                    onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(true))}
-                  >
-                    <Icon name="panel" />
-                  </button>
-                </header>
-                <button
-                  type="button"
-                  className="ui-as__nav-search"
-                  aria-haspopup="dialog"
-                  aria-expanded={searchOpen}
-                  onClick={() => setSearchOpen(true)}
-                >
-                  <Icon name="search" size={14} />
-                  <span>Search…</span>
-                  <kbd>⌘K</kbd>
-                </button>
-                <nav className="ui-as__nav-items" aria-label="Workspace">
-                  {navigation.map((item, index) => (
-                    <div key={item.label}>
-                      {item.section && navigation[index - 1]?.section !== item.section && (
-                        <div className="ui-as__nav-section">{item.section}</div>
-                      )}
-                      <button
-                        type="button"
-                        className="ui-as__nav-item"
-                        aria-current={active === item.label ? "page" : undefined}
-                        disabled={item.disabled}
-                        onClick={() => navigate(item.label)}
-                      >
-                        <span
-                          className="ui-as__nav-icon"
-                          aria-hidden="true"
-                          onErrorCapture={(event) => {
-                            if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
-                          }}
-                        >
-                          {item.icon ?? <Icon name="document" size={16} />}
-                        </span>
-                        <span>{item.label}</span>
-                        {item.count != null && item.count > 0 && <small>{item.count}</small>}
-                      </button>
-                    </div>
-                  ))}
-                </nav>
-              </div>
+            {sidebarContent !== undefined ? (
+              sidebarContent
             ) : (
               <>
-                <header className="ui-as__side-head">
-                  <button
-                    type="button"
-                    className="ui-as__project"
-                    aria-haspopup="menu"
-                    aria-expanded={menu === "projects"}
-                    aria-controls={menu === "projects" ? `${id}-menu` : undefined}
-                    {...trigger("projects")}
-                  >
-                    <span title={project || "All projects"}>{project || "All projects"}</span>
-                    <Icon name="chevron" size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-as__icon-btn"
-                    aria-label="Search"
-                    title="Search (⌘K)"
-                    onClick={() => setSearchOpen(true)}
-                  >
-                    <Icon name="search" />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-as__mobile-close ui-as__icon-btn"
-                    aria-label="Close sidebar"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <Icon name="panel" />
-                  </button>
-                </header>
-                <nav className="ui-as__chat-nav" aria-label="Conversations">
-                  <button
-                    type="button"
-                    className="ui-as__new-chat"
-                    onClick={() => {
-                      onNewChat?.();
-                      if (narrow) setSidebarOpen(false);
-                    }}
-                  >
-                    <Icon name="compose" size={16} />
-                    New chat
-                  </button>
-                  {shown.some((chat) => chat.pinned) && (
-                    <div className="ui-as__group">
-                      <h2>Pinned</h2>
-                      {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
-                    </div>
-                  )}
-                  <div className="ui-as__group">
-                    <h2>Projects</h2>
-                    {projectList
-                      .filter((name) => !project || name === project)
-                      .map((name) => (
-                        <div key={name}>
+                {navigation ? (
+                  <div className="ui-as__navigation">
+                    <header className="ui-as__nav-head">
+                      <button
+                        type="button"
+                        className="ui-as__nav-workspace"
+                        aria-label={workspace}
+                        aria-haspopup="menu"
+                        aria-expanded={menu === "workspace"}
+                        {...trigger("workspace")}
+                      >
+                        <span>{initials(workspace).slice(0, 1)}</span>
+                        <strong>{workspace}</strong>
+                        <Icon name="chevron" size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-as__icon-btn"
+                        aria-label={labels.collapseSidebar}
+                        onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(true))}
+                      >
+                        <Icon name="panel" />
+                      </button>
+                    </header>
+                    <button
+                      type="button"
+                      className="ui-as__nav-search"
+                      aria-haspopup="dialog"
+                      aria-expanded={searchOpen}
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <Icon name="search" size={14} />
+                      <span>{labels.searchPlaceholder}</span>
+                      <kbd>⌘K</kbd>
+                    </button>
+                    <nav className="ui-as__nav-items" aria-label={labels.workspace}>
+                      {navigation.map((item, index) => (
+                        <div key={item.label}>
+                          {item.section && navigation[index - 1]?.section !== item.section && (
+                            <div className="ui-as__nav-section">{item.section}</div>
+                          )}
                           <button
                             type="button"
-                            className="ui-as__folder"
-                            aria-expanded={folders.includes(name)}
-                            aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
-                            onClick={() =>
-                              setFolders(
-                                folders.includes(name) ? folders.filter((item) => item !== name) : [...folders, name],
-                              )
-                            }
+                            className="ui-as__nav-item"
+                            aria-current={active === item.label ? "page" : undefined}
+                            disabled={item.disabled}
+                            onClick={() => navigate(item.label)}
                           >
-                            <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
-                            <span title={name}>{name}</span>
-                            <span className="ui-as__folder-chevron">
-                              <Icon name="chevron" size={12} />
+                            <span
+                              className="ui-as__nav-icon"
+                              aria-hidden="true"
+                              onErrorCapture={(event) => {
+                                if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                              }}
+                            >
+                              {item.icon ?? <Icon name="document" size={16} />}
                             </span>
+                            <span>{item.label}</span>
+                            {item.count != null && item.count > 0 && <small>{item.count}</small>}
                           </button>
-                          <div
-                            className="ui-as__folder-wrap"
-                            data-open={folders.includes(name)}
-                            id={`${id}-folder-${encodeURIComponent(name)}`}
-                            inert={!folders.includes(name)}
-                          >
-                            <div>
-                              {shown
-                                .filter((chat) => chat.project === name && !chat.pinned)
-                                .map((chat) => row(chat, true))}
-                            </div>
-                          </div>
                         </div>
                       ))}
+                    </nav>
                   </div>
-                  {shown.some((chat) => !chat.project && !chat.pinned) && (
-                    <div className="ui-as__group">
-                      <h2>Chats</h2>
-                      {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
-                    </div>
-                  )}
-                  {!shown.length && <p className="ui-as__empty">No chats yet. Start a new conversation.</p>}
-                </nav>
+                ) : (
+                  <>
+                    <header className="ui-as__side-head">
+                      <button
+                        type="button"
+                        className="ui-as__project"
+                        aria-haspopup="menu"
+                        aria-expanded={menu === "projects"}
+                        aria-controls={menu === "projects" ? `${id}-menu` : undefined}
+                        {...trigger("projects")}
+                      >
+                        <span title={project || labels.allProjects}>{project || labels.allProjects}</span>
+                        <Icon name="chevron" size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-as__icon-btn"
+                        aria-label={labels.search}
+                        title={labels.searchHint}
+                        onClick={() => setSearchOpen(true)}
+                      >
+                        <Icon name="search" />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-as__mobile-close ui-as__icon-btn"
+                        aria-label={labels.closeSidebar}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <Icon name="panel" />
+                      </button>
+                    </header>
+                    <nav className="ui-as__chat-nav" aria-label={labels.conversations}>
+                      <button
+                        type="button"
+                        className="ui-as__new-chat"
+                        onClick={() => {
+                          onNewChat?.();
+                          if (narrow) setSidebarOpen(false);
+                        }}
+                      >
+                        <Icon name="compose" size={16} />
+                        {labels.newChat}
+                      </button>
+                      {shown.some((chat) => chat.pinned) && (
+                        <div className="ui-as__group">
+                          <h2>{labels.pinned}</h2>
+                          {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
+                        </div>
+                      )}
+                      <div className="ui-as__group">
+                        <h2>{labels.projects}</h2>
+                        {projectList
+                          .filter((name) => !project || name === project)
+                          .map((name) => (
+                            <div key={name}>
+                              <button
+                                type="button"
+                                className="ui-as__folder"
+                                aria-expanded={folders.includes(name)}
+                                aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
+                                onClick={() =>
+                                  setFolders(
+                                    folders.includes(name)
+                                      ? folders.filter((item) => item !== name)
+                                      : [...folders, name],
+                                  )
+                                }
+                              >
+                                <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
+                                <span title={name}>{name}</span>
+                                <span className="ui-as__folder-chevron">
+                                  <Icon name="chevron" size={12} />
+                                </span>
+                              </button>
+                              <div
+                                className="ui-as__folder-wrap"
+                                data-open={folders.includes(name)}
+                                id={`${id}-folder-${encodeURIComponent(name)}`}
+                                inert={!folders.includes(name)}
+                              >
+                                <div>
+                                  {shown
+                                    .filter((chat) => chat.project === name && !chat.pinned)
+                                    .map((chat) => row(chat, true))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                      {shown.some((chat) => !chat.project && !chat.pinned) && (
+                        <div className="ui-as__group">
+                          <h2>{labels.chats}</h2>
+                          {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
+                        </div>
+                      )}
+                      {!shown.length && <p className="ui-as__empty">{labels.empty}</p>}
+                    </nav>
+                  </>
+                )}
+                {!rail && (
+                  <button
+                    type="button"
+                    className="ui-as__account-row"
+                    aria-haspopup="menu"
+                    aria-expanded={menu === "account"}
+                    {...trigger("account")}
+                  >
+                    <span className="ui-as__user-initials">{initials(user.name)}</span>
+                    <span>{user.name}</span>
+                    <Icon name="chevron" size={12} />
+                  </button>
+                )}
               </>
-            )}
-            {!rail && (
-              <button
-                type="button"
-                className="ui-as__account-row"
-                aria-haspopup="menu"
-                aria-expanded={menu === "account"}
-                {...trigger("account")}
-              >
-                <span className="ui-as__user-initials">{initials(user.name)}</span>
-                <span>{user.name}</span>
-                <Icon name="chevron" size={12} />
-              </button>
             )}
           </div>
         </aside>
         <div
           className="ui-as__resizer"
           role="separator"
-          aria-label="Resize sidebar"
+          aria-label={labels.resizeSidebar}
           aria-orientation="vertical"
           aria-valuemin={200}
           aria-valuemax={420}
@@ -1548,6 +1611,11 @@ export function AppShell({
           onPointerDown={(event) => resize("sidebar", event)}
           onKeyDown={(event) => resizeKey("sidebar", event)}
         />
+        {header != null && (
+          <div className="ui-as__header" inert={!!drawer}>
+            {header}
+          </div>
+        )}
         <main className="ui-as__main" inert={!!drawer}>
           {children}
         </main>
@@ -1556,7 +1624,7 @@ export function AppShell({
             <div
               className="ui-as__resizer ui-as__panel-resizer"
               role="separator"
-              aria-label={`Resize ${panelTitle.toLowerCase()}`}
+              aria-label={labels.resizePanel(panelTitle)}
               aria-orientation="vertical"
               aria-valuemin={300}
               aria-valuemax={640}
@@ -1587,12 +1655,12 @@ export function AppShell({
           id={`${id}-menu`}
           label={
             menu === "chat"
-              ? `Options for ${currentMenuChat?.title ?? "chat"}`
+              ? labels.options(currentMenuChat?.title ?? "")
               : menu === "projects"
-                ? "Projects"
+                ? labels.projects
                 : menu === "workspace"
                   ? workspace
-                  : "Account"
+                  : labels.account
           }
           side={menu === "account" || menu === "workspace" ? "right" : "bottom"}
           onClose={() => setMenu(null)}
@@ -1616,14 +1684,14 @@ export function AppShell({
                   data-divider={index === 1 || index === 6 || index === 7 || undefined}
                   onClick={() => menuAction(label)}
                 >
-                  {label}
+                  {labels.action(label)}
                 </button>
               ))}
             </>
           )}
           {menu === "projects" && (
             <>
-              <div className="ui-as__menu-label">Projects</div>
+              <div className="ui-as__menu-label">{labels.projects}</div>
               {["", ...projectList].map((name) => (
                 <button
                   type="button"
@@ -1636,7 +1704,7 @@ export function AppShell({
                     anchor.current?.focus();
                   }}
                 >
-                  {name || "All projects"}
+                  {name || labels.allProjects}
                   {project === name && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -1657,19 +1725,19 @@ export function AppShell({
                 >
                   <input
                     autoFocus
-                    aria-label="Project name"
-                    placeholder="Project name"
+                    aria-label={labels.projectName}
+                    placeholder={labels.projectName}
                     value={newProject}
                     onChange={(event) => setNewProject(event.target.value)}
                   />
-                  <button type="submit" aria-label="Create project">
+                  <button type="submit" aria-label={labels.createProject}>
                     <Icon name="check" size={14} />
                   </button>
                 </form>
               ) : (
                 <button type="button" role="menuitem" data-divider="" onClick={() => setAddingProject(true)}>
                   <Icon name="plus" size={14} />
-                  New project
+                  {labels.newProject}
                 </button>
               )}
             </>
@@ -1684,14 +1752,14 @@ export function AppShell({
                 </span>
               </div>
               <button type="button" role="menuitem" onClick={() => setMenu("language")}>
-                Language
+                {labels.language}
                 <span>
                   {language}
                   <Icon name="chevron" size={12} />
                 </span>
               </button>
               <button type="button" role="menuitem" onClick={() => setMenu("appearance")}>
-                Appearance
+                {labels.appearance}
                 <Icon name="chevron" size={12} />
               </button>
               {["Integrations", "Settings", "Download apps", "Changelog", "Learn more", "Log out"].map(
@@ -1703,7 +1771,7 @@ export function AppShell({
                     data-divider={index === 2 || index === 3 || index === 5 || undefined}
                     onClick={() => menuAction(label)}
                   >
-                    {label}
+                    {labels.action(label)}
                   </button>
                 ),
               )}
@@ -1711,7 +1779,7 @@ export function AppShell({
           )}
           {menu === "language" && (
             <>
-              <div className="ui-as__menu-label">Language</div>
+              <div className="ui-as__menu-label">{labels.language}</div>
               {["English", "Deutsch", "Français", "Español"].map((label) => (
                 <button
                   type="button"
@@ -1732,7 +1800,7 @@ export function AppShell({
           )}
           {menu === "appearance" && (
             <>
-              <div className="ui-as__menu-label">Appearance</div>
+              <div className="ui-as__menu-label">{labels.appearance}</div>
               {(["light", "dark", "system"] as const).map((value) => (
                 <button
                   type="button"
@@ -1745,7 +1813,7 @@ export function AppShell({
                     anchor.current?.focus();
                   }}
                 >
-                  {value[0].toUpperCase() + value.slice(1)}
+                  {labels.theme(value)}
                   {theme === value && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -1772,13 +1840,13 @@ export function AppShell({
                 data-divider={index === 4 || index === 6 || index === 7 || undefined}
                 onClick={() => chatAction(action)}
               >
-                {label}
+                {labels.action(label)}
                 <kbd>{shortcut}</kbd>
               </button>
             ))}
           {menu === "chat-project" && currentMenuChat && (
             <>
-              <div className="ui-as__menu-label">Move to project</div>
+              <div className="ui-as__menu-label">{labels.moveToProject}</div>
               {["", ...projectList].map((name) => (
                 <button
                   type="button"
@@ -1791,7 +1859,7 @@ export function AppShell({
                     onChatAction?.("project", currentMenuChat.id);
                   }}
                 >
-                  {name || "No project"}
+                  {name || labels.noProject}
                   {(currentMenuChat.project ?? "") === name && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -3390,7 +3458,17 @@ export type ToolActivityItem = {
   error?: string;
 };
 
+const defaultToolActivityLabels = {
+  retry: "Retry",
+  running: (count: number) => `Running ${count === 1 ? "a tool" : `${count} tools in parallel`}`,
+  stopped: (done: number, count: number) => `Stopped · ${done} of ${count} ran`,
+  completed: (count: number, failed: number, duration: string) =>
+    `Ran ${count} ${count === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : duration}`,
+  duration: durationLabel,
+};
+export type ToolActivityLabels = typeof defaultToolActivityLabels;
 export type ToolActivityProps = {
+  labels?: Partial<ToolActivityLabels>;
   tools: ToolActivityItem[];
   open?: boolean;
   defaultOpen?: boolean;
@@ -3406,8 +3484,10 @@ export function ToolActivity({
   defaultOpen,
   onOpenChange,
   onRetry,
+  labels: labelsProp,
   className,
 }: ToolActivityProps) {
+  const labels = { ...defaultToolActivityLabels, ...labelsProp };
   const tools = (Array.isArray(rawTools) ? rawTools : []).filter(Boolean);
   const running = tools.some((tool) => tool.status === "running");
   const failed = tools.filter((tool) => tool.status === "failed").length;
@@ -3438,10 +3518,10 @@ export function ToolActivity({
   const total = Math.max(0, ...tools.map(elapsed));
   const stopped = tools.some((tool) => tool.status === "stopped");
   const label = running
-    ? `Running ${tools.length === 1 ? "a tool" : `${tools.length} tools in parallel`}`
+    ? labels.running(tools.length)
     : stopped
-      ? `Stopped · ${tools.filter((tool) => tool.status === "done").length} of ${tools.length} ran`
-      : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : durationLabel(total)}`;
+      ? labels.stopped(tools.filter((tool) => tool.status === "done").length, tools.length)
+      : labels.completed(tools.length, failed, labels.duration(total));
   return (
     <div
       className={["ui-ta", className].filter(Boolean).join(" ")}
@@ -3508,10 +3588,10 @@ export function ToolActivity({
                   {tool.label}
                   {tool.error && <small>{tool.error}</small>}
                 </span>
-                <span className="ui-ta__time">{durationLabel(elapsed(tool))}</span>
+                <span className="ui-ta__time">{labels.duration(elapsed(tool))}</span>
                 {status === "failed" && onRetry && (
                   <button type="button" className="ui-ta__retry" onClick={() => onRetry(tool.id)}>
-                    Retry
+                    {labels.retry}
                   </button>
                 )}
               </li>
@@ -3525,7 +3605,7 @@ export function ToolActivity({
 
 export type ChatComposerModel = { id: string; name: string; provider?: string; icon?: ReactNode; description?: string };
 export type ChatComposerApproval = "request" | "auto" | "full";
-export type ChatComposerAttachment = { id: string; name: string; size: number; file?: File };
+export type ChatComposerAttachment = { id: string; name: string; size?: number; file?: File };
 export type ChatComposerSendOptions = {
   model: string;
   approval: ChatComposerApproval;
@@ -3533,6 +3613,9 @@ export type ChatComposerSendOptions = {
   attachments: ChatComposerAttachment[];
 };
 export type ChatComposerProps = {
+  /** Sending emits an intent without clearing the draft/attachments. Voice services stay caller-owned. */
+  managed?: boolean;
+  labels?: Partial<ChatComposerLabels>;
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -3561,6 +3644,11 @@ export type ChatComposerProps = {
   showAttachments?: boolean;
   /** Optional footer, rendered below the input card. */
   footer?: ReactNode;
+  /** Replace the entire toolbar and its built-in actions/Enter shortcut. null hides it. */
+  toolbar?: ReactNode;
+  /** Positioned above the textarea, e.g. a caller-owned slash listbox. */
+  overlay?: ReactNode;
+  textareaProps?: Omit<ComponentPropsWithRef<"textarea">, "value" | "defaultValue" | "onChange">;
   className?: string;
 };
 
@@ -3587,14 +3675,60 @@ const approvalOptions: { id: ChatComposerApproval; label: string; description: s
     icon: "spark",
   },
 ];
+const defaultChatComposerLabels = {
+  attachments: "Attachments",
+  removeAttachment: (name: string) => `Remove ${name}`,
+  composer: "Message composer",
+  message: "Message",
+  placeholder: "Ask anything – it searches the web",
+  transcribing: "Transcribing…",
+  add: "Add",
+  plan: "Plan",
+  voiceRecording: "Voice recording",
+  discardRecording: "Discard recording",
+  useRecording: "Use recording",
+  voiceInput: "Voice input",
+  send: "Send message",
+  dismiss: "Dismiss message",
+  attachFiles: "Attach files",
+  permissions: "Permissions",
+  models: "Models",
+  connectApps: "Connect apps",
+  addToChat: "Add to the chat",
+  files: "Files and folders",
+  connected: (count: number) => `${count} connected`,
+  goal: "Goal",
+  goalDescription: "Set a goal to keep working toward",
+  planMode: "Plan mode",
+  planDescription: (enabled: boolean) => (enabled ? "Turn off plan mode" : "Turn on plan mode"),
+  skill: "Record a skill",
+  draw: "Draw",
+  drawDescription: "Sketch a drawing",
+  plugins: "Plugins",
+  documents: "Documents",
+  documentsDescription: "Create and edit documents",
+  pdf: "PDF",
+  pdfDescription: "Read, create and verify PDFs",
+  webSearch: "Web search",
+  approval: (id: ChatComposerApproval) => approvalOptions.find((option) => option.id === id)!.label,
+  approvalDescription: (id: ChatComposerApproval) => approvalOptions.find((option) => option.id === id)!.description,
+  voiceUnavailable: "Voice recording is unavailable in this browser.",
+  transcriptionFailed: "Couldn't transcribe this recording. Please try again.",
+  microphoneDenied: "Microphone access was declined. You can still type a message.",
+  recordingFailed: "Couldn't start recording.",
+  voiceNote: "Voice note.webm",
+};
+export type ChatComposerLabels = typeof defaultChatComposerLabels;
 
 /** A compact composer with keyboard submission, animated model/permission controls and attachment/voice input. */
 export function ChatComposer({
+  managed = false,
+  labels: labelsProp,
   value: valueProp,
   defaultValue = "",
   onValueChange,
   onSend,
-  placeholder = "Ask anything – it searches the web",
+  placeholder,
   models = composerModels,
   model: modelProp,
   defaultModel = "auto",
@@ -3615,8 +3749,12 @@ export function ChatComposer({
   sendDisabled = false,
   showAttachments = true,
   footer,
+  toolbar,
+  overlay,
+  textareaProps,
   className,
 }: ChatComposerProps) {
+  const labels = { ...defaultChatComposerLabels, ...labelsProp };
   const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
   const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
   const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
@@ -3641,10 +3779,33 @@ export function ChatComposer({
   const chunks = useRef<Blob[]>([]),
     mounted = useRef(true),
     pending = useRef<AbortController | null>(null);
+  const voiceEnabled = !managed && toolbar === undefined;
+  const voiceEnabledRef = useRef(voiceEnabled);
+  voiceEnabledRef.current = voiceEnabled;
+  const textareaRef = textareaProps?.ref;
+  const mergedRef = useCallback(
+    (node: HTMLTextAreaElement | null) => {
+      input.current = node;
+      if (typeof textareaRef === "function") {
+        const cleanup = textareaRef(node);
+        return () => {
+          input.current = null;
+          if (cleanup) cleanup();
+          else textareaRef(null);
+        };
+      }
+      if (textareaRef) textareaRef.current = node;
+      return () => {
+        input.current = null;
+        if (textareaRef) textareaRef.current = null;
+      };
+    },
+    [textareaRef],
+  );
   const id = useId();
   const list = (Array.isArray(models) ? models : []).filter(Boolean);
   const selectedModel = list.find((item) => item.id === model) ?? list[0];
-  const blocked = disabled || busy || transcribing;
+  const blocked = disabled || !!textareaProps?.disabled || !!textareaProps?.readOnly || busy || transcribing;
   const canSend = !blocked && !sendDisabled && (!!value.trim() || attachments.length > 0);
   useLayoutEffect(() => {
     const el = input.current;
@@ -3667,16 +3828,29 @@ export function ChatComposer({
     const timer = window.setInterval(() => setRecordingSeconds((seconds) => seconds + 1), 1000);
     return () => window.clearInterval(timer);
   }, [recording]);
+  useEffect(() => {
+    if (toolbar !== undefined) setMenu(null);
+    if (!voiceEnabled) {
+      pending.current?.abort();
+      recordingAction.current = false;
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      stream.current?.getTracks().forEach((track) => track.stop());
+      setRecording(false);
+      setTranscribing(false);
+    }
+  }, [toolbar, voiceEnabled]);
   const send = () => {
-    if (!canSend) return;
+    if (toolbar !== undefined || !canSend) return;
     onSend?.(value.trim(), {
       model: selectedModel?.id ?? "auto",
       approval: approval.id,
       planMode: plan,
       attachments: [...attachments],
     });
-    setValue("");
-    setAttachments([]);
+    if (!managed) {
+      setValue("");
+      setAttachments([]);
+    }
     setMenu(null);
     input.current?.focus();
   };
@@ -3700,14 +3874,16 @@ export function ChatComposer({
     input.current?.focus();
   };
   const startRecording = async () => {
-    if (blocked) return;
+    if (blocked || !voiceEnabled) return;
     setError("");
     setMenu(null);
     try {
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined")
-        throw new Error("Voice recording is unavailable in this browser.");
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        setError(labels.voiceUnavailable);
+        return;
+      }
       const media = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!mounted.current) {
+      if (!mounted.current || !voiceEnabledRef.current) {
         media.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -3721,10 +3897,10 @@ export function ChatComposer({
       };
       next.onstop = async () => {
         media.getTracks().forEach((track) => track.stop());
-        if (!mounted.current || !recordingAction.current) return;
+        if (!mounted.current || !voiceEnabledRef.current || !recordingAction.current) return;
         const blob = new Blob(chunks.current, { type: next.mimeType || "audio/webm" });
         if (!transcribe) {
-          const file = new File([blob], "Voice note.webm", { type: blob.type });
+          const file = new File([blob], labels.voiceNote, { type: blob.type });
           attachFiles([file]);
           return;
         }
@@ -3736,8 +3912,7 @@ export function ChatComposer({
           if (mounted.current && !controller.signal.aborted)
             setValue(`${value.trimEnd()}${value.trim() ? " " : ""}${text}`);
         } catch {
-          if (mounted.current && !controller.signal.aborted)
-            setError("Couldn't transcribe this recording. Please try again.");
+          if (mounted.current && !controller.signal.aborted) setError(labels.transcriptionFailed);
         } finally {
           if (mounted.current) setTranscribing(false);
         }
@@ -3749,10 +3924,8 @@ export function ChatComposer({
       if (mounted.current)
         setError(
           reason instanceof DOMException && reason.name === "NotAllowedError"
-            ? "Microphone access was declined. You can still type a message."
-            : reason instanceof Error
-              ? reason.message
-              : "Couldn't start recording.",
+            ? labels.microphoneDenied
+            : labels.recordingFailed,
         );
     }
   };
@@ -3786,15 +3959,17 @@ export function ChatComposer({
       <style href="ui-agent-thread-screen" precedence="default">
         {css}
       </style>
+      {overlay !== undefined && <div className="ui-cc__overlay">{overlay}</div>}
       {showAttachments && attachments.length > 0 && (
-        <ul className="ui-cc__attachments" aria-label="Attachments">
+        <ul className="ui-cc__attachments" aria-label={labels.attachments}>
           {attachments.map((file) => (
             <li key={file.id}>
               <Icon name="document" size={14} />
               <span title={file.name}>{file.name}</span>
               <button
                 type="button"
-                aria-label={`Remove ${file.name}`}
+                disabled={disabled}
+                aria-label={labels.removeAttachment(file.name)}
                 onClick={() => setAttachments(attachments.filter((item) => item.id !== file.id))}
               >
                 <Icon name="close" size={12} />
@@ -3805,168 +3980,184 @@ export function ChatComposer({
       )}
       <section
         className="ui-cc__body"
-        aria-label="Message composer"
+        aria-label={labels.composer}
         aria-busy={transcribing || busy}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && recording) {
+          if (!event.defaultPrevented && event.key === "Escape" && recording) {
             event.preventDefault();
             stopRecording(false);
           }
         }}
       >
         <textarea
-          ref={input}
-          className="ui-cc__message"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          aria-label="Message"
-          placeholder={transcribing ? "Transcribing…" : placeholder}
-          disabled={disabled}
-          readOnly={recording || transcribing}
+          aria-label={labels.message}
+          placeholder={transcribing ? labels.transcribing : (placeholder ?? labels.placeholder)}
           dir="auto"
           rows={2}
+          {...textareaProps}
+          ref={mergedRef}
+          className={["ui-cc__message", textareaProps?.className].filter(Boolean).join(" ")}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={disabled || textareaProps?.disabled}
+          readOnly={recording || transcribing || textareaProps?.readOnly}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !event.repeat) {
+            textareaProps?.onKeyDown?.(event);
+            if (
+              !event.defaultPrevented &&
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              !event.repeat &&
+              toolbar === undefined
+            ) {
               event.preventDefault();
               send();
             }
           }}
         />
-        <div className="ui-cc__tools">
-          <div className="ui-cc__group" inert={recording}>
-            <button
-              ref={addRef}
-              type="button"
-              className="ui-cc__icon-btn"
-              aria-label="Add"
-              disabled={blocked}
-              aria-haspopup="menu"
-              aria-expanded={menu === "add" || menu === "apps"}
-              aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined}
-              onKeyDown={triggerKey("add")}
-              onClick={() => toggle("add")}
-            >
-              <Icon name="plus" />
-            </button>
-            <button
-              ref={approvalRef}
-              type="button"
-              className="ui-cc__approval"
-              data-tone={approval.id}
-              disabled={blocked}
-              aria-haspopup="menu"
-              aria-expanded={menu === "approval"}
-              aria-controls={menu === "approval" ? `${id}-menu` : undefined}
-              onKeyDown={triggerKey("approval")}
-              onClick={() => toggle("approval")}
-            >
-              <span className="ui-cc__face" key={approval.id}>
-                <Icon name={approval.icon} size={14} />
-                <span>{approval.label}</span>
-              </span>
-            </button>
-            {plan && <span className="ui-cc__plan">Plan</span>}
-          </div>
-          {recording ? (
-            <div className="ui-cc__recording" role="group" aria-label="Voice recording">
-              <span className="ui-cc__timer">
-                {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
-              </span>
-              <span className="ui-cc__wave" aria-hidden="true">
-                {Array.from({ length: 22 }, (_, index) => (
-                  <i
-                    key={index}
-                    style={{ height: `${4 + ((index * 7) % 14)}px`, animationDelay: `${index * -71}ms` }}
-                  />
-                ))}
-              </span>
+        {toolbar !== undefined ? (
+          toolbar
+        ) : (
+          <div className="ui-cc__tools">
+            <div className="ui-cc__group" inert={recording}>
               <button
+                ref={addRef}
                 type="button"
                 className="ui-cc__icon-btn"
-                aria-label="Discard recording"
-                onClick={() => stopRecording(false)}
-              >
-                <Icon name="close" />
-              </button>
-              <button
-                type="button"
-                className="ui-cc__send"
-                aria-label="Use recording"
-                onClick={() => stopRecording(true)}
-              >
-                <Icon name="check" />
-              </button>
-            </div>
-          ) : (
-            <div className="ui-cc__group ui-cc__group--end">
-              {selectedModel && (
-                <button
-                  ref={modelRef}
-                  type="button"
-                  className="ui-cc__model"
-                  disabled={blocked}
-                  aria-haspopup="menu"
-                  aria-expanded={menu === "model"}
-                  aria-controls={menu === "model" ? `${id}-menu` : undefined}
-                  onKeyDown={triggerKey("model")}
-                  onClick={() => toggle("model")}
-                >
-                  <span
-                    className="ui-cc__face"
-                    key={selectedModel.id}
-                    onErrorCapture={(event) => {
-                      if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
-                    }}
-                  >
-                    {selectedModel.icon}
-                    <span title={selectedModel.name}>{selectedModel.name}</span>
-                  </span>
-                  <Icon name="chevron" size={12} />
-                </button>
-              )}
-              <button
-                type="button"
-                className="ui-cc__icon-btn"
-                aria-label="Voice input"
+                aria-label={labels.add}
                 disabled={blocked}
-                onClick={startRecording}
+                aria-haspopup="menu"
+                aria-expanded={menu === "add" || menu === "apps"}
+                aria-controls={menu === "add" || menu === "apps" ? `${id}-menu` : undefined}
+                onKeyDown={triggerKey("add")}
+                onClick={() => toggle("add")}
               >
-                <Icon name="mic" />
+                <Icon name="plus" />
               </button>
               <button
+                ref={approvalRef}
                 type="button"
-                className="ui-cc__send"
-                aria-label="Send message"
-                disabled={!canSend}
-                onClick={send}
+                className="ui-cc__approval"
+                data-tone={approval.id}
+                disabled={blocked}
+                aria-haspopup="menu"
+                aria-expanded={menu === "approval"}
+                aria-controls={menu === "approval" ? `${id}-menu` : undefined}
+                onKeyDown={triggerKey("approval")}
+                onClick={() => toggle("approval")}
               >
-                <Icon name="send" />
+                <span className="ui-cc__face" key={approval.id}>
+                  <Icon name={approval.icon} size={14} />
+                  <span>{labels.approval(approval.id)}</span>
+                </span>
               </button>
+              {plan && <span className="ui-cc__plan">{labels.plan}</span>}
             </div>
-          )}
-        </div>
+            {recording ? (
+              <div className="ui-cc__recording" role="group" aria-label={labels.voiceRecording}>
+                <span className="ui-cc__timer">
+                  {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")}
+                </span>
+                <span className="ui-cc__wave" aria-hidden="true">
+                  {Array.from({ length: 22 }, (_, index) => (
+                    <i
+                      key={index}
+                      style={{ height: `${4 + ((index * 7) % 14)}px`, animationDelay: `${index * -71}ms` }}
+                    />
+                  ))}
+                </span>
+                <button
+                  type="button"
+                  className="ui-cc__icon-btn"
+                  aria-label={labels.discardRecording}
+                  onClick={() => stopRecording(false)}
+                >
+                  <Icon name="close" />
+                </button>
+                <button
+                  type="button"
+                  className="ui-cc__send"
+                  aria-label={labels.useRecording}
+                  onClick={() => stopRecording(true)}
+                >
+                  <Icon name="check" />
+                </button>
+              </div>
+            ) : (
+              <div className="ui-cc__group ui-cc__group--end">
+                {selectedModel && (
+                  <button
+                    ref={modelRef}
+                    type="button"
+                    className="ui-cc__model"
+                    disabled={blocked}
+                    aria-haspopup="menu"
+                    aria-expanded={menu === "model"}
+                    aria-controls={menu === "model" ? `${id}-menu` : undefined}
+                    onKeyDown={triggerKey("model")}
+                    onClick={() => toggle("model")}
+                  >
+                    <span
+                      className="ui-cc__face"
+                      key={selectedModel.id}
+                      onErrorCapture={(event) => {
+                        if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                      }}
+                    >
+                      {selectedModel.icon}
+                      <span title={selectedModel.name}>{selectedModel.name}</span>
+                    </span>
+                    <Icon name="chevron" size={12} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="ui-cc__icon-btn"
+                  aria-label={labels.voiceInput}
+                  disabled={blocked || !voiceEnabled}
+                  onClick={startRecording}
+                >
+                  <Icon name="mic" />
+                </button>
+                <button
+                  type="button"
+                  className="ui-cc__send"
+                  aria-label={labels.send}
+                  disabled={!canSend}
+                  onClick={send}
+                >
+                  <Icon name="send" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </section>
       {footer && <div className="ui-cc__footer">{footer}</div>}
       {error && (
         <p className="ui-cc__error" role="alert">
           {error}
-          <button type="button" aria-label="Dismiss message" onClick={() => setError("")}>
+          <button type="button" aria-label={labels.dismiss} onClick={() => setError("")}>
             <Icon name="close" size={12} />
           </button>
         </p>
       )}
-      <input
-        ref={fileInput}
-        type="file"
-        multiple
-        hidden
-        aria-label="Attach files"
-        onChange={(event) => {
-          attachFiles(event.target.files);
-          event.target.value = "";
-        }}
-      />
-      {menu && (
+      {toolbar === undefined && (
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          hidden
+          disabled={blocked}
+          aria-label={labels.attachFiles}
+          onChange={(event) => {
+            attachFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      )}
+      {toolbar === undefined && menu && (
         <FloatingMenu
           key={menu}
           anchor={anchor}
@@ -3975,12 +4166,12 @@ export function ChatComposer({
           id={`${id}-menu`}
           label={
             menu === "approval"
-              ? "Permissions"
+              ? labels.permissions
               : menu === "model"
-                ? "Models"
+                ? labels.models
                 : menu === "apps"
-                  ? "Connect apps"
-                  : "Add to the chat"
+                  ? labels.connectApps
+                  : labels.addToChat
           }
           side="top"
           align={menu === "model" ? "end" : "start"}
@@ -3988,7 +4179,7 @@ export function ChatComposer({
         >
           {menu === "model" && (
             <>
-              <div className="ui-cc__menu-title">Models</div>
+              <div className="ui-cc__menu-title">{labels.models}</div>
               {list.map((item) => (
                 <button
                   type="button"
@@ -4027,7 +4218,7 @@ export function ChatComposer({
           )}
           {menu === "approval" && (
             <>
-              <div className="ui-cc__menu-title">Permissions</div>
+              <div className="ui-cc__menu-title">{labels.permissions}</div>
               {approvalOptions.map((item) => (
                 <button
                   type="button"
@@ -4045,8 +4236,8 @@ export function ChatComposer({
                     <Icon name={item.icon} />
                   </span>
                   <span className="ui-cc__option-text">
-                    <span>{item.label}</span>
-                    <small>{item.description}</small>
+                    <span>{labels.approval(item.id)}</span>
+                    <small>{labels.approvalDescription(item.id)}</small>
                   </span>
                   {approval.id === item.id && <Icon name="check" size={14} />}
                 </button>
@@ -4055,15 +4246,15 @@ export function ChatComposer({
           )}
           {menu === "add" && (
             <>
-              <div className="ui-cc__menu-title">Add</div>
+              <div className="ui-cc__menu-title">{labels.add}</div>
               {(
                 [
-                  ["files", "Files and folders", "", "document"],
-                  ["apps", "Connect apps", `${connected.length} connected`, "plug"],
-                  ["goal", "Goal", "Set a goal to keep working toward", "tasks"],
-                  ["plan", "Plan mode", plan ? "Turn off plan mode" : "Turn on plan mode", "compose"],
-                  ["skill", "Record a skill", "", "play"],
-                  ["draw", "Draw", "Sketch a drawing", "compose"],
+                  ["files", labels.files, "", "document"],
+                  ["apps", labels.connectApps, labels.connected(connected.length), "plug"],
+                  ["goal", labels.goal, labels.goalDescription, "tasks"],
+                  ["plan", labels.planMode, labels.planDescription(plan), "compose"],
+                  ["skill", labels.skill, "", "play"],
+                  ["draw", labels.draw, labels.drawDescription, "compose"],
                 ] as const
               ).map(([action, label, description, icon]) => (
                 <button
@@ -4084,11 +4275,11 @@ export function ChatComposer({
                   {action === "plan" && plan && <Icon name="check" size={14} />}
                 </button>
               ))}
-              <div className="ui-cc__menu-title">Plugins</div>
+              <div className="ui-cc__menu-title">{labels.plugins}</div>
               {(
                 [
-                  ["document", "Documents", "Create and edit documents"],
-                  ["pdf", "PDF", "Read, create and verify PDFs"],
+                  ["document", labels.documents, labels.documentsDescription],
+                  ["pdf", labels.pdf, labels.pdfDescription],
                 ] as const
               ).map(([action, label, description]) => (
                 <button
@@ -4111,7 +4302,7 @@ export function ChatComposer({
           )}
           {menu === "apps" && (
             <>
-              <div className="ui-cc__menu-title">Connect apps</div>
+              <div className="ui-cc__menu-title">{labels.connectApps}</div>
               {["Web search", "Google Drive", "Gmail", "Notion"].map((app) => (
                 <button
                   type="button"
@@ -4127,7 +4318,7 @@ export function ChatComposer({
                   }}
                 >
                   <Icon name={app === "Web search" ? "globe" : "plug"} />
-                  <span className="ui-cc__option-text">{app}</span>
+                  <span className="ui-cc__option-text">{app === "Web search" ? labels.webSearch : app}</span>
                   {connected.includes(app) && <Icon name="check" size={14} />}
                 </button>
               ))}
@@ -4147,10 +4338,22 @@ export type ThreadTask = {
   done?: boolean;
   tone?: "active" | "waiting" | "done" | "error";
 };
-export type ThreadTaskCardProps = { task: ThreadTask; onOpen?: (id: string) => void; className?: string };
+const defaultThreadTaskCardLabels = {
+  open: "Open",
+  steps: (done: number, total: number) => `${done} of ${total} steps`,
+  openTask: (title: string, status: string, steps: string) => `Open ${title} – ${status}${steps ? `, ${steps}` : ""}`,
+};
+export type ThreadTaskCardLabels = typeof defaultThreadTaskCardLabels;
+export type ThreadTaskCardProps = {
+  task: ThreadTask;
+  onOpen?: (id: string) => void;
+  labels?: Partial<ThreadTaskCardLabels>;
+  className?: string;
+};
 
 /** A compact task mention; opening it keeps the conversation in place. */
-export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps) {
+export function ThreadTaskCard({ task, onOpen, labels: labelsProp, className }: ThreadTaskCardProps) {
+  const labels = { ...defaultThreadTaskCardLabels, ...labelsProp };
   const tone = task.done
     ? "done"
     : ["active", "waiting", "done", "error"].includes(task.tone ?? "")
@@ -4187,7 +4390,7 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         </small>
       </span>
       {task.steps && (
-        <span className="ui-tk__count" aria-label={`${done} of ${total} steps`}>
+        <span className="ui-tk__count" aria-label={labels.steps(done, total)}>
           {done}/{total}
         </span>
       )}
@@ -4195,9 +4398,9 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         type="button"
         disabled={!onOpen}
         onClick={() => onOpen?.(task.id)}
-        aria-label={`Open ${task.title} – ${task.status}${task.steps ? `, ${done} of ${total} steps` : ""}`}
+        aria-label={labels.openTask(task.title, task.status, task.steps ? labels.steps(done, total) : "")}
       >
-        Open
+        {labels.open}
       </button>
     </div>
   );
@@ -4218,9 +4421,49 @@ export type ThreadDecision = {
   taskId?: string;
   options?: ThreadDecisionOption[];
   facts?: { label: string; value: string }[];
+  allowCustomAnswer?: boolean;
+  status?: "awaiting" | "submitting" | "answered" | "expired";
+  error?: string;
+  answer?: ThreadDecisionAnswer;
+  disabled?: boolean;
 };
 export type ThreadDecisionAnswer = { option?: string; text?: string } | "approve" | "decline";
+const defaultDecisionDockLabels = {
+  needsYou: "Needs you",
+  submitting: "Submitting…",
+  answered: "Answered",
+  expired: "Expired",
+  approved: "Approved",
+  declined: "Declined",
+  approve: "Approve",
+  decline: "Decline",
+  later: "Later",
+  show: "Show",
+  previous: "Previous decision",
+  next: "Next decision",
+  recommended: "Recommended",
+  customAnswer: "Something else",
+  customPlaceholder: "Something else…",
+  sendCustomAnswer: "Send custom answer",
+  waiting: (count: number) => `${count} ${count === 1 ? "decision" : "decisions"} waiting`,
+  page: (index: number, count: number) => `${index} of ${count}`,
+};
+export type DecisionDockLabels = typeof defaultDecisionDockLabels;
+function threadDecisionAnswerLabel(
+  decision: ThreadDecision,
+  answer: ThreadDecisionAnswer,
+  labels: Pick<DecisionDockLabels, "approved" | "declined" | "answered">,
+) {
+  return answer === "approve"
+    ? labels.approved
+    : answer === "decline"
+      ? labels.declined
+      : (answer.text ?? decision.options?.find((option) => option.id === answer.option)?.title ?? labels.answered);
+}
 export type DecisionDockProps = {
+  /** Emit answer intents only; decisions and confirmation remain caller-owned. */
+  managed?: boolean;
+  labels?: Partial<DecisionDockLabels>;
   decisions?: ThreadDecision[];
   defaultDecisions?: ThreadDecision[];
   onDecisionsChange?: (decisions: ThreadDecision[]) => void;
@@ -4275,6 +4518,8 @@ export const defaultThreadDecisions: ThreadDecision[] = [
 
 /** Decisions live above the composer, with list/tile choices, approvals, a pager and a separate custom answer. */
 export function DecisionDock({
+  managed = false,
+  labels: labelsProp,
   decisions: decisionsProp,
   defaultDecisions = [],
   onDecisionsChange,
@@ -4289,7 +4534,12 @@ export function DecisionDock({
   focusRequest = 0,
   className,
 }: DecisionDockProps) {
-  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const labels = { ...defaultDecisionDockLabels, ...labelsProp };
+  const [decisions, setDecisions] = useControllable(
+    managed ? (decisionsProp ?? []) : decisionsProp,
+    defaultDecisions,
+    onDecisionsChange,
+  );
   const [activeId, setActiveId] = useControllable(activeProp, defaultActiveId, onActiveIdChange);
   const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
   const [custom, setCustom] = useState(""),
@@ -4303,34 +4553,40 @@ export function DecisionDock({
   if (current) previous.current = current;
   const decision = current ?? previous.current;
   const approval = decision?.kind === "approval";
-  const options: ThreadDecisionOption[] = approval
+  const legacyApproval = approval && decision?.options === undefined;
+  const options: ThreadDecisionOption[] = legacyApproval
     ? [
-        { id: "approve", title: "Approve" },
-        { id: "decline", title: "Decline" },
+        { id: "approve", title: labels.approve },
+        { id: "decline", title: labels.decline },
       ]
-    : (decision?.options ?? []).filter(Boolean).slice(0, 5);
-  const rows = options.length + 1;
+    : (decision?.options ?? []).filter(Boolean);
+  const status = decision?.status ?? "awaiting";
+  const disabled = !!decision?.disabled || status !== "awaiting";
+  const allowCustom = decision?.allowCustomAnswer !== false;
+  const rows = options.length + (allowCustom ? 1 : 0);
   const activeIndex = current ? list.findIndex((item) => item.id === current.id) : 0;
+  const submit = (value: ThreadDecisionAnswer) => {
+    if (!current || folded || disabled) return;
+    onAnswer?.(current.id, value);
+    if (!managed) {
+      setDecisions(list.filter((item) => item.id !== current.id));
+      setActiveId("");
+      setCustom("");
+    }
+  };
   const answer = (index: number) => {
-    if (!current || folded) return;
-    if (index === options.length) {
+    if (!current || folded || disabled) return;
+    if (index === options.length && allowCustom) {
       setFocused(index);
       customInput.current?.focus();
       return;
     }
     const option = options[index];
     if (!option) return;
-    onAnswer?.(current.id, approval ? (option.id === "approve" ? "approve" : "decline") : { option: option.id });
-    setDecisions(list.filter((item) => item.id !== current.id));
-    setActiveId("");
-    setCustom("");
+    submit(legacyApproval ? (option.id === "approve" ? "approve" : "decline") : { option: option.id });
   };
   const answerCustom = () => {
-    if (!current || !custom.trim()) return;
-    onAnswer?.(current.id, { text: custom.trim() });
-    setDecisions(list.filter((item) => item.id !== current.id));
-    setActiveId("");
-    setCustom("");
+    if (allowCustom && custom.trim()) submit({ text: custom.trim() });
   };
   const later = () => {
     if (!current) return;
@@ -4343,6 +4599,9 @@ export function DecisionDock({
     setCustom("");
     setFocused(0);
   }, [current?.id]);
+  useEffect(() => {
+    setFocused((index) => Math.min(index, Math.max(0, rows - 1)));
+  }, [rows]);
   useEffect(() => {
     if (!focusRequest || !current) return;
     setFolded(false);
@@ -4364,6 +4623,8 @@ export function DecisionDock({
         !state.current ||
         state.folded ||
         event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -4372,7 +4633,7 @@ export function DecisionDock({
         return;
       const area = root.current?.closest("[data-thread-shortcuts]") ?? root.current;
       if (document.activeElement !== document.body && !area?.contains(document.activeElement)) return;
-      if (/^[1-6]$/.test(event.key)) {
+      if (/^[1-9]$/.test(event.key)) {
         const index = Number(event.key) - 1;
         if (index < rows) {
           event.preventDefault();
@@ -4390,13 +4651,17 @@ export function DecisionDock({
     else root.current?.querySelectorAll<HTMLElement>('[role="option"]')[index]?.focus();
   };
   const keyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.repeat) {
+      if (event.key === "Enter" || event.key === " ") event.preventDefault();
+      return;
+    }
     if (event.key === "Escape" && !folded) {
       event.preventDefault();
       event.stopPropagation();
       later();
       return;
     }
-    if (isEditing(event.target)) return;
+    if (disabled || !rows || event.defaultPrevented || isEditing(event.target)) return;
     const next =
       event.key === "ArrowDown" || event.key === "ArrowRight"
         ? (focused + 1) % rows
@@ -4419,6 +4684,7 @@ export function DecisionDock({
       className={["ui-dd", className].filter(Boolean).join(" ")}
       data-empty={!current || undefined}
       data-folded={folded || undefined}
+      data-status={status}
       data-kind={approval ? "approval" : decision.kind === "pick" ? "pick" : "decision"}
       onKeyDown={keyboard}
     >
@@ -4428,7 +4694,7 @@ export function DecisionDock({
       {folded && current && (
         <div className="ui-dd__folded">
           <span className="ui-dd__dot" />
-          {list.length} {list.length === 1 ? "decision" : "decisions"} waiting
+          {labels.waiting(list.length)}
           <button
             type="button"
             aria-expanded="false"
@@ -4436,11 +4702,13 @@ export function DecisionDock({
             onClick={() => {
               setFolded(false);
               requestAnimationFrame(() =>
-                root.current?.querySelector<HTMLElement>("[role=option]")?.focus({ preventScroll: true }),
+                root.current
+                  ?.querySelector<HTMLElement>("[role=option]:not(:disabled)")
+                  ?.focus({ preventScroll: true }),
               );
             }}
           >
-            Show
+            {labels.show}
           </button>
         </div>
       )}
@@ -4451,11 +4719,13 @@ export function DecisionDock({
             className="ui-dd__card"
             role="group"
             aria-labelledby={`${id}-question`}
+            aria-describedby={decision.error ? `${id}-error` : undefined}
+            aria-busy={status === "submitting"}
             data-pulse={focusRequest || undefined}
             key={decision.id}
           >
             <header className="ui-dd__head">
-              <span className="ui-dd__tag">Needs you</span>
+              <span className="ui-dd__tag">{status === "awaiting" ? labels.needsYou : labels[status]}</span>
               <span className="ui-dd__task" title={decision.task}>
                 {decision.task}
               </span>
@@ -4463,17 +4733,15 @@ export function DecisionDock({
                 <span className="ui-dd__pager">
                   <button
                     type="button"
-                    aria-label="Previous decision"
+                    aria-label={labels.previous}
                     onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
-                  <span>
-                    {activeIndex + 1} of {list.length}
-                  </span>
+                  <span>{labels.page(activeIndex + 1, list.length)}</span>
                   <button
                     type="button"
-                    aria-label="Next decision"
+                    aria-label={labels.next}
                     onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
                   >
                     <Icon name="chevron" size={10} />
@@ -4487,7 +4755,7 @@ export function DecisionDock({
                 aria-controls={`${id}-card`}
                 onClick={later}
               >
-                Later
+                {labels.later}
               </button>
             </header>
             <p className="ui-dd__question" id={`${id}-question`} dir="auto">
@@ -4505,117 +4773,143 @@ export function DecisionDock({
                 ))}
               </dl>
             )}
-            <div className="ui-dd__choices" role="listbox" aria-label={decision.question}>
-              {options.map((option, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={focused === index}
-                  tabIndex={focused === index ? 0 : -1}
-                  aria-keyshortcuts={String(index + 1)}
-                  className="ui-dd__option"
-                  key={option.id}
-                  onFocus={() => setFocused(index)}
-                  onClick={() => answer(index)}
-                >
-                  {decision.kind === "pick" && (
-                    <span
-                      className="ui-dd__wire"
-                      aria-hidden="true"
-                      data-wire={
-                        typeof option.wireframe === "string"
-                          ? option.wireframe
-                          : index === 0
-                            ? "illustration"
-                            : index === 1
-                              ? "checklist"
-                              : "data"
-                      }
-                    >
-                      {typeof option.wireframe === "object" ? (
-                        option.wireframe
-                      ) : (
-                        <svg viewBox="0 0 200 80" fill="none" aria-hidden="true">
-                          <rect x="40" width="120" height="80" rx="8" fill="var(--ui-dd-card)" />
-                          <g fill="var(--ui-dd-faint)">
-                            {(option.wireframe ??
-                              (index === 0 ? "illustration" : index === 1 ? "checklist" : "data")) ===
-                            "illustration" ? (
-                              <>
-                                <rect x="88" y="16" width="24" height="20" rx="4" />
-                                <rect x="74" y="44" width="52" height="3" rx="1.5" />
-                                <rect x="82" y="51" width="36" height="2" rx="1" opacity=".6" />
-                                <rect x="91" y="60" width="18" height="6" rx="2" />
-                              </>
-                            ) : (option.wireframe ?? (index === 1 ? "checklist" : "data")) === "checklist" ? (
-                              <>
-                                <rect x="52" y="10" width="43" height="4" rx="2" />
-                                <rect x="52" y="18" width="31" height="3" rx="1.5" opacity=".6" />
-                                <rect x="52" y="25" width="94" height="1" opacity=".4" />
-                                <circle cx="56" cy="37" r="3" />
-                                <rect x="64" y="34" width="58" height="5" rx="2.5" />
-                                <g opacity=".45">
-                                  <circle cx="56" cy="51" r="3" />
-                                  <rect x="64" y="49" width="45" height="3" rx="1.5" />
-                                  <circle cx="56" cy="64" r="3" />
-                                  <rect x="64" y="62" width="54" height="3" rx="1.5" />
-                                </g>
-                              </>
-                            ) : (
-                              <>
-                                <rect x="52" y="12" width="50" height="12" rx="6" />
-                                <g opacity=".45">
-                                  <rect x="56" y="51" width="9" height="17" rx="2" />
-                                  <rect x="72" y="39" width="9" height="29" rx="2" />
-                                  <rect x="88" y="28" width="9" height="40" rx="2" />
-                                  <rect x="104" y="42" width="9" height="26" rx="2" />
-                                  <rect x="120" y="22" width="9" height="46" rx="2" />
-                                </g>
-                              </>
-                            )}
-                          </g>
-                        </svg>
-                      )}
-                    </span>
-                  )}
-                  <span className="ui-dd__number">{index + 1}</span>
-                  <span className="ui-dd__text">
-                    <strong dir="auto">{option.title}</strong>
-                    {option.summary && <small dir="auto">{option.summary}</small>}
-                  </span>
-                  {option.recommended && <span className="ui-dd__recommended">Recommended</span>}
-                </button>
-              ))}
+            <div role="status" aria-live="polite">
+              {status === "answered"
+                ? decision.answer === undefined
+                  ? labels.answered
+                  : threadDecisionAnswerLabel(decision, decision.answer, labels)
+                : status === "awaiting"
+                  ? null
+                  : labels[status]}
             </div>
-            <form
-              className="ui-dd__custom"
-              onSubmit={(event) => {
-                event.preventDefault();
-                answerCustom();
-              }}
-            >
-              <span className="ui-dd__number">{rows}</span>
-              <input
-                ref={customInput}
-                aria-label="Something else"
-                placeholder="Something else…"
-                value={custom}
-                onFocus={() => setFocused(options.length)}
-                onChange={(event) => setCustom(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    later();
-                  }
-                }}
-              />
-              {custom.trim() && (
-                <button type="submit" aria-label="Send custom answer">
-                  <Icon name="send" size={14} />
-                </button>
-              )}
-            </form>
+            {decision.error && (
+              <p className="ui-dd__error" id={`${id}-error`} role="alert">
+                {decision.error}
+              </p>
+            )}
+            {status !== "answered" && status !== "expired" && (
+              <>
+                <div className="ui-dd__choices" role="listbox" aria-label={decision.question} aria-disabled={disabled}>
+                  {options.map((option, index) => (
+                    <button
+                      type="button"
+                      role="option"
+                      disabled={disabled}
+                      aria-selected={focused === index}
+                      tabIndex={focused === index ? 0 : -1}
+                      aria-keyshortcuts={index < 9 ? String(index + 1) : undefined}
+                      className="ui-dd__option"
+                      key={option.id}
+                      onFocus={() => setFocused(index)}
+                      onClick={() => answer(index)}
+                    >
+                      {decision.kind === "pick" && (
+                        <span
+                          className="ui-dd__wire"
+                          aria-hidden="true"
+                          data-wire={
+                            typeof option.wireframe === "string"
+                              ? option.wireframe
+                              : index === 0
+                                ? "illustration"
+                                : index === 1
+                                  ? "checklist"
+                                  : "data"
+                          }
+                        >
+                          {typeof option.wireframe === "object" ? (
+                            option.wireframe
+                          ) : (
+                            <svg viewBox="0 0 200 80" fill="none" aria-hidden="true">
+                              <rect x="40" width="120" height="80" rx="8" fill="var(--ui-dd-card)" />
+                              <g fill="var(--ui-dd-faint)">
+                                {(option.wireframe ??
+                                  (index === 0 ? "illustration" : index === 1 ? "checklist" : "data")) ===
+                                "illustration" ? (
+                                  <>
+                                    <rect x="88" y="16" width="24" height="20" rx="4" />
+                                    <rect x="74" y="44" width="52" height="3" rx="1.5" />
+                                    <rect x="82" y="51" width="36" height="2" rx="1" opacity=".6" />
+                                    <rect x="91" y="60" width="18" height="6" rx="2" />
+                                  </>
+                                ) : (option.wireframe ?? (index === 1 ? "checklist" : "data")) === "checklist" ? (
+                                  <>
+                                    <rect x="52" y="10" width="43" height="4" rx="2" />
+                                    <rect x="52" y="18" width="31" height="3" rx="1.5" opacity=".6" />
+                                    <rect x="52" y="25" width="94" height="1" opacity=".4" />
+                                    <circle cx="56" cy="37" r="3" />
+                                    <rect x="64" y="34" width="58" height="5" rx="2.5" />
+                                    <g opacity=".45">
+                                      <circle cx="56" cy="51" r="3" />
+                                      <rect x="64" y="49" width="45" height="3" rx="1.5" />
+                                      <circle cx="56" cy="64" r="3" />
+                                      <rect x="64" y="62" width="54" height="3" rx="1.5" />
+                                    </g>
+                                  </>
+                                ) : (
+                                  <>
+                                    <rect x="52" y="12" width="50" height="12" rx="6" />
+                                    <g opacity=".45">
+                                      <rect x="56" y="51" width="9" height="17" rx="2" />
+                                      <rect x="72" y="39" width="9" height="29" rx="2" />
+                                      <rect x="88" y="28" width="9" height="40" rx="2" />
+                                      <rect x="104" y="42" width="9" height="26" rx="2" />
+                                      <rect x="120" y="22" width="9" height="46" rx="2" />
+                                    </g>
+                                  </>
+                                )}
+                              </g>
+                            </svg>
+                          )}
+                        </span>
+                      )}
+                      <span className="ui-dd__number">{index + 1}</span>
+                      <span className="ui-dd__text">
+                        <strong dir="auto">{option.title}</strong>
+                        {option.summary && <small dir="auto">{option.summary}</small>}
+                      </span>
+                      {option.recommended && <span className="ui-dd__recommended">{labels.recommended}</span>}
+                    </button>
+                  ))}
+                </div>
+                {allowCustom && (
+                  <form
+                    className="ui-dd__custom"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      answerCustom();
+                    }}
+                  >
+                    <span className="ui-dd__number">{rows}</span>
+                    <input
+                      ref={customInput}
+                      disabled={disabled}
+                      aria-label={labels.customAnswer}
+                      placeholder={labels.customPlaceholder}
+                      value={custom}
+                      onFocus={() => setFocused(options.length)}
+                      onChange={(event) => setCustom(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing || event.repeat) {
+                          if (event.key === "Enter") event.preventDefault();
+                          return;
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          later();
+                        }
+                      }}
+                    />
+                    {custom.trim() && (
+                      <button type="submit" disabled={disabled} aria-label={labels.sendCustomAnswer}>
+                        <Icon name="send" size={14} />
+                      </button>
+                    )}
+                  </form>
+                )}
+              </>
+            )}
           </section>
         </div>
       </div>
@@ -4624,6 +4918,14 @@ export function DecisionDock({
 }
 
 export type ThreadConnection = "online" | "offline" | "reconnecting";
+const defaultConnectionBannerLabels = {
+  backOnline: "Back online",
+  lost: "Connection lost – reconnecting…",
+  reconnecting: "Reconnecting…",
+  retry: "Retry now",
+  retryIn: (seconds: number) => `Retrying in ${seconds}s`,
+};
+export type ConnectionBannerLabels = typeof defaultConnectionBannerLabels;
 export type ConnectionBannerProps = {
   connection?: ThreadConnection;
   defaultConnection?: ThreadConnection;
@@ -4633,6 +4935,7 @@ export type ConnectionBannerProps = {
   backOnline?: boolean;
   /** Disable the built-in retry clock when a parent supplies its own connection manager. */
   managed?: boolean;
+  labels?: Partial<ConnectionBannerLabels>;
   className?: string;
 };
 
@@ -4641,6 +4944,7 @@ function useThreadConnection({
   defaultConnection,
   onConnectionChange,
   onReconnect,
+  managed = false,
 }: Omit<ConnectionBannerProps, "className">) {
   const [internal, setInternal] = useState<ThreadConnection>(defaultConnection ?? "online");
   const [retrying, setRetrying] = useState(false),
@@ -4650,10 +4954,14 @@ function useThreadConnection({
   const forced = useRef(defaultConnection === "offline"),
     timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     mounted = useRef(true);
-  const callbacks = useRef({ connection, onReconnect, onConnectionChange });
-  callbacks.current = { connection, onReconnect, onConnectionChange };
-  const base = connection && ["online", "offline", "reconnecting"].includes(connection) ? connection : internal;
-  const status: ThreadConnection = retrying && base !== "online" ? "reconnecting" : base;
+  const callbacks = useRef({ connection, onReconnect, onConnectionChange, managed });
+  callbacks.current = { connection, onReconnect, onConnectionChange, managed };
+  const base = managed
+    ? (connection ?? "online")
+    : connection && ["online", "offline", "reconnecting"].includes(connection)
+      ? connection
+      : internal;
+  const status: ThreadConnection = !managed && retrying && base !== "online" ? "reconnecting" : base;
   const current = useRef(status);
   current.current = status;
   const setConnection = (next: ThreadConnection) => {
@@ -4662,6 +4970,10 @@ function useThreadConnection({
   };
   const reconnect = (manual = true) => {
     if (current.current === "reconnecting") return;
+    if (managed) {
+      onReconnect?.();
+      return;
+    }
     setRetrying(true);
     Promise.resolve()
       .then(() => callbacks.current.onReconnect?.())
@@ -4670,9 +4982,9 @@ function useThreadConnection({
         () => false,
       )
       .then((succeeded) => {
-        if (!mounted.current) return;
+        if (!mounted.current || callbacks.current.managed) return;
         timer.current = setTimeout(() => {
-          if (!mounted.current) return;
+          if (!mounted.current || callbacks.current.managed) return;
           if (manual && succeeded) forced.current = false;
           if (succeeded && callbacks.current.connection === undefined && navigator.onLine && !forced.current)
             setConnection("online");
@@ -4685,6 +4997,12 @@ function useThreadConnection({
   reconnectRef.current = reconnect;
   useEffect(() => {
     mounted.current = true;
+    if (managed) {
+      setRetrying(false);
+      return () => {
+        mounted.current = false;
+      };
+    }
     const online = () => {
       forced.current = false;
       if (callbacks.current.connection === undefined) setConnection("online");
@@ -4701,9 +5019,9 @@ function useThreadConnection({
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offline);
     };
-  }, []);
+  }, [managed]);
   useEffect(() => {
-    if (status !== "offline") return;
+    if (managed || status !== "offline") return;
     const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
     const deadline = Date.now() + seconds * 1000;
     setRetryIn(seconds);
@@ -4716,17 +5034,17 @@ function useThreadConnection({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [status, attempt]);
+  }, [managed, status, attempt]);
   const previous = useRef(base);
   useEffect(() => {
     const was = previous.current;
     previous.current = base;
-    if (base !== "online" || was === "online") return;
+    if (managed || base !== "online" || was === "online") return;
     setAttempt(0);
     setBackOnline(true);
     const timeout = setTimeout(() => setBackOnline(false), 1800);
     return () => clearTimeout(timeout);
-  }, [base]);
+  }, [managed, base]);
   return { status, retryIn, backOnline, reconnect: () => reconnect(true) };
 }
 
@@ -4739,16 +5057,13 @@ export function ConnectionBanner({
   retryIn: suppliedRetry,
   backOnline: suppliedBack,
   managed = false,
+  labels: labelsProp,
   className,
 }: ConnectionBannerProps) {
-  const state = useThreadConnection({
-    connection: managed ? "online" : connection,
-    defaultConnection,
-    onConnectionChange,
-    onReconnect,
-  });
+  const labels = { ...defaultConnectionBannerLabels, ...labelsProp };
+  const state = useThreadConnection({ managed, connection, defaultConnection, onConnectionChange, onReconnect });
   const status = managed ? (connection ?? "online") : state.status;
-  const back = suppliedBack ?? state.backOnline;
+  const back = suppliedBack ?? (!managed && state.backOnline);
   if (status === "online" && !back) return null;
   return (
     <div
@@ -4768,18 +5083,18 @@ export function ConnectionBanner({
             <span className="ui-cn__spinner" aria-hidden="true" />
           )}
         </span>
-        <span className="ui-cn__text">{status === "online" ? "Back online" : "Connection lost – reconnecting…"}</span>
+        <span className="ui-cn__text">{status === "online" ? labels.backOnline : labels.lost}</span>
         {status !== "online" && (
           <>
             <span className="ui-cn__timer">
-              {status === "reconnecting" ? "Reconnecting…" : `Retrying in ${suppliedRetry ?? state.retryIn}s`}
+              {status === "reconnecting"
+                ? labels.reconnecting
+                : !managed || suppliedRetry !== undefined
+                  ? labels.retryIn(suppliedRetry ?? state.retryIn)
+                  : null}
             </span>
-            <button
-              type="button"
-              disabled={status === "reconnecting"}
-              onClick={() => (managed ? onReconnect?.() : state.reconnect())}
-            >
-              Retry now
+            <button type="button" disabled={status === "reconnecting"} onClick={state.reconnect}>
+              {labels.retry}
             </button>
           </>
         )}
@@ -4788,7 +5103,20 @@ export function ConnectionBanner({
   );
 }
 
+const defaultAwaySummaryLabels = {
+  title: "While you were away",
+  counts: (done: number, needs: number) => `${done} done · ${needs} need you`,
+  needsYou: "Needs you",
+  openTasks: "Open Tasks",
+  openInbox: "Open Inbox",
+  newSince: (time: string) => `New since ${time}`,
+  newActivity: "New activity",
+  markRead: "Mark as read",
+};
+export type AwaySummaryLabels = typeof defaultAwaySummaryLabels;
 export type AwaySummaryProps = {
+  labels?: Partial<AwaySummaryLabels>;
+  formatTime?: (timestamp: number) => string;
   tasks?: ThreadTask[];
   decisions?: { id: string; question: string }[];
   since?: number;
@@ -4802,6 +5130,8 @@ export type AwaySummaryProps = {
 
 /** A return-to-thread summary, followed by the unread boundary and a mark-as-read action. */
 export function AwaySummary({
+  labels: labelsProp,
+  formatTime = defaultThreadFormatTime,
   tasks = [],
   decisions = [],
   since,
@@ -4812,18 +5142,17 @@ export function AwaySummary({
   onMarkRead,
   className,
 }: AwaySummaryProps) {
+  const labels = { ...defaultAwaySummaryLabels, ...labelsProp };
   const done = tasks.filter((task) => task.done);
   return (
     <div className={["ui-ay", className].filter(Boolean).join(" ")}>
       <style href="ui-agent-thread-screen" precedence="default">
         {css}
       </style>
-      <section className="ui-ay__card" aria-label="While you were away">
+      <section className="ui-ay__card" aria-label={labels.title}>
         <header>
-          <span className="ui-ay__title">While you were away</span>
-          <span className="ui-ay__counts">
-            {done.length} done · {decisions.length} need you
-          </span>
+          <span className="ui-ay__title">{labels.title}</span>
+          <span className="ui-ay__counts">{labels.counts(done.length, decisions.length)}</span>
         </header>
         <div className="ui-ay__rows">
           {done.map((task) => (
@@ -4845,20 +5174,20 @@ export function AwaySummary({
             >
               <span className="ui-ay__dot" />
               <strong dir="auto">{decision.question}</strong>
-              <small>Needs you</small>
+              <small>{labels.needsYou}</small>
             </button>
           ))}
         </div>
         <footer>
           {onOpenTasks && (
             <button type="button" onClick={onOpenTasks}>
-              Open Tasks
+              {labels.openTasks}
               <Icon name="arrow" size={12} />
             </button>
           )}
           {onOpenInbox && (
             <button type="button" onClick={onOpenInbox}>
-              Open Inbox
+              {labels.openInbox}
               <Icon name="arrow" size={12} />
             </button>
           )}
@@ -4867,14 +5196,12 @@ export function AwaySummary({
       {(since != null || onMarkRead) && (
         <div className="ui-ay__boundary">
           <span>
-            {since != null && Number.isFinite(since)
-              ? `New since ${new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(since)}`
-              : "New activity"}
+            {since != null && Number.isFinite(since) ? labels.newSince(formatTime(since)) : labels.newActivity}
           </span>
           {onMarkRead && (
             <button type="button" onClick={onMarkRead}>
               <Icon name="check" size={11} />
-              Mark as read
+              {labels.markRead}
             </button>
           )}
         </div>
@@ -4886,7 +5213,7 @@ export function AwaySummary({
 export type ThreadAttachment = {
   id: string;
   name: string;
-  size: number;
+  size?: number;
   kind?: "file" | "voice";
   file?: File;
   seconds?: number;
@@ -4895,24 +5222,45 @@ export type ThreadUpload = ThreadAttachment & {
   progress: number;
   state: "uploading" | "paused" | "done" | "failed" | "transcribing" | "waiting";
 };
-export type ThreadUploadsProps = {
-  uploads: ThreadUpload[];
-  onRemove?: (id: string) => void;
-  onRetry?: (id: string) => void;
-  className?: string;
-};
-
-/** Upload progress, paused transfers, retryable failures and voice notes waiting for a connection. */
-export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, className }: ThreadUploadsProps) {
-  const uploads = (Array.isArray(rawUploads) ? rawUploads : []).filter(Boolean);
-  const size = (bytes: number) =>
+const defaultThreadUploadsLabels = {
+  attachments: "Attachments",
+  transcriptionFailed: "Transcription failed",
+  uploadFailed: "Upload failed",
+  retry: "Retry",
+  retryFile: (name: string) => `Retry ${name}`,
+  waiting: "Saved – will transcribe when you're back online",
+  transcribing: "Transcribing…",
+  paused: "Paused – waiting for connection",
+  uploading: (name: string) => `Uploading ${name}`,
+  remove: (name: string, uploading: boolean) => `${uploading ? "Cancel upload" : "Remove"} ${name}`,
+  size: (bytes: number) =>
     bytes >= 1e6
       ? `${Math.round(bytes / 1e6)} MB`
       : bytes >= 1000
         ? `${Math.round(bytes / 1000)} KB`
-        : `${Math.max(0, bytes)} B`;
+        : `${Math.max(0, bytes)} B`,
+};
+export type ThreadUploadsLabels = typeof defaultThreadUploadsLabels;
+export type ThreadUploadsProps = {
+  uploads: ThreadUpload[];
+  onRemove?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  labels?: Partial<ThreadUploadsLabels>;
+  className?: string;
+};
+
+/** Upload progress, paused transfers, retryable failures and voice notes waiting for a connection. */
+export function ThreadUploads({
+  uploads: rawUploads,
+  onRemove,
+  onRetry,
+  labels: labelsProp,
+  className,
+}: ThreadUploadsProps) {
+  const labels = { ...defaultThreadUploadsLabels, ...labelsProp };
+  const uploads = (Array.isArray(rawUploads) ? rawUploads : []).filter(Boolean);
   return (
-    <ul className={["ui-up", className].filter(Boolean).join(" ")} aria-label="Attachments">
+    <ul className={["ui-up", className].filter(Boolean).join(" ")} aria-label={labels.attachments}>
       <style href="ui-agent-thread-screen" precedence="default">
         {css}
       </style>
@@ -4921,6 +5269,7 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
           ? upload.state
           : "done";
         const progress = clamp(safeNumber(upload.progress, 0), 0, 1);
+        const size = upload.size === undefined ? "" : labels.size(upload.size);
         return (
           <li
             key={upload.id}
@@ -4963,28 +5312,33 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
               <span className="ui-up__status">
                 {status === "failed" ? (
                   <>
-                    {upload.kind === "voice" ? "Transcription failed" : "Upload failed"} ·{" "}
-                    <button type="button" aria-label={`Retry ${upload.name}`} onClick={() => onRetry?.(upload.id)}>
-                      Retry
+                    {upload.kind === "voice" ? labels.transcriptionFailed : labels.uploadFailed} ·{" "}
+                    <button
+                      type="button"
+                      disabled={!onRetry}
+                      aria-label={labels.retryFile(upload.name)}
+                      onClick={() => onRetry?.(upload.id)}
+                    >
+                      {labels.retry}
                     </button>
                   </>
                 ) : status === "waiting" ? (
-                  "Saved – will transcribe when you're back online"
+                  labels.waiting
                 ) : status === "transcribing" ? (
-                  "Transcribing…"
+                  labels.transcribing
                 ) : status === "paused" ? (
-                  `Paused – waiting for connection · ${size(upload.size)}`
+                  `${labels.paused}${size ? ` · ${size}` : ""}`
                 ) : status === "uploading" ? (
-                  `${Math.round(progress * 100)}% · ${size(upload.size)}`
+                  `${Math.round(progress * 100)}%${size ? ` · ${size}` : ""}`
                 ) : (
-                  size(upload.size)
+                  size
                 )}
               </span>
               {(status === "uploading" || status === "paused") && (
                 <span
                   className="ui-up__bar"
                   role="progressbar"
-                  aria-label={`Uploading ${upload.name}`}
+                  aria-label={labels.uploading(upload.name)}
                   aria-valuenow={Math.round(progress * 100)}
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -4995,8 +5349,9 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
             </span>
             <button
               type="button"
+              disabled={!onRemove}
               className="ui-up__remove"
-              aria-label={`${status === "uploading" || status === "paused" ? "Cancel upload" : "Remove"} ${upload.name}`}
+              aria-label={labels.remove(upload.name, status === "uploading" || status === "paused")}
               onClick={() => onRemove?.(upload.id)}
             >
               <Icon name="close" size={12} />
@@ -5008,16 +5363,29 @@ export function ThreadUploads({ uploads: rawUploads, onRemove, onRetry, classNam
   );
 }
 
-export type ThreadVoiceInputProps = { seconds: number; onDiscard: () => void; onDone: () => void; className?: string };
+const defaultThreadVoiceInputLabels = { dictating: "Dictating", discard: "Discard recording", done: "Done" };
+export type ThreadVoiceInputLabels = typeof defaultThreadVoiceInputLabels;
+export type ThreadVoiceInputProps = {
+  seconds: number;
+  onDiscard: () => void;
+  onDone: () => void;
+  labels?: Partial<ThreadVoiceInputLabels>;
+  className?: string;
+};
 /** Preview-friendly dictation controls, also useful with a caller-owned recorder. */
-export function ThreadVoiceInput({ seconds, onDiscard, onDone, className }: ThreadVoiceInputProps) {
+export function ThreadVoiceInput({ seconds, onDiscard, onDone, labels: labelsProp, className }: ThreadVoiceInputProps) {
+  const labels = { ...defaultThreadVoiceInputLabels, ...labelsProp };
   const value = Math.max(0, Math.floor(safeNumber(seconds, 0)));
   return (
-    <div className={["ui-up", "ui-up__voice", className].filter(Boolean).join(" ")} role="group" aria-label="Dictating">
+    <div
+      className={["ui-up", "ui-up__voice", className].filter(Boolean).join(" ")}
+      role="group"
+      aria-label={labels.dictating}
+    >
       <style href="ui-agent-thread-screen" precedence="default">
         {css}
       </style>
-      <button type="button" aria-label="Discard recording" onClick={onDiscard}>
+      <button type="button" aria-label={labels.discard} onClick={onDiscard}>
         <Icon name="close" size={16} />
       </button>
       <span className="ui-up__red-dot" />
@@ -5029,7 +5397,7 @@ export function ThreadVoiceInput({ seconds, onDiscard, onDone, className }: Thre
       <span className="ui-up__time">
         {Math.floor(value / 60)}:{String(value % 60).padStart(2, "0")}
       </span>
-      <button type="button" aria-label="Done" onClick={onDone}>
+      <button type="button" aria-label={labels.done} onClick={onDone}>
         <Icon name="check" size={16} />
       </button>
     </div>
@@ -5058,7 +5426,61 @@ export type AgentMessage = {
   status?: "sent" | "sending" | "queued" | "failed";
   answer?: { id: string; question: string };
 };
+const defaultAgentThreadLabels = {
+  conversation: "Conversation",
+  emptyTitle: "What can I help you with?",
+  emptyDescription: "Ask a question, explore an idea, or bring a file.",
+  createdFiles: "Created files",
+  youSaid: "You said:",
+  youAnswered: "You answered:",
+  answerContext: (question: string) => `Answered: ${question}`,
+  asked: (question: string) => `Asked: ${question}`,
+  answeredBelow: "answered below",
+  waiting: "waiting",
+  inInbox: "in Inbox",
+  retry: "Retry",
+  sendFailed: "Couldn't send",
+  queued: "Waiting to send",
+  sending: "Sending…",
+  stop: "Stop",
+  stopping: "Stopping…",
+  stopped: "Stopped",
+  responseStopped: "Response stopped",
+  responseComplete: "Response complete",
+  queuedAnnouncement: "Waiting to send – it goes out when you're back online",
+  uploadFailed: (name: string) => `Upload failed: ${name}`,
+  voiceSaved: "Voice note saved – it will transcribe when you're back online",
+  voiceNote: "Voice note",
+  answeredAnnouncement: (answer: string) => `Answered: ${answer}`,
+  laterAnnouncement: "Later – the decision waits above the composer",
+  markedRead: "Marked as read",
+  running: "running",
+  runningTasks: (count: number) => `${count} tasks running – open Tasks`,
+  needsYou: (count: number) => `need${count === 1 ? "s" : ""} you`,
+  waitingQuestions: (count: number, dock: boolean) =>
+    `${count} questions waiting – ${dock ? "show the decision" : "open Inbox"}`,
+  latest: "Back to latest",
+  newLines: (count: number) => `${count} new lines`,
+  jumpToLatest: (count: number, streaming: boolean) =>
+    `Jump to latest${count ? `, ${count} new lines` : ""}${streaming ? ", still writing" : ""}`,
+};
+export type AgentThreadLabels = typeof defaultAgentThreadLabels & {
+  decisions?: Partial<DecisionDockLabels>;
+  connection?: Partial<ConnectionBannerLabels>;
+  uploads?: Partial<ThreadUploadsLabels>;
+  voice?: Partial<ThreadVoiceInputLabels>;
+  away?: Partial<AwaySummaryLabels>;
+  tools?: Partial<ToolActivityLabels>;
+  task?: Partial<ThreadTaskCardLabels>;
+};
 export type AgentThreadProps = {
+  /** Caller owns all business state. default* fixtures and simulate are ignored. */
+  managed?: boolean;
+  /** A stop intent is pending; do not infer that tools have stopped. */
+  stopping?: boolean;
+  renderMessageContent?: (message: AgentMessage, defaultContent: ReactNode) => ReactNode;
+  labels?: Partial<AgentThreadLabels>;
+  formatTime?: (timestamp: number) => string;
   messages?: AgentMessage[];
   defaultMessages?: AgentMessage[];
   onMessagesChange?: (messages: AgentMessage[]) => void;
@@ -5134,6 +5556,11 @@ export const defaultAgentMessages: AgentMessage[] = [
 
 /** A conversation that preserves decisions, uploads and queued messages across interrupted connections. */
 export function AgentThread({
+  managed = false,
+  stopping = false,
+  renderMessageContent,
+  labels: labelsProp,
+  formatTime = defaultThreadFormatTime,
   messages: messagesProp,
   defaultMessages = defaultAgentMessages,
   onMessagesChange,
@@ -5173,27 +5600,61 @@ export function AgentThread({
   transcribe,
   composerProps,
   composer,
-  simulate = messagesProp === undefined && onSend === undefined,
+  simulate: simulateProp = messagesProp === undefined && onSend === undefined,
   className,
 }: AgentThreadProps) {
-  const [messages, setMessages] = useControllable(messagesProp, defaultMessages, onMessagesChange);
-  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const simulate = !managed && simulateProp;
+  const labels = { ...defaultAgentThreadLabels, ...labelsProp };
+  const decisionLabels = { ...defaultDecisionDockLabels, ...labels.decisions };
+  const [messages, setMessages] = useControllable(
+    managed ? (messagesProp ?? []) : messagesProp,
+    defaultMessages,
+    onMessagesChange,
+  );
+  const [decisions, setDecisions] = useControllable(
+    managed ? (decisionsProp ?? []) : decisionsProp,
+    defaultDecisions,
+    onDecisionsChange,
+  );
   const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
-  const [uploads, setUploads] = useControllable(uploadsProp, defaultUploads, onUploadsChange);
+  const [uploads, setUploads] = useControllable(
+    managed ? (uploadsProp ?? []) : uploadsProp,
+    defaultUploads,
+    onUploadsChange,
+  );
   const [draft, setDraft] = useControllable(
     composerProps?.value,
     composerProps?.defaultValue ?? "",
     composerProps?.onValueChange,
   );
-  const [lastSeen, setLastSeen] = useControllable<number | undefined>(lastSeenProp, defaultLastSeen, onLastSeenChange);
+  const [lastSeen, setLastSeen] = useControllable<number | undefined>(
+    lastSeenProp,
+    managed ? undefined : defaultLastSeen,
+    onLastSeenChange,
+  );
   const [readReceipt, setReadReceipt] = useState<number | undefined>();
   const [localRunning, setLocalRunning] = useState(false),
     [away, setAway] = useState(false),
     [newCount, setNewCount] = useState(0),
     [announcement, setAnnouncement] = useState("");
-  const [answers, setAnswers] = useState<Record<string, string>>({}),
+  const [localAnswers, setAnswers] = useState<Record<string, string>>({}),
     [activeDecision, setActiveDecision] = useState(""),
     [focusRequest, setFocusRequest] = useState(0);
+  const answers: Record<string, string> = managed
+    ? Object.fromEntries([
+        ...decisions
+          .filter((decision) => decision.status === "answered")
+          .map((decision) => [
+            decision.id,
+            decision.answer === undefined
+              ? decisionLabels.answered
+              : threadDecisionAnswerLabel(decision, decision.answer, decisionLabels),
+          ]),
+        ...messages
+          .filter((message) => message.answer)
+          .map((message) => [message.answer!.id, message.text ?? decisionLabels.answered]),
+      ])
+    : localAnswers;
   const [voicePreview, setVoicePreview] = useState(simulate === "dictating"),
     [voiceSeconds, setVoiceSeconds] = useState(0);
   const root = useRef<HTMLElement>(null),
@@ -5209,6 +5670,8 @@ export function AgentThread({
   decisionsRef.current = decisions;
   uploadsRef.current = uploads;
   draftRef.current = draft;
+  const managedRef = useRef(managed);
+  managedRef.current = managed;
   const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()),
     generation = useRef(0),
     sequence = useRef(0),
@@ -5217,13 +5680,19 @@ export function AgentThread({
   const controllers = useRef<Map<string, AbortController>>(new Map()),
     transcribing = useRef<Set<string>>(new Set()),
     delivered = useRef<Set<string>>(new Set());
-  const connectionState = useThreadConnection({ connection, defaultConnection, onConnectionChange, onReconnect });
+  const connectionState = useThreadConnection({
+    managed,
+    connection,
+    defaultConnection,
+    onConnectionChange,
+    onReconnect,
+  });
   const connectionRef = useRef(connectionState.status);
   connectionRef.current = connectionState.status;
   const reduced = useReducedMotion();
   const list = (Array.isArray(messages) ? messages : []).filter(Boolean);
   const streaming =
-    localRunning ||
+    (!managed && localRunning) ||
     list.some(
       (message) =>
         message.streaming ||
@@ -5231,23 +5700,26 @@ export function AgentThread({
         message.parts?.some((part) => part.kind === "tools" && part.tools.some((tool) => tool.status === "running")),
     );
   const update = (fn: (messages: AgentMessage[]) => AgentMessage[]) => {
+    if (managedRef.current) return;
     const next = fn(messageRef.current);
     messageRef.current = next;
     setMessages(next);
   };
   const updateUploads = (fn: (uploads: ThreadUpload[]) => ThreadUpload[]) => {
+    if (managedRef.current) return;
     const next = fn(uploadsRef.current);
     uploadsRef.current = next;
     setUploads(next);
   };
   const updateDecisions = (next: ThreadDecision[]) => {
+    if (managedRef.current) return;
     decisionsRef.current = next;
     setDecisions(next);
   };
   const schedule = (callback: () => void, ms: number) => {
     const timer = setTimeout(() => {
       timers.current.delete(timer);
-      if (mounted.current) callback();
+      if (mounted.current && !managedRef.current) callback();
     }, ms);
     timers.current.add(timer);
     return timer;
@@ -5280,6 +5752,14 @@ export function AgentThread({
       controllers.current.forEach((controller) => controller.abort());
     };
   }, []);
+  useEffect(() => {
+    if (!managed) return;
+    generation.current++;
+    clearTimers();
+    controllers.current.forEach((controller) => controller.abort());
+    controllers.current.clear();
+    setVoicePreview(false);
+  }, [managed]);
   useLayoutEffect(() => {
     const el = scroll.current;
     if (!el) return;
@@ -5304,6 +5784,11 @@ export function AgentThread({
     scroll.current?.scrollTo({ top: scroll.current.scrollHeight, behavior: reduced ? "auto" : "smooth" });
   };
   const stop = () => {
+    if (stopping) return;
+    if (managed) {
+      onStop?.();
+      return;
+    }
     generation.current++;
     clearTimers();
     setLocalRunning(false);
@@ -5330,7 +5815,7 @@ export function AgentThread({
       ),
     );
     onStop?.();
-    setAnnouncement("Response stopped");
+    setAnnouncement(labels.responseStopped);
   };
   const streamText = async (id: string, text: string, token: number, append = false) => {
     const words = text.match(/\S+\s*/g) ?? [];
@@ -5386,7 +5871,7 @@ export function AgentThread({
     if (!(await streamText(id, response, token))) return;
     update((messages) => messages.map((message) => (message.id === id ? { ...message, streaming: false } : message)));
     setLocalRunning(false);
-    setAnnouncement("Response complete");
+    setAnnouncement(labels.responseComplete);
   };
   const defaults = (): ChatComposerSendOptions => ({
     model: composerProps?.model ?? "auto",
@@ -5396,6 +5881,10 @@ export function AgentThread({
   });
   const pending = useRef<Map<string, ChatComposerSendOptions>>(new Map());
   const send = (text: string, options: ChatComposerSendOptions) => {
+    if (managed) {
+      onSend?.(text, options);
+      return;
+    }
     const id = `message-${Date.now()}-${++sequence.current}`;
     const online = connectionRef.current === "online";
     update((messages) => [
@@ -5413,7 +5902,7 @@ export function AgentThread({
     latest();
     if (!online) {
       pending.current.set(id, options);
-      setAnnouncement("Waiting to send – it goes out when you're back online");
+      setAnnouncement(labels.queuedAnnouncement);
       return;
     }
     delivered.current.add(id);
@@ -5426,7 +5915,7 @@ export function AgentThread({
   const deliveryRef = useRef({ onSend, simulate });
   deliveryRef.current = { onSend, simulate };
   useEffect(() => {
-    if (connectionState.status !== "online") return;
+    if (managed || connectionState.status !== "online") return;
     const queued = messageRef.current.filter(
       (message) => message.role === "user" && message.status === "queued" && !delivered.current.has(message.id),
     );
@@ -5467,9 +5956,15 @@ export function AgentThread({
       }
     }, 600);
     deliveryTimers.current.add(deliveryTimer);
-  }, [connectionState.status]);
+    return () => {
+      clearTimeout(deliveryTimer);
+      deliveryTimers.current.delete(deliveryTimer);
+      queued.forEach((message) => delivered.current.delete(message.id));
+    };
+  }, [managed, connectionState.status]);
   const startUpload = (item: ThreadUpload) => {
-    if (!upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online") return;
+    if (managed || !upload || !item.file || controllers.current.has(item.id) || connectionRef.current !== "online")
+      return;
     const controller = new AbortController();
     controllers.current.set(item.id, controller);
     Promise.resolve()
@@ -5499,7 +5994,7 @@ export function AgentThread({
       .catch(() => {
         if (!controller.signal.aborted && mounted.current) {
           updateUploads((files) => files.map((file) => (file.id === item.id ? { ...file, state: "failed" } : file)));
-          setAnnouncement(`Upload failed: ${item.name}`);
+          setAnnouncement(labels.uploadFailed(item.name));
         }
       })
       .finally(() => {
@@ -5543,23 +6038,23 @@ export function AgentThread({
   };
   const uploading = uploads.some((file) => file.state === "uploading" || file.state === "paused");
   useEffect(() => {
-    if (!uploading || upload) return;
+    if (managed || !uploading || upload) return;
     const interval = setInterval(
       () =>
         updateUploads((files) =>
           files.map((file) => {
             if (file.state !== "uploading" && file.state !== "paused") return file;
             if (connectionRef.current !== "online") return { ...file, state: "paused" };
-            const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size));
+            const progress = Math.min(1, file.progress + 600000 / Math.max(1, file.size ?? 1));
             return { ...file, progress, state: progress >= 1 ? "done" : "uploading" };
           }),
         ),
       200,
     );
     return () => clearInterval(interval);
-  }, [uploading, upload]);
+  }, [managed, uploading, upload]);
   useEffect(() => {
-    if (!upload) return;
+    if (managed || !upload) return;
     if (connectionState.status === "online") {
       uploadsRef.current
         .filter((file) => file.kind !== "voice" && (file.state === "paused" || file.state === "uploading"))
@@ -5574,7 +6069,7 @@ export function AgentThread({
           file.kind !== "voice" && file.state === "uploading" ? { ...file, state: "paused" } : file,
         ),
       );
-  }, [connectionState.status, upload]);
+  }, [managed, connectionState.status, upload]);
   const transcribeClip = async (clip: ThreadAttachment) => {
     if (transcribe) return transcribe(clip);
     if (!simulate) throw new Error("Provide a transcribe callback to process saved voice notes.");
@@ -5584,7 +6079,7 @@ export function AgentThread({
   const voice = async (blob: Blob, signal: AbortSignal) => {
     const clip: ThreadUpload = {
       id: `voice-${Date.now()}`,
-      name: "Voice note",
+      name: labels.voiceNote,
       size: blob.size,
       kind: "voice",
       file: new File([blob], "Voice note.webm", { type: blob.type }),
@@ -5594,14 +6089,14 @@ export function AgentThread({
     };
     if (connectionRef.current !== "online") {
       updateUploads((files) => [...files, clip]);
-      setAnnouncement("Voice note saved – it will transcribe when you're back online");
+      setAnnouncement(labels.voiceSaved);
       return "";
     }
     const text = await transcribeClip(clip);
     return signal.aborted ? "" : text;
   };
   useEffect(() => {
-    if (connectionState.status !== "online") return;
+    if (managed || connectionState.status !== "online") return;
     uploads
       .filter((file) => file.kind === "voice" && file.state === "waiting" && !transcribing.current.has(file.id))
       .forEach((clip) => {
@@ -5611,7 +6106,8 @@ export function AgentThread({
         );
         transcribeClip(clip)
           .then((text) => {
-            if (!mounted.current || !uploadsRef.current.some((file) => file.id === clip.id)) return;
+            if (!mounted.current || managedRef.current || !uploadsRef.current.some((file) => file.id === clip.id))
+              return;
             setDraft(`${draftRef.current.trimEnd()}${draftRef.current.trim() ? " " : ""}${text}`);
             updateUploads((files) => files.filter((file) => file.id !== clip.id));
           })
@@ -5623,7 +6119,7 @@ export function AgentThread({
           })
           .finally(() => transcribing.current.delete(clip.id));
       });
-  }, [connectionState.status, uploads]);
+  }, [managed, connectionState.status, uploads]);
   useEffect(() => {
     if (!voicePreview) return;
     const timer = setInterval(() => setVoiceSeconds((value) => value + 1), 1000);
@@ -5633,7 +6129,7 @@ export function AgentThread({
     setVoicePreview(false);
     const clip: ThreadUpload = {
       id: `voice-preview-${Date.now()}`,
-      name: "Voice note",
+      name: labels.voiceNote,
       kind: "voice",
       seconds: Math.max(1, voiceSeconds),
       size: Math.max(1, voiceSeconds) * 16000,
@@ -5664,12 +6160,11 @@ export function AgentThread({
   const answered = (id: string, answer: ThreadDecisionAnswer) => {
     const decision = decisionsRef.current.find((item) => item.id === id);
     if (!decision) return;
-    const text =
-      answer === "approve"
-        ? "Approved"
-        : answer === "decline"
-          ? "Declined"
-          : (answer.text ?? decision.options?.find((option) => option.id === answer.option)?.title ?? "Answered");
+    if (managed) {
+      onDecide?.(id, answer);
+      return;
+    }
+    const text = threadDecisionAnswerLabel(decision, answer, decisionLabels);
     setAnswers((previous) => ({ ...previous, [id]: text }));
     update((messages) => [
       ...messages,
@@ -5684,7 +6179,7 @@ export function AgentThread({
     ]);
     latest();
     onDecide?.(id, answer);
-    setAnnouncement(`Answered: ${text}`);
+    setAnnouncement(labels.answeredAnnouncement(text));
     requestAnimationFrame(() =>
       root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }),
     );
@@ -5735,16 +6230,20 @@ export function AgentThread({
   };
   const later = (id: string) => {
     onLater?.(id);
-    setAnnouncement("Later – the decision waits above the composer");
+    setAnnouncement(labels.laterAnnouncement);
     requestAnimationFrame(() =>
       root.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true }),
     );
   };
   const read = () => {
+    if (managed) {
+      onMarkRead?.();
+      return;
+    }
     setReadReceipt(lastSeen);
     setLastSeen(undefined);
     onMarkRead?.();
-    setAnnouncement("Marked as read");
+    setAnnouncement(labels.markedRead);
   };
   const boundaryIndex =
     lastSeen != null && lastSeen !== readReceipt ? list.findIndex((message) => (message.at ?? 0) > lastSeen) : -1;
@@ -5784,6 +6283,7 @@ export function AgentThread({
     };
   }, [lastSeen]);
   useEffect(() => {
+    if (managed) return;
     let hiddenAt = 0;
     const visibility = () => {
       if (document.hidden) hiddenAt = Date.now();
@@ -5791,7 +6291,7 @@ export function AgentThread({
     };
     document.addEventListener("visibilitychange", visibility);
     return () => document.removeEventListener("visibilitychange", visibility);
-  }, [awayAfter]);
+  }, [managed, awayAfter]);
   const shortcutActions = useRef({ latest, streaming, stop, voicePreview });
   shortcutActions.current = { latest, streaming, stop, voicePreview };
   useEffect(() => {
@@ -5937,7 +6437,7 @@ export function AgentThread({
   }, []);
   const retry = (id: string) => {
     onRetry?.(id);
-    if (!simulate) return;
+    if (managed || !simulate) return;
     const failed = messageRef.current.find((message) => message.id === id);
     if (!failed) return;
     if (failed.role === "user") {
@@ -6011,12 +6511,15 @@ export function AgentThread({
     needsBaseline.current = { needs: running?.needs, answered: Object.keys(answers).length };
   const needs = Math.max(
     0,
-    safeNumber(running?.needs, decisions.length) - (Object.keys(answers).length - needsBaseline.current.answered),
+    safeNumber(
+      running?.needs,
+      decisions.filter(
+        (decision) => !decision.status || decision.status === "awaiting" || decision.status === "submitting",
+      ).length,
+    ) - (managed ? 0 : Object.keys(answers).length - needsBaseline.current.answered),
   );
-  const time = (at: number) =>
-    new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
   const fileChips = (names: string[]) => (
-    <div className="ui-th__files" aria-label="Created files">
+    <div className="ui-th__files" aria-label={labels.createdFiles}>
       {names.map((name) => (
         <button type="button" key={name} className="ui-th__file" title={name} onClick={() => onOpenFile?.(name)}>
           <span
@@ -6040,7 +6543,9 @@ export function AgentThread({
     </div>
   );
   const completedUploads = uploads.filter((file) => file.state === "done" && file.kind !== "voice");
-  const blockedUpload = uploads.some((file) => file.kind !== "voice" && file.state !== "done");
+  const blockedUpload = !managed && uploads.some((file) => file.kind !== "voice" && file.state !== "done");
+  const content = (message: AgentMessage, defaultContent: ReactNode) =>
+    renderMessageContent ? renderMessageContent(message, defaultContent) : defaultContent;
   return (
     <section
       ref={root}
@@ -6049,7 +6554,7 @@ export function AgentThread({
       data-orchestrator={mode === "orchestrator" || undefined}
       aria-label={title}
       onKeyDown={(event) => {
-        if (event.defaultPrevented) return;
+        if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing) return;
         if (event.key === "Escape" && voicePreview) {
           event.preventDefault();
           setVoicePreview(false);
@@ -6068,24 +6573,24 @@ export function AgentThread({
           <div className="ui-th__summary">
             <button
               type="button"
-              aria-label={`${running.running} tasks running – open Tasks`}
+              aria-label={labels.runningTasks(running.running)}
               onClick={() => onNavigate?.("Tasks")}
             >
               <i className="ui-th__running-dot" />
               {Math.max(0, safeNumber(running.running, 0))}
-              <span>running</span>
+              <span>{labels.running}</span>
             </button>
             {needs > 0 && (
               <>
                 <span className="ui-th__summary-separator">·</span>
                 <button
                   type="button"
-                  aria-label={`${needs} questions waiting – ${decisions.length ? "show the decision" : "open Inbox"}`}
+                  aria-label={labels.waitingQuestions(needs, decisions.length > 0)}
                   onClick={() => showDecision()}
                 >
                   <i className="ui-th__needs-dot" />
                   {needs}
-                  <span>need{needs === 1 ? "s" : ""} you</span>
+                  <span>{labels.needsYou(needs)}</span>
                 </button>
               </>
             )}
@@ -6094,9 +6599,10 @@ export function AgentThread({
       </header>
       <ConnectionBanner
         managed
+        labels={labels.connection}
         connection={connectionState.status}
-        retryIn={connectionState.retryIn}
-        backOnline={connectionState.backOnline}
+        retryIn={managed ? undefined : connectionState.retryIn}
+        backOnline={!managed && connectionState.backOnline}
         onReconnect={connectionState.reconnect}
       />
       <div className="ui-th__body">
@@ -6116,7 +6622,7 @@ export function AgentThread({
             ref={column}
             className="ui-th__column"
             role="log"
-            aria-label="Conversation"
+            aria-label={labels.conversation}
             aria-live="polite"
             aria-relevant="additions"
             aria-busy={streaming}
@@ -6126,15 +6632,17 @@ export function AgentThread({
                 <span className="ui-th__empty-icon">
                   <Icon name="spark" size={26} />
                 </span>
-                <h2>What can I help you with?</h2>
-                <p>Ask a question, explore an idea, or bring a file.</p>
+                <h2>{labels.emptyTitle}</h2>
+                <p>{labels.emptyDescription}</p>
               </div>
             )}
             {list.map((message, messageIndex) => (
-              <div className="ui-th__message" key={message.id}>
+              <div className="ui-th__message" data-message-id={message.id} key={message.id}>
                 {messageIndex === boundaryIndex && (
                   <div ref={unreadBoundary} className="ui-th__unread-boundary">
                     <AwaySummary
+                      labels={labels.away}
+                      formatTime={formatTime}
                       tasks={[...completedTasks.values()]}
                       decisions={awayDecisions}
                       since={lastSeen}
@@ -6148,41 +6656,46 @@ export function AgentThread({
                 )}
                 {message.role === "user" ? (
                   <div className="ui-th__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}>
-                    <span className="ui-th__sr">{message.answer ? "You answered:" : "You said:"}</span>
+                    <span className="ui-th__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>
                     {message.answer && (
                       <span className="ui-th__answer-context" title={message.answer.question}>
-                        Answered: {message.answer.question}
+                        {labels.answerContext(message.answer.question)}
                       </span>
                     )}
-                    {message.attachments && message.attachments.length > 0 && (
-                      <div className="ui-th__attachments">
-                        {message.attachments.map((file, index) => (
-                          <span key={`${file.name}-${index}`}>
-                            <Icon name="document" size={14} />
-                            {file.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {message.text && (
-                      <p className="ui-th__bubble" dir="auto">
-                        {message.text}
-                      </p>
+                    {content(
+                      message,
+                      <>
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="ui-th__attachments">
+                            {message.attachments.map((file, index) => (
+                              <span key={`${file.name}-${index}`}>
+                                <Icon name="document" size={14} />
+                                {file.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {message.text && (
+                          <p className="ui-th__bubble" dir="auto">
+                            {message.text}
+                          </p>
+                        )}
+                      </>,
                     )}
                     {message.status && message.status !== "sent" && (
                       <span className="ui-th__send-status">
                         {message.status === "failed" ? (
                           <>
                             <Icon name="warning" size={12} />
-                            Couldn't send ·{" "}
+                            {labels.sendFailed} ·{" "}
                             <button type="button" onClick={() => retry(message.id)}>
-                              Retry
+                              {labels.retry}
                             </button>
                           </>
                         ) : message.status === "queued" ? (
-                          "Waiting to send"
+                          labels.queued
                         ) : (
-                          "Sending…"
+                          labels.sending
                         )}
                       </span>
                     )}
@@ -6204,81 +6717,94 @@ export function AgentThread({
                         </span>
                         <span>{assistantName}</span>
                         {message.at != null && Number.isFinite(message.at) && (
-                          <time dateTime={new Date(message.at).toISOString()}>{time(message.at)}</time>
+                          <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>
                         )}
                       </div>
                     ) : (
                       <span className="ui-th__sr">{assistantName}:</span>
                     )}
-                    {message.tools && message.tools.length > 0 && (
-                      <ToolActivity
-                        tools={message.tools}
-                        onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
-                      />
-                    )}
-                    {message.parts
-                      ?.slice(0, 1)
-                      .map(
-                        (part) =>
-                          part.kind === "tools" && (
-                            <ToolActivity
-                              key={part.id}
-                              tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                            />
-                          ),
-                      )}
-                    {message.text && textPart(message.text, !!message.streaming)}
-                    {message.parts?.map((part, index) =>
-                      index === 0 && part.kind === "tools" ? null : (
-                        <div className="ui-th__part" key={`${part.kind}-${index}`}>
-                          {part.kind === "tools" ? (
-                            <ToolActivity
-                              tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                            />
-                          ) : part.kind === "text" ? (
-                            textPart(
-                              part.text,
-                              !!message.streaming && index === message.parts!.length - 1 && !message.text,
-                            )
-                          ) : part.kind === "task" ? (
-                            <ThreadTaskCard
-                              task={part.task}
-                              onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
-                            />
-                          ) : part.kind === "artifacts" ? (
-                            fileChips(part.names)
-                          ) : part.kind === "decision" ? (
-                            <button type="button" className="ui-th__asked" onClick={() => showDecision(part.ask.id)}>
-                              <i data-answered={!!answers[part.ask.id] || undefined} />
-                              <span>Asked: {part.ask.question}</span>
-                              <small>
-                                ·{" "}
-                                {answers[part.ask.id]
-                                  ? "answered below"
-                                  : decisions.some((decision) => decision.id === part.ask.id)
-                                    ? "waiting"
-                                    : "in Inbox"}
-                              </small>
-                            </button>
-                          ) : (
-                            <div className="ui-th__error" role="status">
-                              <Icon name="warning" size={14} />
-                              <span dir="auto">{part.text}</span>
-                              {part.retry && (
-                                <button type="button" onClick={() => retry(message.id)}>
-                                  Retry
+                    {content(
+                      message,
+                      <>
+                        {message.tools && message.tools.length > 0 && (
+                          <ToolActivity
+                            labels={labels.tools}
+                            tools={message.tools}
+                            onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
+                          />
+                        )}
+                        {message.parts
+                          ?.slice(0, 1)
+                          .map(
+                            (part) =>
+                              part.kind === "tools" && (
+                                <ToolActivity
+                                  labels={labels.tools}
+                                  key={part.id}
+                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
+                                />
+                              ),
+                          )}
+                        {message.text && textPart(message.text, !!message.streaming)}
+                        {message.parts?.map((part, index) =>
+                          index === 0 && part.kind === "tools" ? null : (
+                            <div className="ui-th__part" key={`${part.kind}-${index}`}>
+                              {part.kind === "tools" ? (
+                                <ToolActivity
+                                  labels={labels.tools}
+                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
+                                />
+                              ) : part.kind === "text" ? (
+                                textPart(
+                                  part.text,
+                                  !!message.streaming && index === message.parts!.length - 1 && !message.text,
+                                )
+                              ) : part.kind === "task" ? (
+                                <ThreadTaskCard
+                                  labels={labels.task}
+                                  task={part.task}
+                                  onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                                />
+                              ) : part.kind === "artifacts" ? (
+                                fileChips(part.names)
+                              ) : part.kind === "decision" ? (
+                                <button
+                                  type="button"
+                                  className="ui-th__asked"
+                                  onClick={() => showDecision(part.ask.id)}
+                                >
+                                  <i data-answered={!!answers[part.ask.id] || undefined} />
+                                  <span>{labels.asked(part.ask.question)}</span>
+                                  <small>
+                                    ·{" "}
+                                    {answers[part.ask.id]
+                                      ? labels.answeredBelow
+                                      : decisions.some((decision) => decision.id === part.ask.id)
+                                        ? labels.waiting
+                                        : labels.inInbox}
+                                  </small>
                                 </button>
+                              ) : (
+                                <div className="ui-th__error" role="status">
+                                  <Icon name="warning" size={14} />
+                                  <span dir="auto">{part.text}</span>
+                                  {part.retry && (
+                                    <button type="button" onClick={() => retry(message.id)}>
+                                      {labels.retry}
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                      ),
+                          ),
+                        )}
+                        {message.files && fileChips(message.files)}
+                      </>,
                     )}
-                    {message.files && fileChips(message.files)}
                     {message.stopped && (
                       <span className="ui-th__stopped">
                         <Icon name="stop" size={11} />
-                        Stopped
+                        {labels.stopped}
                       </span>
                     )}
                   </div>
@@ -6291,12 +6817,12 @@ export function AgentThread({
           <button
             type="button"
             className="ui-th__jump"
-            aria-label={`Jump to latest${newCount ? `, ${newCount} new lines` : ""}${streaming ? ", still writing" : ""}`}
+            aria-label={labels.jumpToLatest(newCount, streaming)}
             aria-keyshortcuts="End"
             onClick={latest}
           >
             <Icon name="arrow" size={14} />
-            {newCount ? `${newCount} new lines` : "Back to latest"}
+            {newCount ? labels.newLines(newCount) : labels.latest}
             {streaming && <span className="ui-th__jump-live" />}
           </button>
         )}
@@ -6305,6 +6831,8 @@ export function AgentThread({
         <div className="ui-th__foot-column">
           <div className="ui-th__dock-slot" data-visible={decisions.length > 0 || undefined}>
             <DecisionDock
+              managed={managed}
+              labels={labels.decisions}
               decisions={decisions}
               onDecisionsChange={updateDecisions}
               activeId={activeDecision}
@@ -6320,12 +6848,18 @@ export function AgentThread({
             <div className="ui-th__above">
               {uploads.length > 0 && (
                 <div className="ui-th__upload-slot">
-                  <ThreadUploads uploads={uploads} onRemove={removeUpload} onRetry={retryUpload} />
+                  <ThreadUploads
+                    labels={labels.uploads}
+                    uploads={uploads}
+                    onRemove={managed ? undefined : removeUpload}
+                    onRetry={managed ? undefined : retryUpload}
+                  />
                 </div>
               )}
               {voicePreview && (
                 <div className="ui-th__upload-slot">
                   <ThreadVoiceInput
+                    labels={labels.voice}
                     seconds={voiceSeconds}
                     onDiscard={() => setVoicePreview(false)}
                     onDone={finishVoicePreview}
@@ -6333,9 +6867,16 @@ export function AgentThread({
                 </div>
               )}
               {streaming && !voicePreview && (
-                <button type="button" className="ui-th__stop" onClick={stop} aria-keyshortcuts="Escape">
+                <button
+                  type="button"
+                  className="ui-th__stop"
+                  disabled={stopping}
+                  aria-busy={stopping}
+                  onClick={stop}
+                  aria-keyshortcuts={stopping ? undefined : "Escape"}
+                >
                   <Icon name="stop" size={12} />
-                  Stop
+                  {stopping ? labels.stopping : labels.stop}
                 </button>
               )}
             </div>
@@ -6343,14 +6884,21 @@ export function AgentThread({
           {composer ?? (
             <ChatComposer
               {...composerProps}
+              managed={managed || composerProps?.managed}
               models={composerProps?.models ?? (mode === "orchestrator" ? [] : undefined)}
               value={draft}
               onValueChange={setDraft}
-              attachments={mode === "orchestrator" ? completedUploads : composerProps?.attachments}
-              onAttachmentsChange={mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange}
-              showAttachments={mode === "orchestrator" ? false : composerProps?.showAttachments}
+              attachments={!managed && mode === "orchestrator" ? completedUploads : composerProps?.attachments}
+              onAttachmentsChange={!managed && mode === "orchestrator" ? attach : composerProps?.onAttachmentsChange}
+              showAttachments={!managed && mode === "orchestrator" ? false : composerProps?.showAttachments}
               sendDisabled={blockedUpload || composerProps?.sendDisabled}
-              transcribe={mode === "orchestrator" && (transcribe || simulate) ? voice : composerProps?.transcribe}
+              transcribe={
+                managed
+                  ? undefined
+                  : mode === "orchestrator" && (transcribe || simulate)
+                    ? voice
+                    : composerProps?.transcribe
+              }
               onSend={send}
             />
           )}
@@ -6852,7 +7400,9 @@ function threadScreenMessages(preset: ThreadPreset): AgentMessage[] {
 }
 
 export type AgentThreadScreenProps = Omit<AppShellProps, "children" | "panel" | "navigation" | "title"> &
-  Omit<AgentThreadProps, "className" | "mode" | "simulate" | "onSend" | "decisionRequest"> & {
+  Omit<AgentThreadProps, "className" | "mode" | "simulate" | "onSend" | "decisionRequest" | "labels"> & {
+    /** labels configures the shell; threadLabels configures the embedded thread. */
+    threadLabels?: AgentThreadProps["labels"];
     simulate?: ThreadPreset | false;
     onSend?: (text: string, attachments: ThreadAttachment[]) => void;
     tasks?: Record<string, ThreadTaskDetail>;
@@ -6872,6 +7422,11 @@ export type AgentThreadScreenProps = Omit<AppShellProps, "children" | "panel" | 
 
 /** A complete orchestrator thread, including single navigation sidebar and tabbed task/artifact workspace. */
 export function AgentThreadScreen({
+  managed = false,
+  stopping,
+  renderMessageContent,
+  threadLabels,
+  formatTime,
   messages: messagesProp,
   defaultMessages,
   onMessagesChange,
@@ -6880,7 +7435,7 @@ export function AgentThreadScreen({
   onRetry,
   title = "Today",
   assistantName = "Orchestrator",
-  running = { running: 9, needs: 5 },
+  running: runningProp,
   decisions: decisionsProp,
   defaultDecisions,
   onDecisionsChange,
@@ -6911,10 +7466,10 @@ export function AgentThreadScreen({
   onOpenFile,
   onShowTask,
   tasks: tasksProp,
-  defaultTasks = defaultThreadTaskDetails,
+  defaultTasks,
   onTasksChange,
   files: filesProp,
-  defaultFiles = threadScreenArtifacts,
+  defaultFiles,
   onFilesChange,
   openFiles: openProp,
   defaultOpenFiles = [],
@@ -6929,6 +7484,7 @@ export function AgentThreadScreen({
   className,
   ...shellProps
 }: AgentThreadScreenProps) {
+  const running = runningProp ?? (managed ? { running: 0, needs: 0 } : { running: 9, needs: 5 });
   const validPresets: ThreadPreset[] = [
     "live",
     "decision",
@@ -6941,26 +7497,39 @@ export function AgentThreadScreen({
   ];
   const preset = typeof simulateProp === "string" && validPresets.includes(simulateProp) ? simulateProp : "live";
   const demo =
-    simulateProp === false
+    managed || simulateProp === false
       ? false
       : (simulateProp ?? (messagesProp === undefined && onSend === undefined ? "live" : false));
   const [messages, setMessages] = useControllable(
-    messagesProp,
+    managed ? (messagesProp ?? []) : messagesProp,
     defaultMessages ?? threadScreenMessages(preset),
     onMessagesChange,
   );
-  const initialDecisions =
-    defaultDecisions ??
-    (preset === "decision"
-      ? defaultThreadDecisions
-      : preset === "away" || preset === "scrolled"
-        ? [dashboardDecision, defaultThreadDecisions[1]]
-        : preset === "uploading" || preset === "dictating"
-          ? [defaultThreadDecisions[0]]
-          : []);
-  const [decisions, setDecisions] = useControllable(decisionsProp, initialDecisions, onDecisionsChange);
-  const [tasks, setTasks] = useControllable(tasksProp, defaultTasks, onTasksChange);
-  const [files, setFiles] = useControllable(filesProp, defaultFiles, onFilesChange);
+  const initialDecisions = managed
+    ? []
+    : (defaultDecisions ??
+      (preset === "decision"
+        ? defaultThreadDecisions
+        : preset === "away" || preset === "scrolled"
+          ? [dashboardDecision, defaultThreadDecisions[1]]
+          : preset === "uploading" || preset === "dictating"
+            ? [defaultThreadDecisions[0]]
+            : []));
+  const [decisions, setDecisions] = useControllable(
+    managed ? (decisionsProp ?? []) : decisionsProp,
+    initialDecisions,
+    onDecisionsChange,
+  );
+  const [tasks, setTasks] = useControllable(
+    tasksProp,
+    managed ? {} : (defaultTasks ?? defaultThreadTaskDetails),
+    onTasksChange,
+  );
+  const [files, setFiles] = useControllable(
+    filesProp,
+    managed ? [] : (defaultFiles ?? threadScreenArtifacts),
+    onFilesChange,
+  );
   const [opened, setOpened] = useControllable(openProp, defaultOpenFiles, onOpenFilesChange);
   const [activeFile, setActiveFile] = useControllable(activeProp, defaultActiveFile, onActiveFileChange);
   const [panelOpen, setPanelOpen] = useControllable(panelProp, defaultPanelOpen, onPanelOpenChange);
@@ -6980,7 +7549,7 @@ export function AgentThreadScreen({
             .map((part) => part.task) ?? [],
       )
       .filter((task) => task.id === taskId)
-      .at(-1) ?? threadTaskCatalog[taskId];
+      .at(-1) ?? (managed ? undefined : threadTaskCatalog[taskId]);
   const openFile = (name: string) => {
     if (!files.some((file) => file.name === name)) {
       onOpenFile?.(name);
@@ -7003,6 +7572,10 @@ export function AgentThreadScreen({
     setFocusRequest((previous) => ({ id, sequence: (previous?.sequence ?? 0) + 1 }));
   };
   const decide = (id: string, answer: ThreadDecisionAnswer) => {
+    if (managed) {
+      onDecide?.(id, answer);
+      return;
+    }
     const decision = decisions.find((decision) => decision.id === id);
     setAnsweredCount((count) => count + 1);
     if (decision?.taskId) {
@@ -7023,26 +7596,27 @@ export function AgentThreadScreen({
     }
     onDecide?.(id, answer);
   };
-  const initialUploads: ThreadUpload[] =
-    defaultUploads ??
-    (preset === "offline"
-      ? [
-          {
-            id: "saved-voice",
-            name: "Voice note",
-            kind: "voice",
-            seconds: 12,
-            size: 192000,
-            progress: 1,
-            state: "waiting",
-          },
-        ]
-      : preset === "uploading"
+  const initialUploads: ThreadUpload[] = managed
+    ? []
+    : (defaultUploads ??
+      (preset === "offline"
         ? [
-            { id: "video", name: "standup-nov-7.mov", size: 48000000, progress: 0.2, state: "uploading" },
-            { id: "metrics", name: "q4-metrics.csv", size: 94000, progress: 0, state: "failed" },
+            {
+              id: "saved-voice",
+              name: "Voice note",
+              kind: "voice",
+              seconds: 12,
+              size: 192000,
+              progress: 1,
+              state: "waiting",
+            },
           ]
-        : []);
+        : preset === "uploading"
+          ? [
+              { id: "video", name: "standup-nov-7.mov", size: 48000000, progress: 0.2, state: "uploading" },
+              { id: "metrics", name: "q4-metrics.csv", size: 94000, progress: 0, state: "failed" },
+            ]
+          : []));
   const navigation: AppRailItem[] = [
     { label: "Thread", icon: <Icon name="chat" /> },
     {
@@ -7106,6 +7680,11 @@ export function AgentThreadScreen({
         {css}
       </style>
       <AgentThread
+        managed={managed}
+        stopping={stopping}
+        renderMessageContent={renderMessageContent}
+        labels={threadLabels}
+        formatTime={formatTime}
         decisionRequest={focusRequest}
         mode="orchestrator"
         title={title}
@@ -7118,14 +7697,14 @@ export function AgentThreadScreen({
         onDecide={decide}
         onLater={onLater}
         folded={folded}
-        defaultFolded={defaultFolded ?? ["scrolled", "uploading", "dictating"].includes(preset)}
+        defaultFolded={defaultFolded ?? (!managed && ["scrolled", "uploading", "dictating"].includes(preset))}
         onFoldedChange={onFoldedChange}
         connection={connection}
-        defaultConnection={defaultConnection ?? (preset === "offline" ? "offline" : undefined)}
+        defaultConnection={defaultConnection ?? (!managed && preset === "offline" ? "offline" : undefined)}
         onConnectionChange={onConnectionChange}
         onReconnect={onReconnect}
         lastSeen={lastSeen}
-        defaultLastSeen={defaultLastSeen ?? (preset === "away" ? sampleTime(12, 4) : undefined)}
+        defaultLastSeen={defaultLastSeen ?? (!managed && preset === "away" ? sampleTime(12, 4) : undefined)}
         onLastSeenChange={onLastSeenChange}
         awayAfter={awayAfter}
         onMarkRead={onMarkRead}
@@ -7142,7 +7721,7 @@ export function AgentThreadScreen({
         onRetry={onRetry}
         simulate={demo}
         composer={composer}
-        composerProps={{ placeholder: "Ask for anything…", ...composerProps }}
+        composerProps={{ placeholder: composerProps?.labels?.placeholder ?? "Ask for anything…", ...composerProps }}
         onSend={(text, options) =>
           onSend?.(
             text,
@@ -7397,6 +7976,28 @@ const css = /* css */ `
   --ui-cm-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 24px 80px -20px rgba(0, 0, 0, 0.6);
 }
 
+.ui-as__app[data-header] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.ui-as__header {
+  grid-column: 3/-1;
+  grid-row: 1;
+  min-width: 0;
+}
+.ui-as__app[data-header] > .ui-as__side,
+.ui-as__app[data-header] > .ui-as__side + .ui-as__resizer {
+  grid-row: 1/-1;
+}
+.ui-as__app[data-header] > .ui-as__main,
+.ui-as__app[data-header] > .ui-as__panel,
+.ui-as__app[data-header] > .ui-as__panel-resizer {
+  grid-row: 2;
+}
+@container ui-as (max-width:899.99px) {
+  .ui-as__header {
+    grid-column: 1/-1;
+  }
+}
 .ui-as:has(.ui-as__side-col[data-navigation]) .ui-as__main {
   border-radius: 12px;
   border-left: 0.5px solid var(--ui-as-line);
@@ -9650,6 +10251,12 @@ const css = /* css */ `
   --ui-ta-focus: rgba(77, 141, 255, 0.5);
 }
 
+.ui-cc__overlay {
+  position: absolute;
+  bottom: 100%;
+  inset-inline: 0;
+  z-index: 21;
+}
 .ui-cc {
   --ui-cc-card: #fff;
   --ui-cc-tray: rgba(0, 0, 0, 0.035);
@@ -10178,6 +10785,26 @@ const css = /* css */ `
   --ui-tk-focus: rgba(77, 141, 255, 0.5);
 }
 
+.ui-dd__choices {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ui-dd button:disabled,
+.ui-dd input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ui-dd__error {
+  margin: 0;
+  padding: 4px;
+  color: #e5484d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ui-dd__text strong {
+  overflow-wrap: anywhere;
+}
 .ui-dd {
   --ui-dd-card: #fff;
   --ui-dd-tray: #f0f0f0;

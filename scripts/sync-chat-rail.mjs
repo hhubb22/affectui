@@ -23,7 +23,7 @@ function dependenciesFor(name, seen = new Set()) {
   seen.add(name); return [...seen];
 }
 const common = fs.readFileSync(path.join(root, "scripts/chat-rail/shared.part"), "utf8");
-const reactImports = ["useEffect", "useId", "useLayoutEffect", "useRef", "useState", "type ComponentPropsWithoutRef", "type CSSProperties", "type KeyboardEvent", "type MouseEvent as ReactMouseEvent", "type PointerEvent as ReactPointerEvent", "type ReactNode", "type RefObject"];
+const reactImports = ["useCallback", "useEffect", "useId", "useLayoutEffect", "useRef", "useState", "type ComponentPropsWithRef", "type ComponentPropsWithoutRef", "type CSSProperties", "type KeyboardEvent", "type MouseEvent as ReactMouseEvent", "type PointerEvent as ReactPointerEvent", "type ReactNode", "type RefObject"];
 const identifiers = source => new Set(source.match(/\b[A-Za-z_$][\w$]*\b/g) ?? []);
 // Shared fragments keep each declaration at column zero. Dependency closure selects only the
 // declarations used by a distribution file; strict noUnused checks validate the generated result.

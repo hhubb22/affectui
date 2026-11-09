@@ -264,7 +264,17 @@ export type ToolActivityItem = {
   error?: string;
 };
 
+const defaultToolActivityLabels = {
+  retry: "Retry",
+  running: (count: number) => `Running ${count === 1 ? "a tool" : `${count} tools in parallel`}`,
+  stopped: (done: number, count: number) => `Stopped · ${done} of ${count} ran`,
+  completed: (count: number, failed: number, duration: string) =>
+    `Ran ${count} ${count === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : duration}`,
+  duration: durationLabel,
+};
+export type ToolActivityLabels = typeof defaultToolActivityLabels;
 export type ToolActivityProps = {
+  labels?: Partial<ToolActivityLabels>;
   tools: ToolActivityItem[];
   open?: boolean;
   defaultOpen?: boolean;
@@ -280,8 +290,10 @@ export function ToolActivity({
   defaultOpen,
   onOpenChange,
   onRetry,
+  labels: labelsProp,
   className,
 }: ToolActivityProps) {
+  const labels = { ...defaultToolActivityLabels, ...labelsProp };
   const tools = (Array.isArray(rawTools) ? rawTools : []).filter(Boolean);
   const running = tools.some((tool) => tool.status === "running");
   const failed = tools.filter((tool) => tool.status === "failed").length;
@@ -312,10 +324,10 @@ export function ToolActivity({
   const total = Math.max(0, ...tools.map(elapsed));
   const stopped = tools.some((tool) => tool.status === "stopped");
   const label = running
-    ? `Running ${tools.length === 1 ? "a tool" : `${tools.length} tools in parallel`}`
+    ? labels.running(tools.length)
     : stopped
-      ? `Stopped · ${tools.filter((tool) => tool.status === "done").length} of ${tools.length} ran`
-      : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"} · ${failed ? `${failed} failed` : durationLabel(total)}`;
+      ? labels.stopped(tools.filter((tool) => tool.status === "done").length, tools.length)
+      : labels.completed(tools.length, failed, labels.duration(total));
   return (
     <div
       className={["ui-tac", className].filter(Boolean).join(" ")}
@@ -382,10 +394,10 @@ export function ToolActivity({
                   {tool.label}
                   {tool.error && <small>{tool.error}</small>}
                 </span>
-                <span className="ui-tac__time">{durationLabel(elapsed(tool))}</span>
+                <span className="ui-tac__time">{labels.duration(elapsed(tool))}</span>
                 {status === "failed" && onRetry && (
                   <button type="button" className="ui-tac__retry" onClick={() => onRetry(tool.id)}>
-                    Retry
+                    {labels.retry}
                   </button>
                 )}
               </li>

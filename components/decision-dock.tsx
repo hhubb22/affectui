@@ -279,9 +279,49 @@ export type ThreadDecision = {
   taskId?: string;
   options?: ThreadDecisionOption[];
   facts?: { label: string; value: string }[];
+  allowCustomAnswer?: boolean;
+  status?: "awaiting" | "submitting" | "answered" | "expired";
+  error?: string;
+  answer?: ThreadDecisionAnswer;
+  disabled?: boolean;
 };
 export type ThreadDecisionAnswer = { option?: string; text?: string } | "approve" | "decline";
+const defaultDecisionDockLabels = {
+  needsYou: "Needs you",
+  submitting: "Submitting…",
+  answered: "Answered",
+  expired: "Expired",
+  approved: "Approved",
+  declined: "Declined",
+  approve: "Approve",
+  decline: "Decline",
+  later: "Later",
+  show: "Show",
+  previous: "Previous decision",
+  next: "Next decision",
+  recommended: "Recommended",
+  customAnswer: "Something else",
+  customPlaceholder: "Something else…",
+  sendCustomAnswer: "Send custom answer",
+  waiting: (count: number) => `${count} ${count === 1 ? "decision" : "decisions"} waiting`,
+  page: (index: number, count: number) => `${index} of ${count}`,
+};
+export type DecisionDockLabels = typeof defaultDecisionDockLabels;
+function threadDecisionAnswerLabel(
+  decision: ThreadDecision,
+  answer: ThreadDecisionAnswer,
+  labels: Pick<DecisionDockLabels, "approved" | "declined" | "answered">,
+) {
+  return answer === "approve"
+    ? labels.approved
+    : answer === "decline"
+      ? labels.declined
+      : (answer.text ?? decision.options?.find((option) => option.id === answer.option)?.title ?? labels.answered);
+}
 export type DecisionDockProps = {
+  /** Emit answer intents only; decisions and confirmation remain caller-owned. */
+  managed?: boolean;
+  labels?: Partial<DecisionDockLabels>;
   decisions?: ThreadDecision[];
   defaultDecisions?: ThreadDecision[];
   onDecisionsChange?: (decisions: ThreadDecision[]) => void;
@@ -336,6 +376,8 @@ export const defaultThreadDecisions: ThreadDecision[] = [
 
 /** Decisions live above the composer, with list/tile choices, approvals, a pager and a separate custom answer. */
 export function DecisionDock({
+  managed = false,
+  labels: labelsProp,
   decisions: decisionsProp,
   defaultDecisions = [],
   onDecisionsChange,
@@ -350,7 +392,12 @@ export function DecisionDock({
   focusRequest = 0,
   className,
 }: DecisionDockProps) {
-  const [decisions, setDecisions] = useControllable(decisionsProp, defaultDecisions, onDecisionsChange);
+  const labels = { ...defaultDecisionDockLabels, ...labelsProp };
+  const [decisions, setDecisions] = useControllable(
+    managed ? (decisionsProp ?? []) : decisionsProp,
+    defaultDecisions,
+    onDecisionsChange,
+  );
   const [activeId, setActiveId] = useControllable(activeProp, defaultActiveId, onActiveIdChange);
   const [folded, setFolded] = useControllable(foldedProp, defaultFolded, onFoldedChange);
   const [custom, setCustom] = useState(""),
@@ -364,34 +411,40 @@ export function DecisionDock({
   if (current) previous.current = current;
   const decision = current ?? previous.current;
   const approval = decision?.kind === "approval";
-  const options: ThreadDecisionOption[] = approval
+  const legacyApproval = approval && decision?.options === undefined;
+  const options: ThreadDecisionOption[] = legacyApproval
     ? [
-        { id: "approve", title: "Approve" },
-        { id: "decline", title: "Decline" },
+        { id: "approve", title: labels.approve },
+        { id: "decline", title: labels.decline },
       ]
-    : (decision?.options ?? []).filter(Boolean).slice(0, 5);
-  const rows = options.length + 1;
+    : (decision?.options ?? []).filter(Boolean);
+  const status = decision?.status ?? "awaiting";
+  const disabled = !!decision?.disabled || status !== "awaiting";
+  const allowCustom = decision?.allowCustomAnswer !== false;
+  const rows = options.length + (allowCustom ? 1 : 0);
   const activeIndex = current ? list.findIndex((item) => item.id === current.id) : 0;
+  const submit = (value: ThreadDecisionAnswer) => {
+    if (!current || folded || disabled) return;
+    onAnswer?.(current.id, value);
+    if (!managed) {
+      setDecisions(list.filter((item) => item.id !== current.id));
+      setActiveId("");
+      setCustom("");
+    }
+  };
   const answer = (index: number) => {
-    if (!current || folded) return;
-    if (index === options.length) {
+    if (!current || folded || disabled) return;
+    if (index === options.length && allowCustom) {
       setFocused(index);
       customInput.current?.focus();
       return;
     }
     const option = options[index];
     if (!option) return;
-    onAnswer?.(current.id, approval ? (option.id === "approve" ? "approve" : "decline") : { option: option.id });
-    setDecisions(list.filter((item) => item.id !== current.id));
-    setActiveId("");
-    setCustom("");
+    submit(legacyApproval ? (option.id === "approve" ? "approve" : "decline") : { option: option.id });
   };
   const answerCustom = () => {
-    if (!current || !custom.trim()) return;
-    onAnswer?.(current.id, { text: custom.trim() });
-    setDecisions(list.filter((item) => item.id !== current.id));
-    setActiveId("");
-    setCustom("");
+    if (allowCustom && custom.trim()) submit({ text: custom.trim() });
   };
   const later = () => {
     if (!current) return;
@@ -404,6 +457,9 @@ export function DecisionDock({
     setCustom("");
     setFocused(0);
   }, [current?.id]);
+  useEffect(() => {
+    setFocused((index) => Math.min(index, Math.max(0, rows - 1)));
+  }, [rows]);
   useEffect(() => {
     if (!focusRequest || !current) return;
     setFolded(false);
@@ -425,6 +481,8 @@ export function DecisionDock({
         !state.current ||
         state.folded ||
         event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
         event.metaKey ||
         event.ctrlKey ||
         event.altKey ||
@@ -433,7 +491,7 @@ export function DecisionDock({
         return;
       const area = root.current?.closest("[data-thread-shortcuts]") ?? root.current;
       if (document.activeElement !== document.body && !area?.contains(document.activeElement)) return;
-      if (/^[1-6]$/.test(event.key)) {
+      if (/^[1-9]$/.test(event.key)) {
         const index = Number(event.key) - 1;
         if (index < rows) {
           event.preventDefault();
@@ -451,13 +509,17 @@ export function DecisionDock({
     else root.current?.querySelectorAll<HTMLElement>('[role="option"]')[index]?.focus();
   };
   const keyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.nativeEvent.isComposing || event.repeat) {
+      if (event.key === "Enter" || event.key === " ") event.preventDefault();
+      return;
+    }
     if (event.key === "Escape" && !folded) {
       event.preventDefault();
       event.stopPropagation();
       later();
       return;
     }
-    if (isEditing(event.target)) return;
+    if (disabled || !rows || event.defaultPrevented || isEditing(event.target)) return;
     const next =
       event.key === "ArrowDown" || event.key === "ArrowRight"
         ? (focused + 1) % rows
@@ -480,6 +542,7 @@ export function DecisionDock({
       className={["ui-dd", className].filter(Boolean).join(" ")}
       data-empty={!current || undefined}
       data-folded={folded || undefined}
+      data-status={status}
       data-kind={approval ? "approval" : decision.kind === "pick" ? "pick" : "decision"}
       onKeyDown={keyboard}
     >
@@ -489,7 +552,7 @@ export function DecisionDock({
       {folded && current && (
         <div className="ui-dd__folded">
           <span className="ui-dd__dot" />
-          {list.length} {list.length === 1 ? "decision" : "decisions"} waiting
+          {labels.waiting(list.length)}
           <button
             type="button"
             aria-expanded="false"
@@ -497,11 +560,13 @@ export function DecisionDock({
             onClick={() => {
               setFolded(false);
               requestAnimationFrame(() =>
-                root.current?.querySelector<HTMLElement>("[role=option]")?.focus({ preventScroll: true }),
+                root.current
+                  ?.querySelector<HTMLElement>("[role=option]:not(:disabled)")
+                  ?.focus({ preventScroll: true }),
               );
             }}
           >
-            Show
+            {labels.show}
           </button>
         </div>
       )}
@@ -512,11 +577,13 @@ export function DecisionDock({
             className="ui-dd__card"
             role="group"
             aria-labelledby={`${id}-question`}
+            aria-describedby={decision.error ? `${id}-error` : undefined}
+            aria-busy={status === "submitting"}
             data-pulse={focusRequest || undefined}
             key={decision.id}
           >
             <header className="ui-dd__head">
-              <span className="ui-dd__tag">Needs you</span>
+              <span className="ui-dd__tag">{status === "awaiting" ? labels.needsYou : labels[status]}</span>
               <span className="ui-dd__task" title={decision.task}>
                 {decision.task}
               </span>
@@ -524,17 +591,15 @@ export function DecisionDock({
                 <span className="ui-dd__pager">
                   <button
                     type="button"
-                    aria-label="Previous decision"
+                    aria-label={labels.previous}
                     onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
-                  <span>
-                    {activeIndex + 1} of {list.length}
-                  </span>
+                  <span>{labels.page(activeIndex + 1, list.length)}</span>
                   <button
                     type="button"
-                    aria-label="Next decision"
+                    aria-label={labels.next}
                     onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
                   >
                     <Icon name="chevron" size={10} />
@@ -548,7 +613,7 @@ export function DecisionDock({
                 aria-controls={`${id}-card`}
                 onClick={later}
               >
-                Later
+                {labels.later}
               </button>
             </header>
             <p className="ui-dd__question" id={`${id}-question`} dir="auto">
@@ -566,117 +631,143 @@ export function DecisionDock({
                 ))}
               </dl>
             )}
-            <div className="ui-dd__choices" role="listbox" aria-label={decision.question}>
-              {options.map((option, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={focused === index}
-                  tabIndex={focused === index ? 0 : -1}
-                  aria-keyshortcuts={String(index + 1)}
-                  className="ui-dd__option"
-                  key={option.id}
-                  onFocus={() => setFocused(index)}
-                  onClick={() => answer(index)}
-                >
-                  {decision.kind === "pick" && (
-                    <span
-                      className="ui-dd__wire"
-                      aria-hidden="true"
-                      data-wire={
-                        typeof option.wireframe === "string"
-                          ? option.wireframe
-                          : index === 0
-                            ? "illustration"
-                            : index === 1
-                              ? "checklist"
-                              : "data"
-                      }
-                    >
-                      {typeof option.wireframe === "object" ? (
-                        option.wireframe
-                      ) : (
-                        <svg viewBox="0 0 200 80" fill="none" aria-hidden="true">
-                          <rect x="40" width="120" height="80" rx="8" fill="var(--ui-dd-card)" />
-                          <g fill="var(--ui-dd-faint)">
-                            {(option.wireframe ??
-                              (index === 0 ? "illustration" : index === 1 ? "checklist" : "data")) ===
-                            "illustration" ? (
-                              <>
-                                <rect x="88" y="16" width="24" height="20" rx="4" />
-                                <rect x="74" y="44" width="52" height="3" rx="1.5" />
-                                <rect x="82" y="51" width="36" height="2" rx="1" opacity=".6" />
-                                <rect x="91" y="60" width="18" height="6" rx="2" />
-                              </>
-                            ) : (option.wireframe ?? (index === 1 ? "checklist" : "data")) === "checklist" ? (
-                              <>
-                                <rect x="52" y="10" width="43" height="4" rx="2" />
-                                <rect x="52" y="18" width="31" height="3" rx="1.5" opacity=".6" />
-                                <rect x="52" y="25" width="94" height="1" opacity=".4" />
-                                <circle cx="56" cy="37" r="3" />
-                                <rect x="64" y="34" width="58" height="5" rx="2.5" />
-                                <g opacity=".45">
-                                  <circle cx="56" cy="51" r="3" />
-                                  <rect x="64" y="49" width="45" height="3" rx="1.5" />
-                                  <circle cx="56" cy="64" r="3" />
-                                  <rect x="64" y="62" width="54" height="3" rx="1.5" />
-                                </g>
-                              </>
-                            ) : (
-                              <>
-                                <rect x="52" y="12" width="50" height="12" rx="6" />
-                                <g opacity=".45">
-                                  <rect x="56" y="51" width="9" height="17" rx="2" />
-                                  <rect x="72" y="39" width="9" height="29" rx="2" />
-                                  <rect x="88" y="28" width="9" height="40" rx="2" />
-                                  <rect x="104" y="42" width="9" height="26" rx="2" />
-                                  <rect x="120" y="22" width="9" height="46" rx="2" />
-                                </g>
-                              </>
-                            )}
-                          </g>
-                        </svg>
-                      )}
-                    </span>
-                  )}
-                  <span className="ui-dd__number">{index + 1}</span>
-                  <span className="ui-dd__text">
-                    <strong dir="auto">{option.title}</strong>
-                    {option.summary && <small dir="auto">{option.summary}</small>}
-                  </span>
-                  {option.recommended && <span className="ui-dd__recommended">Recommended</span>}
-                </button>
-              ))}
+            <div role="status" aria-live="polite">
+              {status === "answered"
+                ? decision.answer === undefined
+                  ? labels.answered
+                  : threadDecisionAnswerLabel(decision, decision.answer, labels)
+                : status === "awaiting"
+                  ? null
+                  : labels[status]}
             </div>
-            <form
-              className="ui-dd__custom"
-              onSubmit={(event) => {
-                event.preventDefault();
-                answerCustom();
-              }}
-            >
-              <span className="ui-dd__number">{rows}</span>
-              <input
-                ref={customInput}
-                aria-label="Something else"
-                placeholder="Something else…"
-                value={custom}
-                onFocus={() => setFocused(options.length)}
-                onChange={(event) => setCustom(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    later();
-                  }
-                }}
-              />
-              {custom.trim() && (
-                <button type="submit" aria-label="Send custom answer">
-                  <Icon name="send" size={14} />
-                </button>
-              )}
-            </form>
+            {decision.error && (
+              <p className="ui-dd__error" id={`${id}-error`} role="alert">
+                {decision.error}
+              </p>
+            )}
+            {status !== "answered" && status !== "expired" && (
+              <>
+                <div className="ui-dd__choices" role="listbox" aria-label={decision.question} aria-disabled={disabled}>
+                  {options.map((option, index) => (
+                    <button
+                      type="button"
+                      role="option"
+                      disabled={disabled}
+                      aria-selected={focused === index}
+                      tabIndex={focused === index ? 0 : -1}
+                      aria-keyshortcuts={index < 9 ? String(index + 1) : undefined}
+                      className="ui-dd__option"
+                      key={option.id}
+                      onFocus={() => setFocused(index)}
+                      onClick={() => answer(index)}
+                    >
+                      {decision.kind === "pick" && (
+                        <span
+                          className="ui-dd__wire"
+                          aria-hidden="true"
+                          data-wire={
+                            typeof option.wireframe === "string"
+                              ? option.wireframe
+                              : index === 0
+                                ? "illustration"
+                                : index === 1
+                                  ? "checklist"
+                                  : "data"
+                          }
+                        >
+                          {typeof option.wireframe === "object" ? (
+                            option.wireframe
+                          ) : (
+                            <svg viewBox="0 0 200 80" fill="none" aria-hidden="true">
+                              <rect x="40" width="120" height="80" rx="8" fill="var(--ui-dd-card)" />
+                              <g fill="var(--ui-dd-faint)">
+                                {(option.wireframe ??
+                                  (index === 0 ? "illustration" : index === 1 ? "checklist" : "data")) ===
+                                "illustration" ? (
+                                  <>
+                                    <rect x="88" y="16" width="24" height="20" rx="4" />
+                                    <rect x="74" y="44" width="52" height="3" rx="1.5" />
+                                    <rect x="82" y="51" width="36" height="2" rx="1" opacity=".6" />
+                                    <rect x="91" y="60" width="18" height="6" rx="2" />
+                                  </>
+                                ) : (option.wireframe ?? (index === 1 ? "checklist" : "data")) === "checklist" ? (
+                                  <>
+                                    <rect x="52" y="10" width="43" height="4" rx="2" />
+                                    <rect x="52" y="18" width="31" height="3" rx="1.5" opacity=".6" />
+                                    <rect x="52" y="25" width="94" height="1" opacity=".4" />
+                                    <circle cx="56" cy="37" r="3" />
+                                    <rect x="64" y="34" width="58" height="5" rx="2.5" />
+                                    <g opacity=".45">
+                                      <circle cx="56" cy="51" r="3" />
+                                      <rect x="64" y="49" width="45" height="3" rx="1.5" />
+                                      <circle cx="56" cy="64" r="3" />
+                                      <rect x="64" y="62" width="54" height="3" rx="1.5" />
+                                    </g>
+                                  </>
+                                ) : (
+                                  <>
+                                    <rect x="52" y="12" width="50" height="12" rx="6" />
+                                    <g opacity=".45">
+                                      <rect x="56" y="51" width="9" height="17" rx="2" />
+                                      <rect x="72" y="39" width="9" height="29" rx="2" />
+                                      <rect x="88" y="28" width="9" height="40" rx="2" />
+                                      <rect x="104" y="42" width="9" height="26" rx="2" />
+                                      <rect x="120" y="22" width="9" height="46" rx="2" />
+                                    </g>
+                                  </>
+                                )}
+                              </g>
+                            </svg>
+                          )}
+                        </span>
+                      )}
+                      <span className="ui-dd__number">{index + 1}</span>
+                      <span className="ui-dd__text">
+                        <strong dir="auto">{option.title}</strong>
+                        {option.summary && <small dir="auto">{option.summary}</small>}
+                      </span>
+                      {option.recommended && <span className="ui-dd__recommended">{labels.recommended}</span>}
+                    </button>
+                  ))}
+                </div>
+                {allowCustom && (
+                  <form
+                    className="ui-dd__custom"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      answerCustom();
+                    }}
+                  >
+                    <span className="ui-dd__number">{rows}</span>
+                    <input
+                      ref={customInput}
+                      disabled={disabled}
+                      aria-label={labels.customAnswer}
+                      placeholder={labels.customPlaceholder}
+                      value={custom}
+                      onFocus={() => setFocused(options.length)}
+                      onChange={(event) => setCustom(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing || event.repeat) {
+                          if (event.key === "Enter") event.preventDefault();
+                          return;
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          later();
+                        }
+                      }}
+                    />
+                    {custom.trim() && (
+                      <button type="submit" disabled={disabled} aria-label={labels.sendCustomAnswer}>
+                        <Icon name="send" size={14} />
+                      </button>
+                    )}
+                  </form>
+                )}
+              </>
+            )}
           </section>
         </div>
       </div>
@@ -687,6 +778,26 @@ export function DecisionDock({
 /* ---------- Styles ---------- */
 
 const css = /* css */ `
+.ui-dd__choices {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ui-dd button:disabled,
+.ui-dd input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ui-dd__error {
+  margin: 0;
+  padding: 4px;
+  color: #e5484d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ui-dd__text strong {
+  overflow-wrap: anywhere;
+}
 .ui-dd {
   --ui-dd-card: #fff;
   --ui-dd-tray: #f0f0f0;

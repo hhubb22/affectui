@@ -37,6 +37,72 @@
   </picture>
 </p>
 
+## Fork: caller-owned chat state
+
+This fork's chat components are copied from `components/` or `screens/`; the
+website registry links below still install the upstream release. Classic and
+Clean expose matching APIs. Edit `scripts/chat-rail/*.part`, then run
+`npm run generate`; do not edit generated TSX files directly.
+
+`AgentThread`, `ChatComposer` and `DecisionDock` accept `managed` (default
+`false`). Existing unmanaged previews keep their local/demo behavior.
+With `managed`:
+
+- Callbacks emit user intent, not success. Messages, decisions and connection
+  come from the caller; omitted thread/dock business data is empty, even when
+  `simulate` or sample defaults are supplied.
+- Sending does not append a sent message or clear draft/attachments. Answering
+  does not remove a decision or append an approval. Stopping does not mark tools
+  stopped. Callback Promise completion is **not** business confirmation.
+- There is no internal queue/replay, automatic reconnect, simulation, upload or
+  transcription. Manual reconnect still emits intent. Built-in voice recording
+  is disabled; use a caller-owned toolbar/composer and `ThreadUploads` callbacks.
+- Set `busy`/`sendDisabled`, decision `status`/`disabled`, and thread `stopping`
+  from application state while waiting. The application owns request deduplication,
+  errors and late-event handling.
+
+| Component | Extension contract |
+| --- | --- |
+| `DecisionDock` | `ThreadDecision.options` is complete and authoritative, including `kind: "approval"`; selecting returns `{ option: originalId }`. Only approval without `options` retains legacy `"approve"`/`"decline"`. No truncation; keys 1–9 select the first nine rows, arrow/Home/End navigation and pointer access reach all rows. |
+| `ThreadDecision` | `allowCustomAnswer` defaults to true. `status` is `awaiting` (default), `submitting`, `answered` or `expired`. `submitting`, `expired`, `answered` and `disabled` prevent answers; the caller restores `awaiting` with `error` to retry, or supplies `answered`/`answer` to confirm. |
+| `AgentThread` | `stopping` disables Stop and Escape without claiming stopped. `renderMessageContent(message, defaultContent)` replaces the entire body, including parts/tools/attachments; return `defaultContent` to delegate or `null` to hide. The message row ID, role, status, log and scroll ownership remain intact. No Markdown engine is added. |
+| `ChatComposer` | `toolbar` replaces **all** built-in controls, menus and Enter-send handling; `undefined` preserves them and `null` hides them. `overlay` sits above the textarea. `textareaProps` merges refs, ARIA, paste/drop and keyboard handlers, but excludes `value`, `defaultValue`, `onChange`; use the existing controlled API. External `onKeyDown` runs first and `preventDefault()` cancels internal Enter. Internal disabled/readOnly cannot be overridden with false. |
+| Attachments | `ChatComposerAttachment.size` is optional. An opaque native path can be `id` with `name`, without inventing a `File` or size; browser `File` attachments continue working. |
+| `AppShell` | `sidebar` replaces navigation-column content but retains rail/aside/resizer/drawer behavior. `undefined` preserves default navigation, `null` renders no column content. `header` spans above main and panel; null/undefined adds no row. |
+| Labels and time | Per-component `labels` cover fixed copy, ARIA and live announcements; dynamic strings use functions. Thread labels contain nested `decisions`, `connection`, `uploads`, `voice`, `away`, `tools`, `task` labels. `formatTime(timestamp)` also formats embedded away summaries; defaults stay English/UTC. No global i18n runtime is required. |
+| Screens | `AgentThreadScreen` explicitly forwards thread APIs; `labels` configures Shell and `threadLabels` configures Thread. Its existing `onSend(text, attachments)` signature is unchanged. `AgentChatRailScreen` forwards managed/stopping/content/time/composer APIs and uses the same labels split. |
+
+For example, keep the draft until an application/server event confirms delivery:
+
+```tsx
+<AgentThread
+  managed
+  messages={messages}
+  decisions={decisions}
+  connection={connection}
+  stopping={stopping}
+  onSend={requestSend}
+  onStop={requestStop}
+  onDecide={requestAnswer}
+  composerProps={{
+    value: draft,
+    onValueChange: setDraft,
+    attachments,
+    onAttachmentsChange: setAttachments,
+    busy: sendPending,
+  }}
+  renderMessageContent={(message, fallback) =>
+    messageBodies.get(message.id) ?? fallback
+  }
+/>
+```
+
+Preview caller-owned transitions with `npm run dev` and
+`?component=managed-thread&style=clean` (also `managed-dock`, `managed-composer`,
+`managed-shell`, `managed-screen`, `managed-rail`; `style=classic`, `theme=dark`).
+Fixture controls separate transport completion from Confirm/Fail actions. Run
+`npm test` and `npm run build` for the generated, type and browser contracts.
+
 ## Showcase
 
 Agent components, recorded live from [affectui.com](https://www.affectui.com). Items marked <sup>Pro</sup> are part of [affectUI Pro](https://www.affectui.com/pricing) and are not in this repository; everything else installs from here for free.

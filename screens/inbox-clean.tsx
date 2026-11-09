@@ -786,7 +786,54 @@ export function CommandMenu({
 export type AppRailItem = { label: string; icon?: ReactNode; count?: number; disabled?: boolean; section?: string };
 export type AppChat = { id: string; title: string; project?: string; pinned?: boolean; unread?: boolean };
 export type AppShellUser = { name: string; email?: string; avatar?: string };
+const defaultAppShellLabels = {
+  sidebar: "Sidebar",
+  openSidebar: "Open sidebar",
+  closeSidebar: "Close sidebar",
+  collapseSidebar: "Collapse sidebar",
+  resizeSidebar: "Resize sidebar",
+  panelTitle: "Artifacts",
+  openPanel: (title: string) => `Open ${title.toLowerCase()}`,
+  closePanel: (title: string) => `Close ${title.toLowerCase()}`,
+  resizePanel: (title: string) => `Resize ${title.toLowerCase()}`,
+  apps: "Apps",
+  unreadCount: (label: string, count: number) => `${label}, ${count} unread`,
+  search: "Search",
+  searchHint: "Search (⌘K)",
+  searchPlaceholder: "Search…",
+  workspace: "Workspace",
+  conversations: "Conversations",
+  newChat: "New chat",
+  chats: "Chats",
+  pinned: "Pinned",
+  projects: "Projects",
+  allProjects: "All projects",
+  noProject: "No project",
+  projectName: "Project name",
+  createProject: "Create project",
+  newProject: "New project",
+  moveToProject: "Move to project",
+  empty: "No chats yet. Start a new conversation.",
+  chatName: "Chat name",
+  unread: "Unread",
+  options: (title: string) => `Options for ${title}`,
+  pin: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} ${title}`,
+  account: "Account",
+  language: "Language",
+  appearance: "Appearance",
+  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  action: (action: string) => action,
+  goTo: "Go to",
+  copied: "Conversation title copied",
+  copyFailed: "Couldn't copy. Please try again.",
+};
+export type AppShellLabels = typeof defaultAppShellLabels;
 export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & {
+  /** Replace the navigation column, retaining the aside, resizer and drawer. null hides its contents. */
+  sidebar?: ReactNode;
+  /** A row above main and panel. No row is added for undefined or null. */
+  header?: ReactNode;
+  labels?: Partial<AppShellLabels>;
   workspace?: string;
   user?: AppShellUser;
   rail?: false | { items: AppRailItem[]; bottom?: AppRailItem[]; active?: string };
@@ -864,6 +911,9 @@ export const defaultChatRail = {
 
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
 export function AppShell({
+  sidebar: sidebarContent,
+  header,
+  labels: labelsProp,
   workspace = "Fieldwork",
   user = { name: "Alex Morgan", email: "alex@fieldwork.com" },
   rail = false,
@@ -897,7 +947,7 @@ export function AppShell({
   defaultSidebarOpen = false,
   onSidebarOpenChange,
   panel,
-  panelTitle = "Artifacts",
+  panelTitle: panelTitleProp,
   panelOpen: panelOpenProp,
   defaultPanelOpen = true,
   onPanelOpenChange,
@@ -914,6 +964,8 @@ export function AppShell({
   style,
   ...rest
 }: AppShellProps) {
+  const labels = { ...defaultAppShellLabels, ...labelsProp };
+  const panelTitle = panelTitleProp ?? labels.panelTitle;
   const [collapsed, setCollapsed] = useControllable(collapsedProp, defaultSidebarCollapsed, onSidebarCollapsedChange);
   const [chats, setChats] = useControllable(chatsProp, initialChats, onChatsChange);
   const [projects, setProjects] = useControllable(projectsProp, defaultProjects, onProjectsChange);
@@ -1030,13 +1082,14 @@ export function AppShell({
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;
     const previous = document.activeElement as HTMLElement | null;
-    area?.querySelector<HTMLElement>('button:not(:disabled),input,[tabindex="0"]')?.focus({ preventScroll: true });
+    const focusable =
+      'a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]';
+    area?.querySelector<HTMLElement>(focusable)?.focus({ preventScroll: true });
     const trap = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Tab" || menu || searchOpen) return;
-      const items = [
-        ...(area?.querySelectorAll<HTMLElement>('button:not(:disabled),input,textarea,[tabindex="0"]') ?? []),
-      ].filter(
+      const items = [...(area?.querySelectorAll<HTMLElement>(focusable) ?? [])].filter(
         (item) =>
+          item.tabIndex >= 0 &&
           !item.closest("[inert],[hidden]") &&
           item.getClientRects().length &&
           getComputedStyle(item).visibility !== "hidden",
@@ -1125,8 +1178,8 @@ export function AppShell({
     } else if (action === "copy") {
       navigator.clipboard
         ?.writeText(chat.title)
-        .then(() => setNotice("Conversation title copied"))
-        .catch(() => setNotice("Couldn't copy. Please try again."));
+        .then(() => setNotice(labels.copied))
+        .catch(() => setNotice(labels.copyFailed));
     }
     if (action !== "rename" && action !== "pin") onChatAction?.(action, chat.id);
     setMenu(null);
@@ -1193,7 +1246,7 @@ export function AppShell({
         <input
           ref={renameRef}
           className="ui-asc__rename"
-          aria-label="Chat name"
+          aria-label={labels.chatName}
           value={renameValue}
           onChange={(event) => setRenameValue(event.target.value)}
           onBlur={rename}
@@ -1214,13 +1267,13 @@ export function AppShell({
           onClick={() => openChat(chat)}
         >
           <span dir="auto">{chat.title}</span>
-          {chat.unread && <i className="ui-asc__unread" aria-label="Unread" />}
+          {chat.unread && <i className="ui-asc__unread" aria-label={labels.unread} />}
         </button>
       )}
       <span className="ui-asc__chat-tools">
         <button
           type="button"
-          aria-label={`Options for ${chat.title}`}
+          aria-label={labels.options(chat.title)}
           aria-haspopup="menu"
           aria-expanded={menu === "chat" && menuChat === chat.id}
           aria-controls={menu === "chat" && menuChat === chat.id ? `${id}-menu` : undefined}
@@ -1228,11 +1281,7 @@ export function AppShell({
         >
           <Icon name="more" size={14} />
         </button>
-        <button
-          type="button"
-          aria-label={`${chat.pinned ? "Unpin" : "Pin"} ${chat.title}`}
-          onClick={() => pinChat(chat)}
-        >
+        <button type="button" aria-label={labels.pin(chat.title, !!chat.pinned)} onClick={() => pinChat(chat)}>
           <Icon name="pin" size={12} />
         </button>
       </span>
@@ -1249,7 +1298,7 @@ export function AppShell({
       ? [
           {
             id: "workspace",
-            label: "Workspace",
+            label: labels.workspace,
             commands: navigation.map((item) => ({
               id: `navigate:${item.label}`,
               label: item.label,
@@ -1263,9 +1312,9 @@ export function AppShell({
           ...defaultCommands,
           {
             id: "go-to",
-            label: "Go to",
+            label: labels.goTo,
             commands: [
-              { id: "new-chat", label: "New chat", onSelect: onNewChat },
+              { id: "new-chat", label: labels.newChat, onSelect: onNewChat },
               ...projectList.map((name) => ({
                 id: `project:${name}`,
                 label: name,
@@ -1304,12 +1353,12 @@ export function AppShell({
       <style href="ui-inbox-clean" precedence="default">
         {css}
       </style>
-      <div className="ui-asc__app">
+      <div className="ui-asc__app" data-header={header != null || undefined}>
         <button
           ref={sideOpenRef}
           type="button"
           className="ui-asc__drawer-trigger ui-asc__open-side"
-          aria-label="Open sidebar"
+          aria-label={labels.openSidebar}
           aria-expanded={sidebarOpen}
           aria-controls={`${id}-sidebar`}
           onClick={() => {
@@ -1326,7 +1375,7 @@ export function AppShell({
             ref={panelOpenRef}
             type="button"
             className="ui-asc__drawer-trigger ui-asc__open-panel"
-            aria-label={`Open ${panelTitle.toLowerCase()}`}
+            aria-label={labels.openPanel(panelTitle)}
             aria-expanded={visiblePanel}
             aria-controls={`${id}-panel`}
             onClick={() => {
@@ -1341,7 +1390,7 @@ export function AppShell({
           <button
             type="button"
             className="ui-asc__scrim"
-            aria-label={sidebarOpen ? "Close sidebar" : `Close ${panelTitle.toLowerCase()}`}
+            aria-label={sidebarOpen ? labels.closeSidebar : labels.closePanel(panelTitle)}
             tabIndex={-1}
             onClick={closeDrawer}
           />
@@ -1350,11 +1399,11 @@ export function AppShell({
           ref={sidebar}
           className="ui-asc__side"
           id={`${id}-sidebar`}
-          aria-label="Sidebar"
+          aria-label={labels.sidebar}
           inert={narrow ? !sidebarOpen : collapsed}
         >
           {rail && (
-            <nav className="ui-asc__rail" aria-label="Apps">
+            <nav className="ui-asc__rail" aria-label={labels.apps}>
               <button
                 type="button"
                 className="ui-asc__logo"
@@ -1391,7 +1440,7 @@ export function AppShell({
                   type="button"
                   className="ui-asc__rail-item"
                   key={item.label}
-                  aria-label={item.count ? `${item.label}, ${item.count} unread` : item.label}
+                  aria-label={item.count ? labels.unreadCount(item.label, item.count) : item.label}
                   title={item.label}
                   disabled={item.disabled}
                   onClick={() => navigate(item.label)}
@@ -1419,187 +1468,195 @@ export function AppShell({
             </nav>
           )}
           <div className="ui-asc__side-col" data-navigation={!!navigation || undefined}>
-            {navigation ? (
-              <div className="ui-asc__navigation">
-                <header className="ui-asc__nav-head">
-                  <button
-                    type="button"
-                    className="ui-asc__nav-workspace"
-                    aria-label={workspace}
-                    aria-haspopup="menu"
-                    aria-expanded={menu === "workspace"}
-                    {...trigger("workspace")}
-                  >
-                    <span>{initials(workspace).slice(0, 1)}</span>
-                    <strong>{workspace}</strong>
-                    <Icon name="chevron" size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-asc__icon-btn"
-                    aria-label="Collapse sidebar"
-                    onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(true))}
-                  >
-                    <Icon name="panel" />
-                  </button>
-                </header>
-                <button
-                  type="button"
-                  className="ui-asc__nav-search"
-                  aria-haspopup="dialog"
-                  aria-expanded={searchOpen}
-                  onClick={() => setSearchOpen(true)}
-                >
-                  <Icon name="search" size={14} />
-                  <span>Search…</span>
-                  <kbd>⌘K</kbd>
-                </button>
-                <nav className="ui-asc__nav-items" aria-label="Workspace">
-                  {navigation.map((item, index) => (
-                    <div key={item.label}>
-                      {item.section && navigation[index - 1]?.section !== item.section && (
-                        <div className="ui-asc__nav-section">{item.section}</div>
-                      )}
-                      <button
-                        type="button"
-                        className="ui-asc__nav-item"
-                        aria-current={active === item.label ? "page" : undefined}
-                        disabled={item.disabled}
-                        onClick={() => navigate(item.label)}
-                      >
-                        <span
-                          className="ui-asc__nav-icon"
-                          aria-hidden="true"
-                          onErrorCapture={(event) => {
-                            if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
-                          }}
-                        >
-                          {item.icon ?? <Icon name="document" size={16} />}
-                        </span>
-                        <span>{item.label}</span>
-                        {item.count != null && item.count > 0 && <small>{item.count}</small>}
-                      </button>
-                    </div>
-                  ))}
-                </nav>
-              </div>
+            {sidebarContent !== undefined ? (
+              sidebarContent
             ) : (
               <>
-                <header className="ui-asc__side-head">
-                  <button
-                    type="button"
-                    className="ui-asc__project"
-                    aria-haspopup="menu"
-                    aria-expanded={menu === "projects"}
-                    aria-controls={menu === "projects" ? `${id}-menu` : undefined}
-                    {...trigger("projects")}
-                  >
-                    <span title={project || "All projects"}>{project || "All projects"}</span>
-                    <Icon name="chevron" size={12} />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-asc__icon-btn"
-                    aria-label="Search"
-                    title="Search (⌘K)"
-                    onClick={() => setSearchOpen(true)}
-                  >
-                    <Icon name="search" />
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-asc__mobile-close ui-asc__icon-btn"
-                    aria-label="Close sidebar"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <Icon name="panel" />
-                  </button>
-                </header>
-                <nav className="ui-asc__chat-nav" aria-label="Conversations">
-                  <button
-                    type="button"
-                    className="ui-asc__new-chat"
-                    onClick={() => {
-                      onNewChat?.();
-                      if (narrow) setSidebarOpen(false);
-                    }}
-                  >
-                    <Icon name="compose" size={16} />
-                    New chat
-                  </button>
-                  {shown.some((chat) => chat.pinned) && (
-                    <div className="ui-asc__group">
-                      <h2>Pinned</h2>
-                      {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
-                    </div>
-                  )}
-                  <div className="ui-asc__group">
-                    <h2>Projects</h2>
-                    {projectList
-                      .filter((name) => !project || name === project)
-                      .map((name) => (
-                        <div key={name}>
+                {navigation ? (
+                  <div className="ui-asc__navigation">
+                    <header className="ui-asc__nav-head">
+                      <button
+                        type="button"
+                        className="ui-asc__nav-workspace"
+                        aria-label={workspace}
+                        aria-haspopup="menu"
+                        aria-expanded={menu === "workspace"}
+                        {...trigger("workspace")}
+                      >
+                        <span>{initials(workspace).slice(0, 1)}</span>
+                        <strong>{workspace}</strong>
+                        <Icon name="chevron" size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-asc__icon-btn"
+                        aria-label={labels.collapseSidebar}
+                        onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(true))}
+                      >
+                        <Icon name="panel" />
+                      </button>
+                    </header>
+                    <button
+                      type="button"
+                      className="ui-asc__nav-search"
+                      aria-haspopup="dialog"
+                      aria-expanded={searchOpen}
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <Icon name="search" size={14} />
+                      <span>{labels.searchPlaceholder}</span>
+                      <kbd>⌘K</kbd>
+                    </button>
+                    <nav className="ui-asc__nav-items" aria-label={labels.workspace}>
+                      {navigation.map((item, index) => (
+                        <div key={item.label}>
+                          {item.section && navigation[index - 1]?.section !== item.section && (
+                            <div className="ui-asc__nav-section">{item.section}</div>
+                          )}
                           <button
                             type="button"
-                            className="ui-asc__folder"
-                            aria-expanded={folders.includes(name)}
-                            aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
-                            onClick={() =>
-                              setFolders(
-                                folders.includes(name) ? folders.filter((item) => item !== name) : [...folders, name],
-                              )
-                            }
+                            className="ui-asc__nav-item"
+                            aria-current={active === item.label ? "page" : undefined}
+                            disabled={item.disabled}
+                            onClick={() => navigate(item.label)}
                           >
-                            <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
-                            <span title={name}>{name}</span>
-                            <span className="ui-asc__folder-chevron">
-                              <Icon name="chevron" size={12} />
+                            <span
+                              className="ui-asc__nav-icon"
+                              aria-hidden="true"
+                              onErrorCapture={(event) => {
+                                if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
+                              }}
+                            >
+                              {item.icon ?? <Icon name="document" size={16} />}
                             </span>
+                            <span>{item.label}</span>
+                            {item.count != null && item.count > 0 && <small>{item.count}</small>}
                           </button>
-                          <div
-                            className="ui-asc__folder-wrap"
-                            data-open={folders.includes(name)}
-                            id={`${id}-folder-${encodeURIComponent(name)}`}
-                            inert={!folders.includes(name)}
-                          >
-                            <div>
-                              {shown
-                                .filter((chat) => chat.project === name && !chat.pinned)
-                                .map((chat) => row(chat, true))}
-                            </div>
-                          </div>
                         </div>
                       ))}
+                    </nav>
                   </div>
-                  {shown.some((chat) => !chat.project && !chat.pinned) && (
-                    <div className="ui-asc__group">
-                      <h2>Chats</h2>
-                      {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
-                    </div>
-                  )}
-                  {!shown.length && <p className="ui-asc__empty">No chats yet. Start a new conversation.</p>}
-                </nav>
+                ) : (
+                  <>
+                    <header className="ui-asc__side-head">
+                      <button
+                        type="button"
+                        className="ui-asc__project"
+                        aria-haspopup="menu"
+                        aria-expanded={menu === "projects"}
+                        aria-controls={menu === "projects" ? `${id}-menu` : undefined}
+                        {...trigger("projects")}
+                      >
+                        <span title={project || labels.allProjects}>{project || labels.allProjects}</span>
+                        <Icon name="chevron" size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-asc__icon-btn"
+                        aria-label={labels.search}
+                        title={labels.searchHint}
+                        onClick={() => setSearchOpen(true)}
+                      >
+                        <Icon name="search" />
+                      </button>
+                      <button
+                        type="button"
+                        className="ui-asc__mobile-close ui-asc__icon-btn"
+                        aria-label={labels.closeSidebar}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <Icon name="panel" />
+                      </button>
+                    </header>
+                    <nav className="ui-asc__chat-nav" aria-label={labels.conversations}>
+                      <button
+                        type="button"
+                        className="ui-asc__new-chat"
+                        onClick={() => {
+                          onNewChat?.();
+                          if (narrow) setSidebarOpen(false);
+                        }}
+                      >
+                        <Icon name="compose" size={16} />
+                        {labels.newChat}
+                      </button>
+                      {shown.some((chat) => chat.pinned) && (
+                        <div className="ui-asc__group">
+                          <h2>{labels.pinned}</h2>
+                          {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
+                        </div>
+                      )}
+                      <div className="ui-asc__group">
+                        <h2>{labels.projects}</h2>
+                        {projectList
+                          .filter((name) => !project || name === project)
+                          .map((name) => (
+                            <div key={name}>
+                              <button
+                                type="button"
+                                className="ui-asc__folder"
+                                aria-expanded={folders.includes(name)}
+                                aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
+                                onClick={() =>
+                                  setFolders(
+                                    folders.includes(name)
+                                      ? folders.filter((item) => item !== name)
+                                      : [...folders, name],
+                                  )
+                                }
+                              >
+                                <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
+                                <span title={name}>{name}</span>
+                                <span className="ui-asc__folder-chevron">
+                                  <Icon name="chevron" size={12} />
+                                </span>
+                              </button>
+                              <div
+                                className="ui-asc__folder-wrap"
+                                data-open={folders.includes(name)}
+                                id={`${id}-folder-${encodeURIComponent(name)}`}
+                                inert={!folders.includes(name)}
+                              >
+                                <div>
+                                  {shown
+                                    .filter((chat) => chat.project === name && !chat.pinned)
+                                    .map((chat) => row(chat, true))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                      {shown.some((chat) => !chat.project && !chat.pinned) && (
+                        <div className="ui-asc__group">
+                          <h2>{labels.chats}</h2>
+                          {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
+                        </div>
+                      )}
+                      {!shown.length && <p className="ui-asc__empty">{labels.empty}</p>}
+                    </nav>
+                  </>
+                )}
+                {!rail && (
+                  <button
+                    type="button"
+                    className="ui-asc__account-row"
+                    aria-haspopup="menu"
+                    aria-expanded={menu === "account"}
+                    {...trigger("account")}
+                  >
+                    <span className="ui-asc__user-initials">{initials(user.name)}</span>
+                    <span>{user.name}</span>
+                    <Icon name="chevron" size={12} />
+                  </button>
+                )}
               </>
-            )}
-            {!rail && (
-              <button
-                type="button"
-                className="ui-asc__account-row"
-                aria-haspopup="menu"
-                aria-expanded={menu === "account"}
-                {...trigger("account")}
-              >
-                <span className="ui-asc__user-initials">{initials(user.name)}</span>
-                <span>{user.name}</span>
-                <Icon name="chevron" size={12} />
-              </button>
             )}
           </div>
         </aside>
         <div
           className="ui-asc__resizer"
           role="separator"
-          aria-label="Resize sidebar"
+          aria-label={labels.resizeSidebar}
           aria-orientation="vertical"
           aria-valuemin={200}
           aria-valuemax={420}
@@ -1609,6 +1666,11 @@ export function AppShell({
           onPointerDown={(event) => resize("sidebar", event)}
           onKeyDown={(event) => resizeKey("sidebar", event)}
         />
+        {header != null && (
+          <div className="ui-asc__header" inert={!!drawer}>
+            {header}
+          </div>
+        )}
         <main className="ui-asc__main" inert={!!drawer}>
           {children}
         </main>
@@ -1617,7 +1679,7 @@ export function AppShell({
             <div
               className="ui-asc__resizer ui-asc__panel-resizer"
               role="separator"
-              aria-label={`Resize ${panelTitle.toLowerCase()}`}
+              aria-label={labels.resizePanel(panelTitle)}
               aria-orientation="vertical"
               aria-valuemin={300}
               aria-valuemax={640}
@@ -1648,12 +1710,12 @@ export function AppShell({
           id={`${id}-menu`}
           label={
             menu === "chat"
-              ? `Options for ${currentMenuChat?.title ?? "chat"}`
+              ? labels.options(currentMenuChat?.title ?? "")
               : menu === "projects"
-                ? "Projects"
+                ? labels.projects
                 : menu === "workspace"
                   ? workspace
-                  : "Account"
+                  : labels.account
           }
           side={menu === "account" || menu === "workspace" ? "right" : "bottom"}
           onClose={() => setMenu(null)}
@@ -1677,14 +1739,14 @@ export function AppShell({
                   data-divider={index === 1 || index === 6 || index === 7 || undefined}
                   onClick={() => menuAction(label)}
                 >
-                  {label}
+                  {labels.action(label)}
                 </button>
               ))}
             </>
           )}
           {menu === "projects" && (
             <>
-              <div className="ui-asc__menu-label">Projects</div>
+              <div className="ui-asc__menu-label">{labels.projects}</div>
               {["", ...projectList].map((name) => (
                 <button
                   type="button"
@@ -1697,7 +1759,7 @@ export function AppShell({
                     anchor.current?.focus();
                   }}
                 >
-                  {name || "All projects"}
+                  {name || labels.allProjects}
                   {project === name && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -1718,19 +1780,19 @@ export function AppShell({
                 >
                   <input
                     autoFocus
-                    aria-label="Project name"
-                    placeholder="Project name"
+                    aria-label={labels.projectName}
+                    placeholder={labels.projectName}
                     value={newProject}
                     onChange={(event) => setNewProject(event.target.value)}
                   />
-                  <button type="submit" aria-label="Create project">
+                  <button type="submit" aria-label={labels.createProject}>
                     <Icon name="check" size={14} />
                   </button>
                 </form>
               ) : (
                 <button type="button" role="menuitem" data-divider="" onClick={() => setAddingProject(true)}>
                   <Icon name="plus" size={14} />
-                  New project
+                  {labels.newProject}
                 </button>
               )}
             </>
@@ -1745,14 +1807,14 @@ export function AppShell({
                 </span>
               </div>
               <button type="button" role="menuitem" onClick={() => setMenu("language")}>
-                Language
+                {labels.language}
                 <span>
                   {language}
                   <Icon name="chevron" size={12} />
                 </span>
               </button>
               <button type="button" role="menuitem" onClick={() => setMenu("appearance")}>
-                Appearance
+                {labels.appearance}
                 <Icon name="chevron" size={12} />
               </button>
               {["Integrations", "Settings", "Download apps", "Changelog", "Learn more", "Log out"].map(
@@ -1764,7 +1826,7 @@ export function AppShell({
                     data-divider={index === 2 || index === 3 || index === 5 || undefined}
                     onClick={() => menuAction(label)}
                   >
-                    {label}
+                    {labels.action(label)}
                   </button>
                 ),
               )}
@@ -1772,7 +1834,7 @@ export function AppShell({
           )}
           {menu === "language" && (
             <>
-              <div className="ui-asc__menu-label">Language</div>
+              <div className="ui-asc__menu-label">{labels.language}</div>
               {["English", "Deutsch", "Français", "Español"].map((label) => (
                 <button
                   type="button"
@@ -1793,7 +1855,7 @@ export function AppShell({
           )}
           {menu === "appearance" && (
             <>
-              <div className="ui-asc__menu-label">Appearance</div>
+              <div className="ui-asc__menu-label">{labels.appearance}</div>
               {(["light", "dark", "system"] as const).map((value) => (
                 <button
                   type="button"
@@ -1806,7 +1868,7 @@ export function AppShell({
                     anchor.current?.focus();
                   }}
                 >
-                  {value[0].toUpperCase() + value.slice(1)}
+                  {labels.theme(value)}
                   {theme === value && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -1833,13 +1895,13 @@ export function AppShell({
                 data-divider={index === 4 || index === 6 || index === 7 || undefined}
                 onClick={() => chatAction(action)}
               >
-                {label}
+                {labels.action(label)}
                 <kbd>{shortcut}</kbd>
               </button>
             ))}
           {menu === "chat-project" && currentMenuChat && (
             <>
-              <div className="ui-asc__menu-label">Move to project</div>
+              <div className="ui-asc__menu-label">{labels.moveToProject}</div>
               {["", ...projectList].map((name) => (
                 <button
                   type="button"
@@ -1852,7 +1914,7 @@ export function AppShell({
                     onChatAction?.("project", currentMenuChat.id);
                   }}
                 >
-                  {name || "No project"}
+                  {name || labels.noProject}
                   {(currentMenuChat.project ?? "") === name && <Icon name="check" size={13} />}
                 </button>
               ))}
@@ -6321,6 +6383,28 @@ const css = /* css */ `
   --ui-cmc-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 24px 80px -20px rgba(0, 0, 0, 0.6);
 }
 
+.ui-asc__app[data-header] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.ui-asc__header {
+  grid-column: 3/-1;
+  grid-row: 1;
+  min-width: 0;
+}
+.ui-asc__app[data-header] > .ui-asc__side,
+.ui-asc__app[data-header] > .ui-asc__side + .ui-asc__resizer {
+  grid-row: 1/-1;
+}
+.ui-asc__app[data-header] > .ui-asc__main,
+.ui-asc__app[data-header] > .ui-asc__panel,
+.ui-asc__app[data-header] > .ui-asc__panel-resizer {
+  grid-row: 2;
+}
+@container ui-asc (max-width:899.99px) {
+  .ui-asc__header {
+    grid-column: 1/-1;
+  }
+}
 .ui-asc:has(.ui-asc__side-col[data-navigation]) .ui-asc__main {
   border-radius: 12px;
   border-left: 0.5px solid var(--ui-asc-line);

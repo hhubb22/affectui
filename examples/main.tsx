@@ -15,6 +15,7 @@ const ClassicThreadScreen = lazy(() =>
 );
 const ThreadDemos = lazy(() => import("./thread-demos"));
 const ThreadFixtures = lazy(() => import("./thread-fixtures"));
+const ManagedFixtures = lazy(() => import("./managed-fixtures"));
 const CleanTasksScreen = lazy(() =>
   import("../screens/agent-tasks-clean").then((module) => ({
     default: module.AgentTasksScreen,
@@ -175,6 +176,8 @@ function Preview() {
     );
   if (component === "controlled-thread" || component === "upload-thread")
     return <ThreadFixtures variant={component} />;
+  if (component?.startsWith("managed-"))
+    return <ManagedFixtures variant={component} clean={clean} theme={theme} />;
   if (query.get("screen") === "agent-thread")
     return (
       <div

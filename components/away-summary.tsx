@@ -250,6 +250,10 @@ function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   );
 }
 
+function defaultThreadFormatTime(at: number) {
+  return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(at);
+}
+
 function safeNumber(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -266,10 +270,22 @@ export type ThreadTask = {
   done?: boolean;
   tone?: "active" | "waiting" | "done" | "error";
 };
-export type ThreadTaskCardProps = { task: ThreadTask; onOpen?: (id: string) => void; className?: string };
+const defaultThreadTaskCardLabels = {
+  open: "Open",
+  steps: (done: number, total: number) => `${done} of ${total} steps`,
+  openTask: (title: string, status: string, steps: string) => `Open ${title} – ${status}${steps ? `, ${steps}` : ""}`,
+};
+export type ThreadTaskCardLabels = typeof defaultThreadTaskCardLabels;
+export type ThreadTaskCardProps = {
+  task: ThreadTask;
+  onOpen?: (id: string) => void;
+  labels?: Partial<ThreadTaskCardLabels>;
+  className?: string;
+};
 
 /** A compact task mention; opening it keeps the conversation in place. */
-export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps) {
+export function ThreadTaskCard({ task, onOpen, labels: labelsProp, className }: ThreadTaskCardProps) {
+  const labels = { ...defaultThreadTaskCardLabels, ...labelsProp };
   const tone = task.done
     ? "done"
     : ["active", "waiting", "done", "error"].includes(task.tone ?? "")
@@ -306,7 +322,7 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         </small>
       </span>
       {task.steps && (
-        <span className="ui-tk__count" aria-label={`${done} of ${total} steps`}>
+        <span className="ui-tk__count" aria-label={labels.steps(done, total)}>
           {done}/{total}
         </span>
       )}
@@ -314,15 +330,28 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         type="button"
         disabled={!onOpen}
         onClick={() => onOpen?.(task.id)}
-        aria-label={`Open ${task.title} – ${task.status}${task.steps ? `, ${done} of ${total} steps` : ""}`}
+        aria-label={labels.openTask(task.title, task.status, task.steps ? labels.steps(done, total) : "")}
       >
-        Open
+        {labels.open}
       </button>
     </div>
   );
 }
 
+const defaultAwaySummaryLabels = {
+  title: "While you were away",
+  counts: (done: number, needs: number) => `${done} done · ${needs} need you`,
+  needsYou: "Needs you",
+  openTasks: "Open Tasks",
+  openInbox: "Open Inbox",
+  newSince: (time: string) => `New since ${time}`,
+  newActivity: "New activity",
+  markRead: "Mark as read",
+};
+export type AwaySummaryLabels = typeof defaultAwaySummaryLabels;
 export type AwaySummaryProps = {
+  labels?: Partial<AwaySummaryLabels>;
+  formatTime?: (timestamp: number) => string;
   tasks?: ThreadTask[];
   decisions?: { id: string; question: string }[];
   since?: number;
@@ -336,6 +365,8 @@ export type AwaySummaryProps = {
 
 /** A return-to-thread summary, followed by the unread boundary and a mark-as-read action. */
 export function AwaySummary({
+  labels: labelsProp,
+  formatTime = defaultThreadFormatTime,
   tasks = [],
   decisions = [],
   since,
@@ -346,18 +377,17 @@ export function AwaySummary({
   onMarkRead,
   className,
 }: AwaySummaryProps) {
+  const labels = { ...defaultAwaySummaryLabels, ...labelsProp };
   const done = tasks.filter((task) => task.done);
   return (
     <div className={["ui-ay", className].filter(Boolean).join(" ")}>
       <style href="ui-away-summary" precedence="default">
         {css}
       </style>
-      <section className="ui-ay__card" aria-label="While you were away">
+      <section className="ui-ay__card" aria-label={labels.title}>
         <header>
-          <span className="ui-ay__title">While you were away</span>
-          <span className="ui-ay__counts">
-            {done.length} done · {decisions.length} need you
-          </span>
+          <span className="ui-ay__title">{labels.title}</span>
+          <span className="ui-ay__counts">{labels.counts(done.length, decisions.length)}</span>
         </header>
         <div className="ui-ay__rows">
           {done.map((task) => (
@@ -379,20 +409,20 @@ export function AwaySummary({
             >
               <span className="ui-ay__dot" />
               <strong dir="auto">{decision.question}</strong>
-              <small>Needs you</small>
+              <small>{labels.needsYou}</small>
             </button>
           ))}
         </div>
         <footer>
           {onOpenTasks && (
             <button type="button" onClick={onOpenTasks}>
-              Open Tasks
+              {labels.openTasks}
               <Icon name="arrow" size={12} />
             </button>
           )}
           {onOpenInbox && (
             <button type="button" onClick={onOpenInbox}>
-              Open Inbox
+              {labels.openInbox}
               <Icon name="arrow" size={12} />
             </button>
           )}
@@ -401,14 +431,12 @@ export function AwaySummary({
       {(since != null || onMarkRead) && (
         <div className="ui-ay__boundary">
           <span>
-            {since != null && Number.isFinite(since)
-              ? `New since ${new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(since)}`
-              : "New activity"}
+            {since != null && Number.isFinite(since) ? labels.newSince(formatTime(since)) : labels.newActivity}
           </span>
           {onMarkRead && (
             <button type="button" onClick={onMarkRead}>
               <Icon name="check" size={11} />
-              Mark as read
+              {labels.markRead}
             </button>
           )}
         </div>

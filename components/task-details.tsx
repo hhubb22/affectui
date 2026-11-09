@@ -266,10 +266,22 @@ export type ThreadTask = {
   done?: boolean;
   tone?: "active" | "waiting" | "done" | "error";
 };
-export type ThreadTaskCardProps = { task: ThreadTask; onOpen?: (id: string) => void; className?: string };
+const defaultThreadTaskCardLabels = {
+  open: "Open",
+  steps: (done: number, total: number) => `${done} of ${total} steps`,
+  openTask: (title: string, status: string, steps: string) => `Open ${title} – ${status}${steps ? `, ${steps}` : ""}`,
+};
+export type ThreadTaskCardLabels = typeof defaultThreadTaskCardLabels;
+export type ThreadTaskCardProps = {
+  task: ThreadTask;
+  onOpen?: (id: string) => void;
+  labels?: Partial<ThreadTaskCardLabels>;
+  className?: string;
+};
 
 /** A compact task mention; opening it keeps the conversation in place. */
-export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps) {
+export function ThreadTaskCard({ task, onOpen, labels: labelsProp, className }: ThreadTaskCardProps) {
+  const labels = { ...defaultThreadTaskCardLabels, ...labelsProp };
   const tone = task.done
     ? "done"
     : ["active", "waiting", "done", "error"].includes(task.tone ?? "")
@@ -306,7 +318,7 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         </small>
       </span>
       {task.steps && (
-        <span className="ui-tk__count" aria-label={`${done} of ${total} steps`}>
+        <span className="ui-tk__count" aria-label={labels.steps(done, total)}>
           {done}/{total}
         </span>
       )}
@@ -314,9 +326,9 @@ export function ThreadTaskCard({ task, onOpen, className }: ThreadTaskCardProps)
         type="button"
         disabled={!onOpen}
         onClick={() => onOpen?.(task.id)}
-        aria-label={`Open ${task.title} – ${task.status}${task.steps ? `, ${done} of ${total} steps` : ""}`}
+        aria-label={labels.openTask(task.title, task.status, task.steps ? labels.steps(done, total) : "")}
       >
-        Open
+        {labels.open}
       </button>
     </div>
   );
