@@ -44,6 +44,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   sidebarWidth?: number;
   defaultSidebarWidth?: number;
   onSidebarWidthChange?: (width: number) => void;
+  /** Application-specific limits, shared by layout, pointer/keyboard resizing and ARIA. */
+  sidebarBounds?: { min: number; max: number };
   sidebarOpen?: boolean;
   defaultSidebarOpen?: boolean;
   onSidebarOpenChange?: (open: boolean) => void;
@@ -55,6 +57,7 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   panelWidth?: number;
   defaultPanelWidth?: number;
   onPanelWidthChange?: (width: number) => void;
+  panelBounds?: { min: number; max: number };
   theme?: "light" | "dark" | "system";
   defaultTheme?: "light" | "dark" | "system";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
@@ -77,7 +80,7 @@ export const defaultChatRail = { items: [
 ], bottom: [{ label: "Notifications", icon: <Icon name="bell" size={19}/>, count: 2 }, { label: "Settings", icon: <Icon name="settings" size={19}/> }], active: "Chats" };
 
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
-export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, workspace = "Fieldwork", user = { name: "Alex Morgan", email: "alex@fieldwork.com" }, rail = false, active: activeProp, defaultActive = "Chats", onActiveChange, onNavigate, navigation, commands: commandGroupsProp, sidebarCollapsed: collapsedProp, defaultSidebarCollapsed = false, onSidebarCollapsedChange, chats: chatsProp, defaultChats: initialChats = defaultChats, onChatsChange, activeChat: activeChatProp, defaultActiveChat = "fabric", onOpenChat, onNewChat, onChatAction, projects: projectsProp, defaultProjects = defaultChatProjects, onProjectsChange, project: projectProp, defaultProject = "", onProjectChange, sidebarWidth: sidebarWidthProp, defaultSidebarWidth = 272, onSidebarWidthChange, sidebarOpen: sidebarOpenProp, defaultSidebarOpen = false, onSidebarOpenChange, panel, panelTitle: panelTitleProp, panelOpen: panelOpenProp, defaultPanelOpen = true, onPanelOpenChange, panelWidth: panelWidthProp, defaultPanelWidth = 455, onPanelWidthChange, theme: themeProp, defaultTheme = "system", onThemeChange, layout = "inset", children, className, onKeyDown, style, ...rest }: AppShellProps) {
+export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, workspace = "Fieldwork", user = { name: "Alex Morgan", email: "alex@fieldwork.com" }, rail = false, active: activeProp, defaultActive = "Chats", onActiveChange, onNavigate, navigation, commands: commandGroupsProp, sidebarCollapsed: collapsedProp, defaultSidebarCollapsed = false, onSidebarCollapsedChange, chats: chatsProp, defaultChats: initialChats = defaultChats, onChatsChange, activeChat: activeChatProp, defaultActiveChat = "fabric", onOpenChat, onNewChat, onChatAction, projects: projectsProp, defaultProjects = defaultChatProjects, onProjectsChange, project: projectProp, defaultProject = "", onProjectChange, sidebarWidth: sidebarWidthProp, defaultSidebarWidth = 272, onSidebarWidthChange, sidebarBounds = { min: 200, max: 420 }, sidebarOpen: sidebarOpenProp, defaultSidebarOpen = false, onSidebarOpenChange, panel, panelTitle: panelTitleProp, panelOpen: panelOpenProp, defaultPanelOpen = true, onPanelOpenChange, panelWidth: panelWidthProp, defaultPanelWidth = 455, onPanelWidthChange, panelBounds = { min: 300, max: 640 }, theme: themeProp, defaultTheme = "system", onThemeChange, layout = "inset", children, className, onKeyDown, style, ...rest }: AppShellProps) {
   const labels = { ...defaultAppShellLabels, ...labelsProp };
   const panelTitle = panelTitleProp ?? labels.panelTitle;
   const [collapsed, setCollapsed] = useControllable(collapsedProp, defaultSidebarCollapsed, onSidebarCollapsedChange);
@@ -86,8 +89,10 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
   const [project, setProject] = useControllable(projectProp, defaultProject, onProjectChange);
   const [activeChat, setActiveChat] = useControllable(activeChatProp, defaultActiveChat, onOpenChat);
   const [active, setActive] = useControllable(activeProp, defaultActive, onActiveChange);
-  const [sidebarWidth, setSidebarWidth] = useControllable(sidebarWidthProp, defaultSidebarWidth, onSidebarWidthChange);
-  const [panelWidth, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const [sidebarWidthValue, setSidebarWidth] = useControllable(sidebarWidthProp, defaultSidebarWidth, onSidebarWidthChange);
+  const [panelWidthValue, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const sidebarWidth = clamp(safeNumber(sidebarWidthValue, 272), sidebarBounds.min, sidebarBounds.max);
+  const panelWidth = clamp(safeNumber(panelWidthValue, 455), panelBounds.min, panelBounds.max);
   const [sidebarOpen, setSidebarOpen] = useControllable(sidebarOpenProp, defaultSidebarOpen, onSidebarOpenChange);
   const [panelOpen, setPanelOpen] = useControllable(panelOpenProp, defaultPanelOpen, onPanelOpenChange);
   const [theme, setTheme] = useControllable(themeProp, defaultTheme, onThemeChange);
@@ -169,15 +174,16 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
     const initial = edge === "sidebar" ? safeNumber(sidebarWidth, 272) : safeNumber(panelWidth, 455);
     const previousCursor = document.body.style.cursor, previousSelect = document.body.style.userSelect;
     target.setPointerCapture(event.pointerId); document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; setDragging(true);
-    const move = (event: PointerEvent) => { const width = root.current?.clientWidth ?? 1600; const value = initial + (event.clientX - start) * (edge === "sidebar" ? 1 : -1); if (edge === "sidebar") setSidebarWidth(clamp(value, 200, Math.min(420, width - railWidth - (visiblePanel ? panelWidth : 0) - 280))); else setPanelWidth(clamp(value, 300, Math.min(640, width - sidebarWidth - railWidth - 280))); };
+    const move = (event: PointerEvent) => { const width = root.current?.clientWidth ?? 1600; const value = initial + (event.clientX - start) * (edge === "sidebar" ? 1 : -1); if (edge === "sidebar") setSidebarWidth(clamp(value, sidebarBounds.min, Math.max(sidebarBounds.min, Math.min(sidebarBounds.max, width - railWidth - (visiblePanel ? panelWidth : 0) - 280)))); else setPanelWidth(clamp(value, panelBounds.min, Math.max(panelBounds.min, Math.min(panelBounds.max, width - sidebarWidth - railWidth - 280)))); };
     const stop = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", stop); target.removeEventListener("pointercancel", stop); document.body.style.cursor = previousCursor; document.body.style.userSelect = previousSelect; setDragging(false); cleanupDrag.current = null; };
     cleanupDrag.current?.(); cleanupDrag.current = stop; target.addEventListener("pointermove", move); target.addEventListener("pointerup", stop); target.addEventListener("pointercancel", stop);
   };
   const resizeKey = (edge: "sidebar" | "panel", event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault(); const value = edge === "sidebar" ? sidebarWidth : panelWidth;
-    const next = event.key === "Home" ? edge === "sidebar" ? 200 : 300 : event.key === "End" ? edge === "sidebar" ? 420 : 640 : value + (event.key === "ArrowRight" ? 10 : -10) * (edge === "panel" ? -1 : 1);
-    if (edge === "sidebar") setSidebarWidth(clamp(next, 200, 420)); else setPanelWidth(clamp(next, 300, 640));
+    const bounds = edge === "sidebar" ? sidebarBounds : panelBounds;
+    const next = event.key === "Home" ? bounds.min : event.key === "End" ? bounds.max : value + (event.key === "ArrowRight" ? 10 : -10) * (edge === "panel" ? -1 : 1);
+    if (edge === "sidebar") setSidebarWidth(clamp(next, bounds.min, bounds.max)); else setPanelWidth(clamp(next, bounds.min, bounds.max));
   };
   const row = (chat: AppChat, nested = false) => <div className="ui-as__chat-row" key={chat.id} data-active={chat.id === activeChat || undefined} data-nested={nested || undefined}>
     {renaming === chat.id ? <input ref={renameRef} className="ui-as__rename" aria-label={labels.chatName} value={renameValue} onChange={event => setRenameValue(event.target.value)} onBlur={rename} onKeyDown={event => { if (event.key === "Enter") rename(); if (event.key === "Escape") { event.stopPropagation(); setRenaming(null); } }}/> : <button type="button" className="ui-as__chat-link" aria-current={chat.id === activeChat ? "page" : undefined} title={chat.title} onClick={() => openChat(chat)}><span dir="auto">{chat.title}</span>{chat.unread && <i className="ui-as__unread" aria-label={labels.unread}/>}</button>}
@@ -185,7 +191,7 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
   </div>;
   const menuAction = (label: string) => { onNavigate?.(label); setMenu(null); anchor.current?.focus({ preventScroll: true }); };
   const commandGroups: CommandMenuGroup[] = commandGroupsProp ?? (navigation ? [{ id: "workspace", label: labels.workspace, commands: navigation.map(item => ({ id: `navigate:${item.label}`, label: item.label, icon: item.icon, disabled: item.disabled, onSelect: () => navigate(item.label) })) }] : [...defaultCommands, { id: "go-to", label: labels.goTo, commands: [{ id: "new-chat", label: labels.newChat, onSelect: onNewChat }, ...projectList.map(name => ({ id: `project:${name}`, label: name, onSelect: () => { setProject(name); setFolders([name]); } })), ...list.map(chat => ({ id: `chat:${chat.id}`, label: chat.title, onSelect: () => openChat(chat) }))] }]);
-  return <div {...rest} ref={root} className={["ui-as", className].filter(Boolean).join(" ")} data-overlay-boundary="" data-theme={theme === "system" ? systemDark ? "dark" : undefined : theme} data-layout={layout === "flat" ? "flat" : "inset"} data-rail={!!rail || undefined} data-sidebar-open={sidebarOpen || undefined} data-sidebar-collapsed={collapsed || undefined} data-panel-open={visiblePanel || undefined} data-dragging={dragging || undefined} style={{ "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), 200, 420)}px`, "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), 300, 640)}px`, "--ui-as-rail-width": `${railWidth}px`, ...style } as CSSProperties} onKeyDown={onKeyDown}>
+  return <div {...rest} ref={root} className={["ui-as", className].filter(Boolean).join(" ")} data-overlay-boundary="" data-theme={theme === "system" ? systemDark ? "dark" : undefined : theme} data-layout={layout === "flat" ? "flat" : "inset"} data-rail={!!rail || undefined} data-sidebar-open={sidebarOpen || undefined} data-sidebar-collapsed={collapsed || undefined} data-panel-open={visiblePanel || undefined} data-dragging={dragging || undefined} style={{ "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), sidebarBounds.min, sidebarBounds.max)}px`, "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), panelBounds.min, panelBounds.max)}px`, "--ui-as-rail-width": `${railWidth}px`, ...style } as CSSProperties} onKeyDown={onKeyDown}>
     <style href="ui-app-shell" precedence="default">{css}</style>
     <div className="ui-as__app" data-header={header != null || undefined}>
       <button ref={sideOpenRef} type="button" className="ui-as__drawer-trigger ui-as__open-side" aria-label={labels.openSidebar} aria-expanded={sidebarOpen} aria-controls={`${id}-sidebar`} onClick={() => { if (narrow) { setSidebarOpen(true); setPanelOpen(false); } else setCollapsed(false); }}><Icon name="panel"/></button>
@@ -203,10 +209,10 @@ export function AppShell({ sidebar: sidebarContent, header, labels: labelsProp, 
           </>}{!rail && <button type="button" className="ui-as__account-row" aria-haspopup="menu" aria-expanded={menu === "account"} {...trigger("account")}><span className="ui-as__user-initials">{initials(user.name)}</span><span>{user.name}</span><Icon name="chevron" size={12}/></button>}</>}
         </div>
       </aside>
-      <div className="ui-as__resizer" role="separator" aria-label={labels.resizeSidebar} aria-orientation="vertical" aria-valuemin={200} aria-valuemax={420} aria-valuenow={Math.round(sidebarWidth)} aria-controls={`${id}-sidebar`} tabIndex={narrow || collapsed ? -1 : 0} onPointerDown={event => resize("sidebar", event)} onKeyDown={event => resizeKey("sidebar", event)}/>
+      <div className="ui-as__resizer" role="separator" aria-label={labels.resizeSidebar} aria-orientation="vertical" aria-valuemin={sidebarBounds.min} aria-valuemax={sidebarBounds.max} aria-valuenow={Math.round(sidebarWidth)} aria-controls={`${id}-sidebar`} tabIndex={narrow || collapsed ? -1 : 0} onPointerDown={event => resize("sidebar", event)} onKeyDown={event => resizeKey("sidebar", event)}/>
       {header != null && <div className="ui-as__header" inert={!!drawer}>{header}</div>}
       <main className="ui-as__main" inert={!!drawer}>{children}</main>
-      {hasPanel && <><div className="ui-as__resizer ui-as__panel-resizer" role="separator" aria-label={labels.resizePanel(panelTitle)} aria-orientation="vertical" aria-valuemin={300} aria-valuemax={640} aria-valuenow={Math.round(panelWidth)} aria-controls={`${id}-panel`} tabIndex={visiblePanel && !narrow ? 0 : -1} onPointerDown={event => resize("panel", event)} onKeyDown={event => resizeKey("panel", event)}/><aside ref={panelRef} className="ui-as__panel" id={`${id}-panel`} aria-label={panelTitle} inert={!visiblePanel || narrow && sidebarOpen}>{panel}</aside></>}
+      {hasPanel && <><div className="ui-as__resizer ui-as__panel-resizer" role="separator" aria-label={labels.resizePanel(panelTitle)} aria-orientation="vertical" aria-valuemin={panelBounds.min} aria-valuemax={panelBounds.max} aria-valuenow={Math.round(panelWidth)} aria-controls={`${id}-panel`} tabIndex={visiblePanel && !narrow ? 0 : -1} onPointerDown={event => resize("panel", event)} onKeyDown={event => resizeKey("panel", event)}/><aside ref={panelRef} className="ui-as__panel" id={`${id}-panel`} aria-label={panelTitle} inert={!visiblePanel || narrow && sidebarOpen}>{panel}</aside></>}
     </div>
     {menu && <FloatingMenu key={menu} anchor={anchor} root={root} className="ui-as__menu" id={`${id}-menu`} label={menu === "chat" ? labels.options(currentMenuChat?.title ?? "") : menu === "projects" ? labels.projects : menu === "workspace" ? workspace : labels.account} side={menu === "account" || menu === "workspace" ? "right" : "bottom"} onClose={() => setMenu(null)}>
       {menu === "workspace" && <>{["Invite people", "Workspace settings", "Analytics", "Billing", "Usage & limits", "Members", "Learn more", "Switch workspace"].map((label, index) => <button type="button" role="menuitem" key={label} data-divider={index === 1 || index === 6 || index === 7 || undefined} onClick={() => menuAction(label)}>{labels.action(label)}</button>)}</>}

@@ -93,6 +93,7 @@ export default function ManagedFixtures({
   const [callbackRef, setCallbackRef] = useState(false),
     [collapsed, setCollapsed] = useState(false),
     [emptySlots, setEmptySlots] = useState(false);
+  const [customBounds, setCustomBounds] = useState(false);
   const [timelineMode, setTimelineMode] = useState<
     "builtin" | "caller" | "hidden"
   >(variant === "managed-timeline" ? "caller" : "builtin");
@@ -323,6 +324,8 @@ export default function ManagedFixtures({
     header: emptySlots ? null : header,
     sidebarCollapsed: collapsed,
     onSidebarCollapsedChange: setCollapsed,
+    sidebarBounds: customBounds ? { min: 220, max: 380 } : undefined,
+    panelBounds: customBounds ? { min: 520, max: 680 } : undefined,
     defaultTheme: theme,
     labels: {
       sidebar: "应用侧栏",
@@ -355,6 +358,7 @@ export default function ManagedFixtures({
           flexWrap: "wrap",
         }}
       >
+        <button onClick={() => setCustomBounds(true)}>Custom bounds</button>
         <button
           onClick={() =>
             updateDecision({

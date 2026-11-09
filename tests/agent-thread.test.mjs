@@ -934,6 +934,18 @@ for (const style of ["classic", "clean"]) {
     await separator.focus();
     await page.keyboard.press("ArrowRight");
     assert.equal(await separator.getAttribute("aria-valuenow"), "282");
+    await button("Custom bounds").click();
+    for (const [control, min, max] of [[separator, 220, 380], [page.getByRole("separator", { name: "Resize Artifacts" }), 520, 680]]) {
+      assert.equal(await control.getAttribute("aria-valuemin"), String(min));
+      assert.equal(await control.getAttribute("aria-valuemax"), String(max));
+      const current = Number(await control.getAttribute("aria-valuenow"));
+      assert.ok(current >= min && current <= max);
+      await control.focus();
+      await page.keyboard.press("End");
+      assert.equal(await control.getAttribute("aria-valuenow"), String(max));
+      await page.keyboard.press("Home");
+      assert.equal(await control.getAttribute("aria-valuenow"), String(min));
+    }
     await button("Toggle sidebar").click();
     assert.equal(
       await page
