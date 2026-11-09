@@ -482,7 +482,96 @@ const runtimeEvents = async () =>
 const managedInput = () =>
   page.getByRole("textbox", { name: "消息", exact: true });
 
+test("timeline slots replace the log in standalone threads and both screen wrappers", async () => {
+  for (const suffix of ["", "-clean"]) {
+    for (const [path, name] of [
+      ["components/agent-thread", "AgentThread"],
+      ["screens/agent-thread", "AgentThreadScreen"],
+      ["screens/agent-chat-rail", "AgentChatRailScreen"],
+    ]) {
+      const module = await server.ssrLoadModule(`/${path}${suffix}.tsx`);
+      const props = {
+        managed: true,
+        messages: [{ id: "original", role: "user", text: "Original message" }],
+        timeline: createElement("div", { role: "log" }, "Caller timeline"),
+      };
+      const custom = renderToString(createElement(module[name], props));
+      assert.match(custom, /Caller timeline/);
+      assert.doesNotMatch(custom, /Original message/);
+      assert.equal((custom.match(/role="log"/g) ?? []).length, 1);
+      const hidden = renderToString(
+        createElement(module[name], { ...props, timeline: null }),
+      );
+      assert.doesNotMatch(hidden, /role="log"|Original message/);
+      const builtin = renderToString(
+        createElement(module[name], { ...props, timeline: undefined }),
+      );
+      assert.match(builtin, /Original message/);
+      assert.equal((builtin.match(/role="log"/g) ?? []).length, 1);
+    }
+  }
+});
+
 for (const style of ["classic", "clean"]) {
+  test(`${style}: caller timeline owns scrolling and End while Thread retains decisions, composer and Stop`, async () => {
+    await managedFixture("timeline", style);
+    const log = page.getByRole("log", { name: "调用方消息列表" });
+    assert.equal(await page.getByRole("log").count(), 1);
+    assert.equal(await log.getByRole("article").count(), 40);
+    assert.equal(await page.locator("[data-message-id]").count(), 0);
+    assert.equal(await page.getByRole("option").count(), 7);
+    assert.equal(await managedInput().inputValue(), "保留草稿");
+    const bounds = await log.evaluate((el) => ({
+      height: el.clientHeight,
+      overflow: el.scrollHeight > el.clientHeight,
+      top: el.scrollTop,
+    }));
+    assert.ok(bounds.height > 80 && bounds.overflow);
+    assert.equal(
+      bounds.top,
+      0,
+      "Thread must not auto-follow the caller's list",
+    );
+    await page.evaluate(() => {
+      window.__endPrevented = undefined;
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "End") window.__endPrevented = event.defaultPrevented;
+      });
+    });
+    await log.focus();
+    await page.keyboard.press("End");
+    assert.equal(await page.evaluate(() => window.__endPrevented), false);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[aria-label="调用方消息列表"]').scrollTop > 0,
+    );
+    await button("Hide timeline").click();
+    assert.equal(await page.getByRole("log").count(), 0);
+    assert.equal(await button("停止").count(), 1);
+    await button("停止").click();
+    assert.equal(await button("正在停止…").isDisabled(), true);
+    assert.equal(await page.getByRole("option").count(), 7);
+    await button("Built-in timeline").click();
+    assert.equal(await page.getByRole("log", { name: "对话" }).count(), 1);
+    assert.equal(await page.locator("[data-message-id]").count(), 4);
+    const unread = await page
+      .locator('[class$="__unread-boundary"]')
+      .boundingBox();
+    const viewport = await page
+      .getByRole("log", { name: "对话" })
+      .evaluate((el) => el.parentElement.getBoundingClientRect().toJSON());
+    assert.ok(
+      unread.y >= viewport.y && unread.y < viewport.y + viewport.height,
+      "Returning to the built-in list restores its unread anchor",
+    );
+    await button("Confirm stop").click();
+    assert.equal(await button("停止").count(), 0);
+    await button("Caller timeline").click();
+    assert.equal(await page.getByRole("log").count(), 1);
+    assert.equal(await log.getByRole("article").count(), 40);
+    assert.equal(await managedInput().inputValue(), "保留草稿");
+  });
+
   test(`${style}: managed approval waits for external confirmation, recovers from failure and preserves all option IDs`, async () => {
     await managedFixture("thread", style);
     assert.equal(await page.getByRole("option").count(), 7);
@@ -827,6 +916,28 @@ for (const style of ["classic", "clean"]) {
     assert.equal(await button("发送消息").isDisabled(), true);
   });
 
+  test(`${style}: application-owned command shortcuts disable the shell listener, including body focus`, async () => {
+    await managedFixture("shell", style);
+    const search = page.getByRole("combobox", { name: "Search commands", exact: true });
+    for (const focus of ["body", "main"]) {
+      await page.evaluate((selector) => {
+        document.querySelector(selector).tabIndex = -1;
+        document.querySelector(selector).focus();
+      }, focus);
+      await page.keyboard.press("Control+k");
+      assert.equal(await search.count(), 0);
+    }
+    await button("Toggle shell shortcut").click();
+    await page.evaluate(() => document.body.focus());
+    await page.keyboard.press("Control+k");
+    assert.equal(await search.count(), 1);
+    await page.keyboard.press("Escape");
+    await button("Toggle shell shortcut").click();
+    await page.evaluate(() => document.body.focus());
+    await page.keyboard.press("Control+k");
+    assert.equal(await search.count(), 0);
+  });
+
   test(`${style}: shell slots retain layout/resizing, drawer focus and Escape; screen APIs do not leak to DOM`, async () => {
     await managedFixture("shell", style);
     const bounds = await page.evaluate(() => {
@@ -845,6 +956,18 @@ for (const style of ["classic", "clean"]) {
     await separator.focus();
     await page.keyboard.press("ArrowRight");
     assert.equal(await separator.getAttribute("aria-valuenow"), "282");
+    await button("Custom bounds").click();
+    for (const [control, min, max] of [[separator, 220, 380], [page.getByRole("separator", { name: "Resize Artifacts" }), 520, 680]]) {
+      assert.equal(await control.getAttribute("aria-valuemin"), String(min));
+      assert.equal(await control.getAttribute("aria-valuemax"), String(max));
+      const current = Number(await control.getAttribute("aria-valuenow"));
+      assert.ok(current >= min && current <= max);
+      await control.focus();
+      await page.keyboard.press("End");
+      assert.equal(await control.getAttribute("aria-valuenow"), String(max));
+      await page.keyboard.press("Home");
+      assert.equal(await control.getAttribute("aria-valuenow"), String(min));
+    }
     await button("Toggle sidebar").click();
     assert.equal(
       await page

@@ -44,7 +44,7 @@ function useThreadConnection({ connection, defaultConnection, onConnectionChange
   }, [managed]);
   useEffect(() => {
     if (managed || status !== "offline") return;
-    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)]!;
     const deadline = Date.now() + seconds * 1000; setRetryIn(seconds);
     const interval = setInterval(() => { const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)); setRetryIn(remaining); if (remaining === 0) { clearInterval(interval); reconnectRef.current(false); } }, 1000);
     return () => clearInterval(interval);

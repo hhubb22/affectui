@@ -1038,7 +1038,7 @@ export function ChatComposer({
   const [value, setValue] = useControllable(valueProp, defaultValue, onValueChange);
   const [model, setModel] = useControllable(modelProp, defaultModel, onModelChange);
   const [rawApproval, setApproval] = useControllable(approvalProp, defaultApproval, onApprovalChange);
-  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0];
+  const approval = approvalOptions.find((option) => option.id === rawApproval) ?? approvalOptions[0]!;
   const [plan, setPlan] = useControllable(planProp, defaultPlanMode, onPlanModeChange);
   const [attachments, setAttachments] = useControllable(attachmentsProp, defaultAttachments, onAttachmentsChange);
   const [menu, setMenu] = useState<"model" | "approval" | "add" | "apps" | null>(null);
@@ -3206,7 +3206,7 @@ const defaultAppShellLabels = {
   account: "Account",
   language: "Language",
   appearance: "Appearance",
-  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  theme: (value: "light" | "dark" | "system") => value.charAt(0).toUpperCase() + value.slice(1),
   action: (action: string) => action,
   goTo: "Go to",
   copied: "Conversation title copied",
@@ -3230,6 +3230,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   navigation?: AppRailItem[];
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
+  /** Register the built-in Mod+K listener. Disable when the application owns its command palette. */
+  globalShortcut?: boolean;
   sidebarCollapsed?: boolean;
   defaultSidebarCollapsed?: boolean;
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
@@ -3250,6 +3252,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   sidebarWidth?: number;
   defaultSidebarWidth?: number;
   onSidebarWidthChange?: (width: number) => void;
+  /** Application-specific limits, shared by layout, pointer/keyboard resizing and ARIA. */
+  sidebarBounds?: { min: number; max: number };
   sidebarOpen?: boolean;
   defaultSidebarOpen?: boolean;
   onSidebarOpenChange?: (open: boolean) => void;
@@ -3261,6 +3265,7 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   panelWidth?: number;
   defaultPanelWidth?: number;
   onPanelWidthChange?: (width: number) => void;
+  panelBounds?: { min: number; max: number };
   theme?: "light" | "dark" | "system";
   defaultTheme?: "light" | "dark" | "system";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
@@ -3308,6 +3313,7 @@ export function AppShell({
   onNavigate,
   navigation,
   commands: commandGroupsProp,
+  globalShortcut = true,
   sidebarCollapsed: collapsedProp,
   defaultSidebarCollapsed = false,
   onSidebarCollapsedChange,
@@ -3328,6 +3334,7 @@ export function AppShell({
   sidebarWidth: sidebarWidthProp,
   defaultSidebarWidth = 272,
   onSidebarWidthChange,
+  sidebarBounds = { min: 200, max: 420 },
   sidebarOpen: sidebarOpenProp,
   defaultSidebarOpen = false,
   onSidebarOpenChange,
@@ -3339,6 +3346,7 @@ export function AppShell({
   panelWidth: panelWidthProp,
   defaultPanelWidth = 455,
   onPanelWidthChange,
+  panelBounds = { min: 300, max: 640 },
   theme: themeProp,
   defaultTheme = "system",
   onThemeChange,
@@ -3357,8 +3365,14 @@ export function AppShell({
   const [project, setProject] = useControllable(projectProp, defaultProject, onProjectChange);
   const [activeChat, setActiveChat] = useControllable(activeChatProp, defaultActiveChat, onOpenChat);
   const [active, setActive] = useControllable(activeProp, defaultActive, onActiveChange);
-  const [sidebarWidth, setSidebarWidth] = useControllable(sidebarWidthProp, defaultSidebarWidth, onSidebarWidthChange);
-  const [panelWidth, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const [sidebarWidthValue, setSidebarWidth] = useControllable(
+    sidebarWidthProp,
+    defaultSidebarWidth,
+    onSidebarWidthChange,
+  );
+  const [panelWidthValue, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const sidebarWidth = clamp(safeNumber(sidebarWidthValue, 272), sidebarBounds.min, sidebarBounds.max);
+  const panelWidth = clamp(safeNumber(panelWidthValue, 455), panelBounds.min, panelBounds.max);
   const [sidebarOpen, setSidebarOpen] = useControllable(sidebarOpenProp, defaultSidebarOpen, onSidebarOpenChange);
   const [panelOpen, setPanelOpen] = useControllable(panelOpenProp, defaultPanelOpen, onPanelOpenChange);
   const [theme, setTheme] = useControllable(themeProp, defaultTheme, onThemeChange);
@@ -3408,6 +3422,7 @@ export function AppShell({
     const el = root.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const next = entry.contentRect.width < 900;
       if (next !== narrowRef.current) {
         narrowRef.current = next;
@@ -3451,7 +3466,7 @@ export function AppShell({
       const state = live.current;
       const inside = state.root?.contains(document.activeElement) || document.activeElement === document.body;
       if (!inside || event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (globalShortcut && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen((open) => !open);
       }
@@ -3462,7 +3477,7 @@ export function AppShell({
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, []);
+  }, [globalShortcut]);
   useEffect(() => {
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;
@@ -3585,8 +3600,24 @@ export function AppShell({
       const width = root.current?.clientWidth ?? 1600;
       const value = initial + (event.clientX - start) * (edge === "sidebar" ? 1 : -1);
       if (edge === "sidebar")
-        setSidebarWidth(clamp(value, 200, Math.min(420, width - railWidth - (visiblePanel ? panelWidth : 0) - 280)));
-      else setPanelWidth(clamp(value, 300, Math.min(640, width - sidebarWidth - railWidth - 280)));
+        setSidebarWidth(
+          clamp(
+            value,
+            sidebarBounds.min,
+            Math.max(
+              sidebarBounds.min,
+              Math.min(sidebarBounds.max, width - railWidth - (visiblePanel ? panelWidth : 0) - 280),
+            ),
+          ),
+        );
+      else
+        setPanelWidth(
+          clamp(
+            value,
+            panelBounds.min,
+            Math.max(panelBounds.min, Math.min(panelBounds.max, width - sidebarWidth - railWidth - 280)),
+          ),
+        );
     };
     const stop = () => {
       target.removeEventListener("pointermove", move);
@@ -3607,18 +3638,15 @@ export function AppShell({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const value = edge === "sidebar" ? sidebarWidth : panelWidth;
+    const bounds = edge === "sidebar" ? sidebarBounds : panelBounds;
     const next =
       event.key === "Home"
-        ? edge === "sidebar"
-          ? 200
-          : 300
+        ? bounds.min
         : event.key === "End"
-          ? edge === "sidebar"
-            ? 420
-            : 640
+          ? bounds.max
           : value + (event.key === "ArrowRight" ? 10 : -10) * (edge === "panel" ? -1 : 1);
-    if (edge === "sidebar") setSidebarWidth(clamp(next, 200, 420));
-    else setPanelWidth(clamp(next, 300, 640));
+    if (edge === "sidebar") setSidebarWidth(clamp(next, bounds.min, bounds.max));
+    else setPanelWidth(clamp(next, bounds.min, bounds.max));
   };
   const row = (chat: AppChat, nested = false) => (
     <div
@@ -3727,8 +3755,8 @@ export function AppShell({
       data-dragging={dragging || undefined}
       style={
         {
-          "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), 200, 420)}px`,
-          "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), 300, 640)}px`,
+          "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), sidebarBounds.min, sidebarBounds.max)}px`,
+          "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), panelBounds.min, panelBounds.max)}px`,
           "--ui-as-rail-width": `${railWidth}px`,
           ...style,
         } as CSSProperties
@@ -4043,8 +4071,8 @@ export function AppShell({
           role="separator"
           aria-label={labels.resizeSidebar}
           aria-orientation="vertical"
-          aria-valuemin={200}
-          aria-valuemax={420}
+          aria-valuemin={sidebarBounds.min}
+          aria-valuemax={sidebarBounds.max}
           aria-valuenow={Math.round(sidebarWidth)}
           aria-controls={`${id}-sidebar`}
           tabIndex={narrow || collapsed ? -1 : 0}
@@ -4066,8 +4094,8 @@ export function AppShell({
               role="separator"
               aria-label={labels.resizePanel(panelTitle)}
               aria-orientation="vertical"
-              aria-valuemin={300}
-              aria-valuemax={640}
+              aria-valuemin={panelBounds.min}
+              aria-valuemax={panelBounds.max}
               aria-valuenow={Math.round(panelWidth)}
               aria-controls={`${id}-panel`}
               tabIndex={visiblePanel && !narrow ? 0 : -1}
@@ -4734,7 +4762,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.previous}
-                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex - 1 + list.length) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
@@ -4742,7 +4770,7 @@ export function DecisionDock({
                   <button
                     type="button"
                     aria-label={labels.next}
-                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length].id)}
+                    onClick={() => setActiveId(list[(activeIndex + 1) % list.length]!.id)}
                   >
                     <Icon name="chevron" size={10} />
                   </button>
@@ -5022,7 +5050,7 @@ function useThreadConnection({
   }, [managed]);
   useEffect(() => {
     if (managed || status !== "offline") return;
-    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)];
+    const seconds = [5, 10, 20, 30][Math.min(attempt, 3)]!;
     const deadline = Date.now() + seconds * 1000;
     setRetryIn(seconds);
     const interval = setInterval(() => {
@@ -5479,6 +5507,8 @@ export type AgentThreadProps = {
   /** A stop intent is pending; do not infer that tools have stopped. */
   stopping?: boolean;
   renderMessageContent?: (message: AgentMessage, defaultContent: ReactNode) => ReactNode;
+  /** Replaces the message list and its scrolling/log semantics; undefined keeps the built-in timeline. */
+  timeline?: ReactNode;
   labels?: Partial<AgentThreadLabels>;
   formatTime?: (timestamp: number) => string;
   messages?: AgentMessage[];
@@ -5559,6 +5589,7 @@ export function AgentThread({
   managed = false,
   stopping = false,
   renderMessageContent,
+  timeline,
   labels: labelsProp,
   formatTime = defaultThreadFormatTime,
   messages: messagesProp,
@@ -5760,12 +5791,13 @@ export function AgentThread({
     controllers.current.clear();
     setVoicePreview(false);
   }, [managed]);
+  const builtInTimeline = timeline === undefined;
   useLayoutEffect(() => {
     const el = scroll.current;
     if (!el) return;
     if (follow.current) el.scrollTop = el.scrollHeight;
     else setNewCount((count) => count + 1);
-  }, [messages]);
+  }, [messages, builtInTimeline]);
   useEffect(() => {
     const el = scroll.current,
       content = column.current;
@@ -5776,7 +5808,7 @@ export function AgentThread({
     observer.observe(content);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [builtInTimeline]);
   const latest = () => {
     follow.current = true;
     setAway(false);
@@ -6281,7 +6313,7 @@ export function AgentThread({
     return () => {
       disposed = true;
     };
-  }, [lastSeen]);
+  }, [lastSeen, builtInTimeline]);
   useEffect(() => {
     if (managed) return;
     let hiddenAt = 0;
@@ -6292,13 +6324,13 @@ export function AgentThread({
     document.addEventListener("visibilitychange", visibility);
     return () => document.removeEventListener("visibilitychange", visibility);
   }, [managed, awayAfter]);
-  const shortcutActions = useRef({ latest, streaming, stop, voicePreview });
-  shortcutActions.current = { latest, streaming, stop, voicePreview };
+  const shortcutActions = useRef({ latest, streaming, stop, voicePreview, builtInTimeline });
+  shortcutActions.current = { latest, streaming, stop, voicePreview, builtInTimeline };
   useEffect(() => {
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isEditing(event.target)) return;
       if (document.activeElement !== document.body && !root.current?.contains(document.activeElement)) return;
-      if (event.key === "End") {
+      if (event.key === "End" && shortcutActions.current.builtInTimeline) {
         event.preventDefault();
         shortcutActions.current.latest();
       }
@@ -6355,7 +6387,7 @@ export function AgentThread({
       [0, 1200, 1200],
       [1, 1400, 2600],
       [2, 1600, 4200],
-    ]) {
+    ] as const) {
       if (!(await pause(wait, token))) return;
       update((messages) =>
         messages.map((message) =>
@@ -6405,7 +6437,7 @@ export function AgentThread({
                 },
                 {
                   kind: "decision",
-                  ask: { id: "queue", question: defaultThreadDecisions[0].question, task: "Ingest pipeline" },
+                  ask: { id: "queue", question: defaultThreadDecisions[0]!.question, task: "Ingest pipeline" },
                 },
                 {
                   kind: "text",
@@ -6418,7 +6450,7 @@ export function AgentThread({
       ),
     );
     if (!decisionsRef.current.some((decision) => decision.id === "queue"))
-      updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]]);
+      updateDecisions([...decisionsRef.current, defaultThreadDecisions[0]!]);
     setFolded(false);
     setLocalRunning(false);
   };
@@ -6606,225 +6638,247 @@ export function AgentThread({
         onReconnect={connectionState.reconnect}
       />
       <div className="ui-th__body">
-        <div
-          ref={scroll}
-          className="ui-th__scroll"
-          onScroll={() => {
-            const el = scroll.current;
-            if (!el) return;
-            const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40;
-            follow.current = pinned;
-            setAway(!pinned);
-            if (pinned) setNewCount(0);
-          }}
-        >
-          <div
-            ref={column}
-            className="ui-th__column"
-            role="log"
-            aria-label={labels.conversation}
-            aria-live="polite"
-            aria-relevant="additions"
-            aria-busy={streaming}
-          >
-            {!list.length && (
-              <div className="ui-th__empty">
-                <span className="ui-th__empty-icon">
-                  <Icon name="spark" size={26} />
-                </span>
-                <h2>{labels.emptyTitle}</h2>
-                <p>{labels.emptyDescription}</p>
-              </div>
-            )}
-            {list.map((message, messageIndex) => (
-              <div className="ui-th__message" data-message-id={message.id} key={message.id}>
-                {messageIndex === boundaryIndex && (
-                  <div ref={unreadBoundary} className="ui-th__unread-boundary">
-                    <AwaySummary
-                      labels={labels.away}
-                      formatTime={formatTime}
-                      tasks={[...completedTasks.values()]}
-                      decisions={awayDecisions}
-                      since={lastSeen}
-                      onOpenTask={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
-                      onOpenDecision={showDecision}
-                      onOpenTasks={() => onNavigate?.("Tasks")}
-                      onOpenInbox={() => openInbox()}
-                      onMarkRead={read}
-                    />
+        {!builtInTimeline ? (
+          timeline
+        ) : (
+          <>
+            <div
+              ref={scroll}
+              className="ui-th__scroll"
+              onScroll={() => {
+                const el = scroll.current;
+                if (!el) return;
+                const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40;
+                follow.current = pinned;
+                setAway(!pinned);
+                if (pinned) setNewCount(0);
+              }}
+            >
+              <div
+                ref={column}
+                className="ui-th__column"
+                role="log"
+                aria-label={labels.conversation}
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-busy={streaming}
+              >
+                {!list.length && (
+                  <div className="ui-th__empty">
+                    <span className="ui-th__empty-icon">
+                      <Icon name="spark" size={26} />
+                    </span>
+                    <h2>{labels.emptyTitle}</h2>
+                    <p>{labels.emptyDescription}</p>
                   </div>
                 )}
-                {message.role === "user" ? (
-                  <div className="ui-th__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}>
-                    <span className="ui-th__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>
-                    {message.answer && (
-                      <span className="ui-th__answer-context" title={message.answer.question}>
-                        {labels.answerContext(message.answer.question)}
-                      </span>
+                {list.map((message, messageIndex) => (
+                  <div className="ui-th__message" data-message-id={message.id} key={message.id}>
+                    {messageIndex === boundaryIndex && (
+                      <div ref={unreadBoundary} className="ui-th__unread-boundary">
+                        <AwaySummary
+                          labels={labels.away}
+                          formatTime={formatTime}
+                          tasks={[...completedTasks.values()]}
+                          decisions={awayDecisions}
+                          since={lastSeen}
+                          onOpenTask={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                          onOpenDecision={showDecision}
+                          onOpenTasks={() => onNavigate?.("Tasks")}
+                          onOpenInbox={() => openInbox()}
+                          onMarkRead={read}
+                        />
+                      </div>
                     )}
-                    {content(
-                      message,
-                      <>
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="ui-th__attachments">
-                            {message.attachments.map((file, index) => (
-                              <span key={`${file.name}-${index}`}>
-                                <Icon name="document" size={14} />
-                                {file.name}
-                              </span>
-                            ))}
-                          </div>
+                    {message.role === "user" ? (
+                      <div
+                        className="ui-th__user"
+                        data-status={message.status ?? "sent"}
+                        data-answer={message.answer?.id}
+                      >
+                        <span className="ui-th__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>
+                        {message.answer && (
+                          <span className="ui-th__answer-context" title={message.answer.question}>
+                            {labels.answerContext(message.answer.question)}
+                          </span>
                         )}
-                        {message.text && (
-                          <p className="ui-th__bubble" dir="auto">
-                            {message.text}
-                          </p>
-                        )}
-                      </>,
-                    )}
-                    {message.status && message.status !== "sent" && (
-                      <span className="ui-th__send-status">
-                        {message.status === "failed" ? (
+                        {content(
+                          message,
                           <>
-                            <Icon name="warning" size={12} />
-                            {labels.sendFailed} ·{" "}
-                            <button type="button" onClick={() => retry(message.id)}>
-                              {labels.retry}
-                            </button>
-                          </>
-                        ) : message.status === "queued" ? (
-                          labels.queued
-                        ) : (
-                          labels.sending
+                            {message.attachments && message.attachments.length > 0 && (
+                              <div className="ui-th__attachments">
+                                {message.attachments.map((file, index) => (
+                                  <span key={`${file.name}-${index}`}>
+                                    <Icon name="document" size={14} />
+                                    {file.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {message.text && (
+                              <p className="ui-th__bubble" dir="auto">
+                                {message.text}
+                              </p>
+                            )}
+                          </>,
                         )}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="ui-th__assistant" data-streaming={message.streaming || undefined}>
-                    {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? (
-                      <div className="ui-th__who">
-                        <span className="ui-th__avatar" data-busy={message.streaming || undefined} aria-hidden="true">
-                          {[0, 2, 4, 6, 8].map((pixel, index) => (
-                            <i
-                              key={pixel}
-                              style={{
-                                gridArea: `${Math.floor(pixel / 3) + 1}/${(pixel % 3) + 1}`,
-                                animationDelay: `${index * 130}ms`,
-                              }}
-                            />
-                          ))}
-                        </span>
-                        <span>{assistantName}</span>
-                        {message.at != null && Number.isFinite(message.at) && (
-                          <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>
+                        {message.status && message.status !== "sent" && (
+                          <span className="ui-th__send-status">
+                            {message.status === "failed" ? (
+                              <>
+                                <Icon name="warning" size={12} />
+                                {labels.sendFailed} ·{" "}
+                                <button type="button" onClick={() => retry(message.id)}>
+                                  {labels.retry}
+                                </button>
+                              </>
+                            ) : message.status === "queued" ? (
+                              labels.queued
+                            ) : (
+                              labels.sending
+                            )}
+                          </span>
                         )}
                       </div>
                     ) : (
-                      <span className="ui-th__sr">{assistantName}:</span>
-                    )}
-                    {content(
-                      message,
-                      <>
-                        {message.tools && message.tools.length > 0 && (
-                          <ToolActivity
-                            labels={labels.tools}
-                            tools={message.tools}
-                            onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
-                          />
+                      <div className="ui-th__assistant" data-streaming={message.streaming || undefined}>
+                        {messageIndex === 0 ||
+                        list[messageIndex - 1]!.role === "user" ||
+                        messageIndex === boundaryIndex ? (
+                          <div className="ui-th__who">
+                            <span
+                              className="ui-th__avatar"
+                              data-busy={message.streaming || undefined}
+                              aria-hidden="true"
+                            >
+                              {[0, 2, 4, 6, 8].map((pixel, index) => (
+                                <i
+                                  key={pixel}
+                                  style={{
+                                    gridArea: `${Math.floor(pixel / 3) + 1}/${(pixel % 3) + 1}`,
+                                    animationDelay: `${index * 130}ms`,
+                                  }}
+                                />
+                              ))}
+                            </span>
+                            <span>{assistantName}</span>
+                            {message.at != null && Number.isFinite(message.at) && (
+                              <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="ui-th__sr">{assistantName}:</span>
                         )}
-                        {message.parts
-                          ?.slice(0, 1)
-                          .map(
-                            (part) =>
-                              part.kind === "tools" && (
-                                <ToolActivity
-                                  labels={labels.tools}
-                                  key={part.id}
-                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                                />
-                              ),
-                          )}
-                        {message.text && textPart(message.text, !!message.streaming)}
-                        {message.parts?.map((part, index) =>
-                          index === 0 && part.kind === "tools" ? null : (
-                            <div className="ui-th__part" key={`${part.kind}-${index}`}>
-                              {part.kind === "tools" ? (
-                                <ToolActivity
-                                  labels={labels.tools}
-                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                                />
-                              ) : part.kind === "text" ? (
-                                textPart(
-                                  part.text,
-                                  !!message.streaming && index === message.parts!.length - 1 && !message.text,
-                                )
-                              ) : part.kind === "task" ? (
-                                <ThreadTaskCard
-                                  labels={labels.task}
-                                  task={part.task}
-                                  onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
-                                />
-                              ) : part.kind === "artifacts" ? (
-                                fileChips(part.names)
-                              ) : part.kind === "decision" ? (
-                                <button
-                                  type="button"
-                                  className="ui-th__asked"
-                                  onClick={() => showDecision(part.ask.id)}
-                                >
-                                  <i data-answered={!!answers[part.ask.id] || undefined} />
-                                  <span>{labels.asked(part.ask.question)}</span>
-                                  <small>
-                                    ·{" "}
-                                    {answers[part.ask.id]
-                                      ? labels.answeredBelow
-                                      : decisions.some((decision) => decision.id === part.ask.id)
-                                        ? labels.waiting
-                                        : labels.inInbox}
-                                  </small>
-                                </button>
-                              ) : (
-                                <div className="ui-th__error" role="status">
-                                  <Icon name="warning" size={14} />
-                                  <span dir="auto">{part.text}</span>
-                                  {part.retry && (
-                                    <button type="button" onClick={() => retry(message.id)}>
-                                      {labels.retry}
+                        {content(
+                          message,
+                          <>
+                            {message.tools && message.tools.length > 0 && (
+                              <ToolActivity
+                                labels={labels.tools}
+                                tools={message.tools}
+                                onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
+                              />
+                            )}
+                            {message.parts
+                              ?.slice(0, 1)
+                              .map(
+                                (part) =>
+                                  part.kind === "tools" && (
+                                    <ToolActivity
+                                      labels={labels.tools}
+                                      key={part.id}
+                                      tools={part.tools.map((tool) => ({
+                                        ...tool,
+                                        duration: tool.duration ?? tool.ms,
+                                      }))}
+                                    />
+                                  ),
+                              )}
+                            {message.text && textPart(message.text, !!message.streaming)}
+                            {message.parts?.map((part, index) =>
+                              index === 0 && part.kind === "tools" ? null : (
+                                <div className="ui-th__part" key={`${part.kind}-${index}`}>
+                                  {part.kind === "tools" ? (
+                                    <ToolActivity
+                                      labels={labels.tools}
+                                      tools={part.tools.map((tool) => ({
+                                        ...tool,
+                                        duration: tool.duration ?? tool.ms,
+                                      }))}
+                                    />
+                                  ) : part.kind === "text" ? (
+                                    textPart(
+                                      part.text,
+                                      !!message.streaming && index === message.parts!.length - 1 && !message.text,
+                                    )
+                                  ) : part.kind === "task" ? (
+                                    <ThreadTaskCard
+                                      labels={labels.task}
+                                      task={part.task}
+                                      onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                                    />
+                                  ) : part.kind === "artifacts" ? (
+                                    fileChips(part.names)
+                                  ) : part.kind === "decision" ? (
+                                    <button
+                                      type="button"
+                                      className="ui-th__asked"
+                                      onClick={() => showDecision(part.ask.id)}
+                                    >
+                                      <i data-answered={!!answers[part.ask.id] || undefined} />
+                                      <span>{labels.asked(part.ask.question)}</span>
+                                      <small>
+                                        ·{" "}
+                                        {answers[part.ask.id]
+                                          ? labels.answeredBelow
+                                          : decisions.some((decision) => decision.id === part.ask.id)
+                                            ? labels.waiting
+                                            : labels.inInbox}
+                                      </small>
                                     </button>
+                                  ) : (
+                                    <div className="ui-th__error" role="status">
+                                      <Icon name="warning" size={14} />
+                                      <span dir="auto">{part.text}</span>
+                                      {part.retry && (
+                                        <button type="button" onClick={() => retry(message.id)}>
+                                          {labels.retry}
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          ),
+                              ),
+                            )}
+                            {message.files && fileChips(message.files)}
+                          </>,
                         )}
-                        {message.files && fileChips(message.files)}
-                      </>,
-                    )}
-                    {message.stopped && (
-                      <span className="ui-th__stopped">
-                        <Icon name="stop" size={11} />
-                        {labels.stopped}
-                      </span>
+                        {message.stopped && (
+                          <span className="ui-th__stopped">
+                            <Icon name="stop" size={11} />
+                            {labels.stopped}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-        {away && boundaryIndex < 0 && (
-          <button
-            type="button"
-            className="ui-th__jump"
-            aria-label={labels.jumpToLatest(newCount, streaming)}
-            aria-keyshortcuts="End"
-            onClick={latest}
-          >
-            <Icon name="arrow" size={14} />
-            {newCount ? labels.newLines(newCount) : labels.latest}
-            {streaming && <span className="ui-th__jump-live" />}
-          </button>
+            </div>
+            {away && boundaryIndex < 0 && (
+              <button
+                type="button"
+                className="ui-th__jump"
+                aria-label={labels.jumpToLatest(newCount, streaming)}
+                aria-keyshortcuts="End"
+                onClick={latest}
+              >
+                <Icon name="arrow" size={14} />
+                {newCount ? labels.newLines(newCount) : labels.latest}
+                {streaming && <span className="ui-th__jump-live" />}
+              </button>
+            )}
+          </>
         )}
       </div>
       <footer className="ui-th__foot">
@@ -6918,6 +6972,7 @@ export type AgentChatRailScreenProps = Omit<
   managed?: boolean;
   stopping?: boolean;
   renderMessageContent?: AgentThreadProps["renderMessageContent"];
+  timeline?: AgentThreadProps["timeline"];
   threadLabels?: AgentThreadProps["labels"];
   formatTime?: AgentThreadProps["formatTime"];
   composer?: ReactNode;
@@ -6950,6 +7005,7 @@ export function AgentChatRailScreen({
   managed = false,
   stopping,
   renderMessageContent,
+  timeline,
   threadLabels,
   formatTime,
   composer,
@@ -7076,6 +7132,7 @@ export function AgentChatRailScreen({
         managed={managed}
         stopping={stopping}
         renderMessageContent={renderMessageContent}
+        timeline={timeline}
         labels={threadLabels}
         formatTime={formatTime}
         composer={composer}

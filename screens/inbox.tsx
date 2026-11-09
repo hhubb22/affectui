@@ -817,7 +817,7 @@ const defaultAppShellLabels = {
   account: "Account",
   language: "Language",
   appearance: "Appearance",
-  theme: (value: "light" | "dark" | "system") => value[0].toUpperCase() + value.slice(1),
+  theme: (value: "light" | "dark" | "system") => value.charAt(0).toUpperCase() + value.slice(1),
   action: (action: string) => action,
   goTo: "Go to",
   copied: "Conversation title copied",
@@ -841,6 +841,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   navigation?: AppRailItem[];
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
+  /** Register the built-in Mod+K listener. Disable when the application owns its command palette. */
+  globalShortcut?: boolean;
   sidebarCollapsed?: boolean;
   defaultSidebarCollapsed?: boolean;
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
@@ -861,6 +863,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   sidebarWidth?: number;
   defaultSidebarWidth?: number;
   onSidebarWidthChange?: (width: number) => void;
+  /** Application-specific limits, shared by layout, pointer/keyboard resizing and ARIA. */
+  sidebarBounds?: { min: number; max: number };
   sidebarOpen?: boolean;
   defaultSidebarOpen?: boolean;
   onSidebarOpenChange?: (open: boolean) => void;
@@ -872,6 +876,7 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   panelWidth?: number;
   defaultPanelWidth?: number;
   onPanelWidthChange?: (width: number) => void;
+  panelBounds?: { min: number; max: number };
   theme?: "light" | "dark" | "system";
   defaultTheme?: "light" | "dark" | "system";
   onThemeChange?: (theme: "light" | "dark" | "system") => void;
@@ -919,6 +924,7 @@ export function AppShell({
   onNavigate,
   navigation,
   commands: commandGroupsProp,
+  globalShortcut = true,
   sidebarCollapsed: collapsedProp,
   defaultSidebarCollapsed = false,
   onSidebarCollapsedChange,
@@ -939,6 +945,7 @@ export function AppShell({
   sidebarWidth: sidebarWidthProp,
   defaultSidebarWidth = 272,
   onSidebarWidthChange,
+  sidebarBounds = { min: 200, max: 420 },
   sidebarOpen: sidebarOpenProp,
   defaultSidebarOpen = false,
   onSidebarOpenChange,
@@ -950,6 +957,7 @@ export function AppShell({
   panelWidth: panelWidthProp,
   defaultPanelWidth = 455,
   onPanelWidthChange,
+  panelBounds = { min: 300, max: 640 },
   theme: themeProp,
   defaultTheme = "system",
   onThemeChange,
@@ -968,8 +976,14 @@ export function AppShell({
   const [project, setProject] = useControllable(projectProp, defaultProject, onProjectChange);
   const [activeChat, setActiveChat] = useControllable(activeChatProp, defaultActiveChat, onOpenChat);
   const [active, setActive] = useControllable(activeProp, defaultActive, onActiveChange);
-  const [sidebarWidth, setSidebarWidth] = useControllable(sidebarWidthProp, defaultSidebarWidth, onSidebarWidthChange);
-  const [panelWidth, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const [sidebarWidthValue, setSidebarWidth] = useControllable(
+    sidebarWidthProp,
+    defaultSidebarWidth,
+    onSidebarWidthChange,
+  );
+  const [panelWidthValue, setPanelWidth] = useControllable(panelWidthProp, defaultPanelWidth, onPanelWidthChange);
+  const sidebarWidth = clamp(safeNumber(sidebarWidthValue, 272), sidebarBounds.min, sidebarBounds.max);
+  const panelWidth = clamp(safeNumber(panelWidthValue, 455), panelBounds.min, panelBounds.max);
   const [sidebarOpen, setSidebarOpen] = useControllable(sidebarOpenProp, defaultSidebarOpen, onSidebarOpenChange);
   const [panelOpen, setPanelOpen] = useControllable(panelOpenProp, defaultPanelOpen, onPanelOpenChange);
   const [theme, setTheme] = useControllable(themeProp, defaultTheme, onThemeChange);
@@ -1019,6 +1033,7 @@ export function AppShell({
     const el = root.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
       const next = entry.contentRect.width < 900;
       if (next !== narrowRef.current) {
         narrowRef.current = next;
@@ -1062,7 +1077,7 @@ export function AppShell({
       const state = live.current;
       const inside = state.root?.contains(document.activeElement) || document.activeElement === document.body;
       if (!inside || event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (globalShortcut && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen((open) => !open);
       }
@@ -1073,7 +1088,7 @@ export function AppShell({
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, []);
+  }, [globalShortcut]);
   useEffect(() => {
     if (!drawer) return;
     const area = sidebarOpen ? sidebar.current : panelRef.current;
@@ -1196,8 +1211,24 @@ export function AppShell({
       const width = root.current?.clientWidth ?? 1600;
       const value = initial + (event.clientX - start) * (edge === "sidebar" ? 1 : -1);
       if (edge === "sidebar")
-        setSidebarWidth(clamp(value, 200, Math.min(420, width - railWidth - (visiblePanel ? panelWidth : 0) - 280)));
-      else setPanelWidth(clamp(value, 300, Math.min(640, width - sidebarWidth - railWidth - 280)));
+        setSidebarWidth(
+          clamp(
+            value,
+            sidebarBounds.min,
+            Math.max(
+              sidebarBounds.min,
+              Math.min(sidebarBounds.max, width - railWidth - (visiblePanel ? panelWidth : 0) - 280),
+            ),
+          ),
+        );
+      else
+        setPanelWidth(
+          clamp(
+            value,
+            panelBounds.min,
+            Math.max(panelBounds.min, Math.min(panelBounds.max, width - sidebarWidth - railWidth - 280)),
+          ),
+        );
     };
     const stop = () => {
       target.removeEventListener("pointermove", move);
@@ -1218,18 +1249,15 @@ export function AppShell({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const value = edge === "sidebar" ? sidebarWidth : panelWidth;
+    const bounds = edge === "sidebar" ? sidebarBounds : panelBounds;
     const next =
       event.key === "Home"
-        ? edge === "sidebar"
-          ? 200
-          : 300
+        ? bounds.min
         : event.key === "End"
-          ? edge === "sidebar"
-            ? 420
-            : 640
+          ? bounds.max
           : value + (event.key === "ArrowRight" ? 10 : -10) * (edge === "panel" ? -1 : 1);
-    if (edge === "sidebar") setSidebarWidth(clamp(next, 200, 420));
-    else setPanelWidth(clamp(next, 300, 640));
+    if (edge === "sidebar") setSidebarWidth(clamp(next, bounds.min, bounds.max));
+    else setPanelWidth(clamp(next, bounds.min, bounds.max));
   };
   const row = (chat: AppChat, nested = false) => (
     <div
@@ -1338,8 +1366,8 @@ export function AppShell({
       data-dragging={dragging || undefined}
       style={
         {
-          "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), 200, 420)}px`,
-          "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), 300, 640)}px`,
+          "--ui-as-sidebar-width": `${clamp(safeNumber(sidebarWidth, 272), sidebarBounds.min, sidebarBounds.max)}px`,
+          "--ui-as-panel-width": `${clamp(safeNumber(panelWidth, 455), panelBounds.min, panelBounds.max)}px`,
           "--ui-as-rail-width": `${railWidth}px`,
           ...style,
         } as CSSProperties
@@ -1654,8 +1682,8 @@ export function AppShell({
           role="separator"
           aria-label={labels.resizeSidebar}
           aria-orientation="vertical"
-          aria-valuemin={200}
-          aria-valuemax={420}
+          aria-valuemin={sidebarBounds.min}
+          aria-valuemax={sidebarBounds.max}
           aria-valuenow={Math.round(sidebarWidth)}
           aria-controls={`${id}-sidebar`}
           tabIndex={narrow || collapsed ? -1 : 0}
@@ -1677,8 +1705,8 @@ export function AppShell({
               role="separator"
               aria-label={labels.resizePanel(panelTitle)}
               aria-orientation="vertical"
-              aria-valuemin={300}
-              aria-valuemax={640}
+              aria-valuemin={panelBounds.min}
+              aria-valuemax={panelBounds.max}
               aria-valuenow={Math.round(panelWidth)}
               aria-controls={`${id}-panel`}
               tabIndex={visiblePanel && !narrow ? 0 : -1}

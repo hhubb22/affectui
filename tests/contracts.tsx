@@ -123,6 +123,7 @@ const managedThreadContract = {
   managed: true,
   stopping: true,
   renderMessageContent: (_message, defaultContent) => defaultContent,
+  timeline: null,
   labels: {
     waitingQuestions: (count) => `${count} pending`,
     decisions: { submitting: "Pending" },

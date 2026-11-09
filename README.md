@@ -66,6 +66,7 @@ With `managed`:
 | `DecisionDock` | `ThreadDecision.options` is complete and authoritative, including `kind: "approval"`; selecting returns `{ option: originalId }`. Only approval without `options` retains legacy `"approve"`/`"decline"`. No truncation; keys 1–9 select the first nine rows, arrow/Home/End navigation and pointer access reach all rows. |
 | `ThreadDecision` | `allowCustomAnswer` defaults to true. `status` is `awaiting` (default), `submitting`, `answered` or `expired`. `submitting`, `expired`, `answered` and `disabled` prevent answers; the caller restores `awaiting` with `error` to retry, or supplies `answered`/`answer` to confirm. |
 | `AgentThread` | `stopping` disables Stop and Escape without claiming stopped. `renderMessageContent(message, defaultContent)` replaces the entire body, including parts/tools/attachments; return `defaultContent` to delegate or `null` to hide. The message row ID, role, status, log and scroll ownership remain intact. No Markdown engine is added. |
+| `AgentThread.timeline` | Replaces the **entire message timeline** so an existing virtualized list, scrolling provider or anchored Review can retain ownership. `undefined` keeps the default; `null` hides it. The caller owns message rendering, IDs, log/live-region semantics, scrolling, unread markers and jump controls, including End. Thread still reads `messages` for streaming/Stop and retains the connection banner, decision dock and composer. Both screen wrappers forward this slot. |
 | `ChatComposer` | `toolbar` replaces **all** built-in controls, menus and Enter-send handling; `undefined` preserves them and `null` hides them. `overlay` sits above the textarea. `textareaProps` merges refs, ARIA, paste/drop and keyboard handlers, but excludes `value`, `defaultValue`, `onChange`; use the existing controlled API. External `onKeyDown` runs first and `preventDefault()` cancels internal Enter. Internal disabled/readOnly cannot be overridden with false. |
 | Attachments | `ChatComposerAttachment.size` is optional. An opaque native path can be `id` with `name`, without inventing a `File` or size; browser `File` attachments continue working. |
 | `AppShell` | `sidebar` replaces navigation-column content but retains rail/aside/resizer/drawer behavior. `undefined` preserves default navigation, `null` renders no column content. `header` spans above main and panel; null/undefined adds no row. |
@@ -99,7 +100,7 @@ For example, keep the draft until an application/server event confirms delivery:
 
 Preview caller-owned transitions with `npm run dev` and
 `?component=managed-thread&style=clean` (also `managed-dock`, `managed-composer`,
-`managed-shell`, `managed-screen`, `managed-rail`; `style=classic`, `theme=dark`).
+`managed-shell`, `managed-screen`, `managed-rail`, `managed-timeline`; `style=classic`, `theme=dark`).
 Fixture controls separate transport completion from Confirm/Fail actions. Run
 `npm test` and `npm run build` for the generated, type and browser contracts.
 

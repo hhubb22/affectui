@@ -93,6 +93,11 @@ export default function ManagedFixtures({
   const [callbackRef, setCallbackRef] = useState(false),
     [collapsed, setCollapsed] = useState(false),
     [emptySlots, setEmptySlots] = useState(false);
+  const [customBounds, setCustomBounds] = useState(false);
+  const [shellShortcut, setShellShortcut] = useState(false);
+  const [timelineMode, setTimelineMode] = useState<
+    "builtin" | "caller" | "hidden"
+  >(variant === "managed-timeline" ? "caller" : "builtin");
   const input = useRef<HTMLTextAreaElement | null>(null),
     answer = useRef<Clean.ThreadDecisionAnswer>("approve");
   const externalRef = useCallback((node: HTMLTextAreaElement | null) => {
@@ -184,6 +189,33 @@ export default function ManagedFixtures({
     simulate: "live",
     title: "外部状态合同",
     assistantName: "助手",
+    timeline:
+      timelineMode === "builtin" ? undefined : timelineMode ===
+        "hidden" ? null : (
+        <div
+          role="log"
+          aria-label="调用方消息列表"
+          tabIndex={0}
+          style={{ height: "100%", overflowY: "auto", padding: "12px 32px" }}
+        >
+          <div style={{ maxWidth: 680, marginInline: "auto" }}>
+            <p>
+              调用方拥有消息、滚动、锚点和无障碍语义；下方审批与输入框仍由
+              Thread 组合。
+            </p>
+            {Array.from({ length: 40 }, (_, index) => (
+              <article key={index} style={{ paddingBlock: 12 }}>
+                <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>
+                  消息 {index + 1}
+                </h2>
+                <p style={{ margin: 0 }}>
+                  自定义 Markdown / Diff / 长列表正文。
+                </p>
+              </article>
+            ))}
+          </div>
+        </div>
+      ),
     messages,
     onMessagesChange: setMessages,
     decisions,
@@ -291,8 +323,11 @@ export default function ManagedFixtures({
   const shellProps: Clean.AppShellProps = {
     sidebar: emptySlots ? null : sidebar,
     header: emptySlots ? null : header,
+    globalShortcut: shellShortcut,
     sidebarCollapsed: collapsed,
     onSidebarCollapsedChange: setCollapsed,
+    sidebarBounds: customBounds ? { min: 220, max: 380 } : undefined,
+    panelBounds: customBounds ? { min: 520, max: 680 } : undefined,
     defaultTheme: theme,
     labels: {
       sidebar: "应用侧栏",
@@ -325,6 +360,8 @@ export default function ManagedFixtures({
           flexWrap: "wrap",
         }}
       >
+        <button onClick={() => setCustomBounds(true)}>Custom bounds</button>
+        <button onClick={() => setShellShortcut((value) => !value)}>Toggle shell shortcut</button>
         <button
           onClick={() =>
             updateDecision({
@@ -458,6 +495,19 @@ export default function ManagedFixtures({
         <button onClick={() => setEmptySlots((value) => !value)}>
           Empty slots
         </button>
+        {variant === "managed-timeline" && (
+          <>
+            <button onClick={() => setTimelineMode("caller")}>
+              Caller timeline
+            </button>
+            <button onClick={() => setTimelineMode("builtin")}>
+              Built-in timeline
+            </button>
+            <button onClick={() => setTimelineMode("hidden")}>
+              Hide timeline
+            </button>
+          </>
+        )}
       </div>
       <output
         aria-label="Runtime events"
@@ -527,6 +577,7 @@ export default function ManagedFixtures({
             threadLabels={threadProps.labels}
             formatTime={threadProps.formatTime}
             renderMessageContent={threadProps.renderMessageContent}
+            timeline={threadProps.timeline}
             composerProps={composerProps}
             onStop={threadProps.onStop}
             onSend={send}
