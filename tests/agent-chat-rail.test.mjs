@@ -124,7 +124,7 @@ test("editable documents persist through tab switches; messages reopen a closed 
   const document = page.getByRole("textbox", { name: "sources.md, document", exact: true }); await document.fill("A revised supplier brief");
   await page.getByRole("tab", { name: "fabric-comparison.csv", exact: true }).click(); await page.getByRole("tab", { name: "sources.md", exact: true }).click();
   assert.equal(await document.innerText(), "A revised supplier brief");
-  await document.focus(); await page.keyboard.press("Control+a"); await button("Bold").click();
+  await document.focus(); await page.keyboard.press("ControlOrMeta+a"); await button("Bold").click();
   assert.ok(await document.locator("b,strong").count() > 0);
   await button("Close artifacts").click(); await page.locator(".ui-thc__file").filter({ hasText: "sources.md" }).click();
   assert.equal(await document.innerText(), "A revised supplier brief");

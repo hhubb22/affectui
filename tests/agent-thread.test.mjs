@@ -165,6 +165,9 @@ test("task tabs replace the current task while keeping artifact tabs, and Decide
   );
   assert.equal(await page.locator(".ui-tdc__steps li").count(), 4);
   await page.locator(".ui-tdc__waiting").click();
+  await page.waitForFunction(
+    () => document.querySelector('[role="option"]') === document.activeElement,
+  );
   assert.equal(
     await page
       .getByRole("option")
@@ -330,6 +333,9 @@ test("away summary opens completed tasks, marks the unread boundary, and retains
     .locator(".ui-ayc__row")
     .filter({ hasText: "Auth refactor" })
     .click();
+  await page
+    .getByRole("tab", { name: "Auth refactor", exact: true })
+    .waitFor({ state: "visible" });
   assert.equal(
     await page.getByRole("tab", { name: "Auth refactor", exact: true }).count(),
     1,
