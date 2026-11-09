@@ -260,11 +260,14 @@ function useControllable<T>(value: T | undefined, initial: T, onChange?: (value:
   return [current, set] as const;
 }
 
+/** `logo` renders in a small tile instead of `icon`; `keywords` only widen the search. Separate `shortcut` keys with spaces, such as "⌘ 1" or "G H". */
 export type CommandMenuItem = {
   id: string;
   label: string;
   description?: string;
   icon?: ReactNode;
+  logo?: ReactNode;
+  keywords?: string;
   shortcut?: string;
   disabled?: boolean;
   onSelect?: () => void;
@@ -330,7 +333,7 @@ export function CommandMenu({
       commands: (Array.isArray(group.commands) ? group.commands : []).filter(
         (command) =>
           command &&
-          `${command.label} ${command.description ?? ""}`
+          `${command.label} ${command.description ?? ""} ${command.keywords ?? ""}`
             .toLocaleLowerCase()
             .includes(query.trim().toLocaleLowerCase()),
       ),
@@ -477,7 +480,7 @@ export function CommandMenu({
                       if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
                     }}
                   >
-                    {command.icon ?? (
+                    {command.icon ?? command.logo ?? (
                       <Icon
                         name={
                           command.id === "email"

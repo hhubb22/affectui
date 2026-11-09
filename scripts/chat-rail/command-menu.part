@@ -1,4 +1,5 @@
-export type CommandMenuItem = { id: string; label: string; description?: string; icon?: ReactNode; shortcut?: string; disabled?: boolean; onSelect?: () => void };
+/** `logo` renders in a small tile instead of `icon`; `keywords` only widen the search. Separate `shortcut` keys with spaces, such as "⌘ 1" or "G H". */
+export type CommandMenuItem = { id: string; label: string; description?: string; icon?: ReactNode; logo?: ReactNode; keywords?: string; shortcut?: string; disabled?: boolean; onSelect?: () => void };
 export type CommandMenuGroup = { id: string; label: string; commands: CommandMenuItem[] };
 export type CommandMenuProps = {
   groups?: CommandMenuGroup[];
@@ -32,7 +33,7 @@ export function CommandMenu({ groups = defaultCommands, open: openProp, defaultO
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   const source = (Array.isArray(groups) ? groups : []).filter(Boolean);
-  const shown = source.map(group => ({ ...group, commands: (Array.isArray(group.commands) ? group.commands : []).filter(command => command && `${command.label} ${command.description ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) })).filter(group => group.commands.length);
+  const shown = source.map(group => ({ ...group, commands: (Array.isArray(group.commands) ? group.commands : []).filter(command => command && `${command.label} ${command.description ?? ""} ${command.keywords ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) })).filter(group => group.commands.length);
   const commands = shown.flatMap(group => group.commands).filter(command => !command.disabled);
   const index = Math.min(selected, Math.max(0, commands.length - 1));
   const close = () => { setOpen(false); onClose?.(); };
@@ -66,7 +67,7 @@ export function CommandMenu({ groups = defaultCommands, open: openProp, defaultO
         {shown.map(group => <div role="group" aria-labelledby={`${id}-${group.id}-label`} className="ui-cm__group" key={group.id}>
           <div className="ui-cm__label" id={`${id}-${group.id}-label`}>{group.label}</div>
           {group.commands.map(command => <button type="button" role="option" tabIndex={-1} aria-selected={commands[index]?.id === command.id} disabled={command.disabled} id={`${id}-${command.id}`} className="ui-cm__item" key={command.id} onPointerMove={() => setSelected(Math.max(0, commands.findIndex(item => item.id === command.id)))} onClick={() => run(command)}>
-            <span className="ui-cm__icon" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{command.icon ?? <Icon name={command.id === "email" ? "document" : command.id === "assistant" ? "spark" : command.id === "task" ? "tasks" : "folder"}/>}</span>
+            <span className="ui-cm__icon" onErrorCapture={event => { if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden"; }}>{command.icon ?? command.logo ?? <Icon name={command.id === "email" ? "document" : command.id === "assistant" ? "spark" : command.id === "task" ? "tasks" : "folder"}/>}</span>
             <span className="ui-cm__text"><span dir="auto">{command.label}</span>{command.description && <small dir="auto">{command.description}</small>}</span>{command.shortcut && <kbd>{/^[1-9]$/.test(command.shortcut) ? "⌘ " : ""}{command.shortcut}</kbd>}
           </button>)}
         </div>)}

@@ -3,6 +3,7 @@
 For the orchestrator screen, its component breakdown and runtime interfaces, see [Agent / Thread](./agent-thread.md).
 For the grouped task list and task/artifact work area, see [Agent / Tasks](./agent-tasks.md).
 For decisions, visual picks, approvals and free answers, see [Agent / Inbox](./inbox.md).
+For the start page with workspace numbers under the composer, see [AI Chat / Overview](./assistant-overview.md).
 
 A local recreation of the [agent-chat-rail screen](https://www.affectui.com/screens/agent-chat-rail), implemented from its visible layout and recorded interactions. The implementation follows this repository's [design system](../DESIGN_SYSTEM.md).
 

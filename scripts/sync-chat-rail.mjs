@@ -6,7 +6,7 @@ import { format } from "prettier";
 // Components are distributed as copyable, self-contained files. Keep implementation changes in
 // scripts/chat-rail/*.part, then regenerate both styles and every embedded copy with this script.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const names = ["tool-activity", "command-menu", "chat-composer", "artifact-workspace", "app-shell", "agent-thread", "agent-chat-rail", "thread-task-card", "decision-dock", "connection-banner", "away-summary", "thread-uploads", "task-details", "agent-thread-screen", "task-progress-ring", "task-create", "task-list", "task-inspector", "artifact-folder", "artifact-image", "workspace-start", "agent-tasks", "inbox-options", "inbox-feedback", "inbox-list", "inbox-item-view", "inbox-task-context", "inbox"];
+const names = ["tool-activity", "command-menu", "chat-composer", "artifact-workspace", "app-shell", "agent-thread", "agent-chat-rail", "thread-task-card", "decision-dock", "connection-banner", "away-summary", "thread-uploads", "task-details", "agent-thread-screen", "task-progress-ring", "task-create", "task-list", "task-inspector", "artifact-folder", "artifact-image", "workspace-start", "agent-tasks", "inbox-options", "inbox-feedback", "inbox-list", "inbox-item-view", "inbox-task-context", "inbox", "overview-cards", "assistant-overview"];
 const dependencies = {
   "tool-activity": [], "command-menu": [], "chat-composer": [], "artifact-workspace": ["artifact-folder", "artifact-image"],
   "app-shell": ["command-menu"], "agent-thread": ["tool-activity", "chat-composer", "thread-task-card", "decision-dock", "connection-banner", "away-summary", "thread-uploads"],
@@ -16,8 +16,8 @@ const dependencies = {
   "task-progress-ring": [], "task-create": ["task-progress-ring"], "task-list": ["task-progress-ring"], "task-inspector": ["task-progress-ring"], "artifact-folder": [], "artifact-image": [], "workspace-start": [],
   "agent-tasks": ["app-shell", "artifact-workspace", "task-create", "task-list", "task-inspector", "workspace-start"],
 };
-Object.assign(dependencies, { "inbox-options": [], "inbox-feedback": [], "inbox-list": [], "inbox-item-view": ["inbox-options","inbox-feedback"], "inbox-task-context": [], "inbox": ["app-shell","artifact-workspace","workspace-start","inbox-list","inbox-item-view","inbox-task-context"] });
-const prefixes = ["ui-ta", "ui-cm", "ui-cc", "ui-aw", "ui-as", "ui-th", "ui-acr", "ui-tk", "ui-dd", "ui-cn", "ui-ay", "ui-up", "ui-td", "ui-tsr", "ui-tpr", "ui-tcr", "ui-tls", "ui-tin", "ui-afd", "ui-aiv", "ui-wst", "ui-ats", "ui-ibo", "ui-ibf", "ui-ibl", "ui-ibv", "ui-ibx", "ui-ibs"];
+Object.assign(dependencies, { "inbox-options": [], "inbox-feedback": [], "inbox-list": [], "inbox-item-view": ["inbox-options","inbox-feedback"], "inbox-task-context": [], "inbox": ["app-shell","artifact-workspace","workspace-start","inbox-list","inbox-item-view","inbox-task-context"] , "overview-cards": [], "assistant-overview": ["app-shell","artifact-workspace","workspace-start","chat-composer","overview-cards"] });
+const prefixes = ["ui-ta", "ui-cm", "ui-cc", "ui-aw", "ui-as", "ui-th", "ui-acr", "ui-tk", "ui-dd", "ui-cn", "ui-ay", "ui-up", "ui-td", "ui-tsr", "ui-tpr", "ui-tcr", "ui-tls", "ui-tin", "ui-afd", "ui-aiv", "ui-wst", "ui-ats", "ui-ibo", "ui-ibf", "ui-ibl", "ui-ibv", "ui-ibx", "ui-ibs", "ui-ovc", "ui-aov"];
 function dependenciesFor(name, seen = new Set()) {
   for (const dependency of dependencies[name]) if (!seen.has(dependency)) dependenciesFor(dependency, seen);
   seen.add(name); return [...seen];
@@ -49,6 +49,8 @@ const fragments = Object.fromEntries(names.map(name => {
   return [name, { code: code.trim(), css: css.trim() }];
 }));
 const classic = `
+.ui-ovc{--ui-ovc-ink:#171717;--ui-ovc-text:#404040;--ui-ovc-muted:#737373;--ui-ovc-line:#e5e5e5;--ui-ovc-chip:#f5f5f5;--ui-ovc-hover:#fafafa;--ui-ovc-focus:#2f6bff}.ui-ovc__card{border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+:where(.dark,[data-theme="dark"]) .ui-ovc{--ui-ovc-card:#232326;--ui-ovc-ink:#ededed;--ui-ovc-text:#c4c4c4;--ui-ovc-muted:#8f8f8f;--ui-ovc-line:rgba(255,255,255,.1);--ui-ovc-chip:#2a2a2d;--ui-ovc-hover:#2a2a2d;--ui-ovc-focus:#6b95ff}
 .ui-ibo{--ui-ibo-ink:#171717;--ui-ibo-muted:#737373;--ui-ibo-faint:#b5b5b5;--ui-ibo-line:#e5e5e5;--ui-ibo-fill:#f5f5f5;--ui-ibo-focus:#2f6bff;border:1px solid var(--ui-ibo-line);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}.ui-ibo__option{border-radius:10px;min-height:60px}.ui-ibo[data-variant="variants"]{border:0;border-radius:0;box-shadow:none}
 .ui-ibv{--ui-ibv-ink:#171717;--ui-ibv-text:#404040;--ui-ibv-muted:#737373;--ui-ibv-faint:#b5b5b5;--ui-ibv-line:#e5e5e5;--ui-ibv-fill:#f5f5f5;--ui-ibv-focus:#2f6bff;--ui-ibv-shadow:0 0 0 1px var(--ui-ibv-line),0 1px 2px rgba(0,0,0,.06)}.ui-ibv__button{height:32px;border-radius:8px}.ui-ibv__reply{height:36px;border-radius:10px}.ui-ibv__area{height:88px}.ui-ibv__send{background:linear-gradient(#323137,#201e25)!important;color:#fff!important;box-shadow:0 0 0 1px #0d0d0d,inset 0 1px rgba(255,255,255,.12)}
 .ui-ibl{--ui-ibl-ink:#171717;--ui-ibl-muted:#737373;--ui-ibl-faint:#b5b5b5;--ui-ibl-line:#e5e5e5;--ui-ibl-fill:#f5f5f5;--ui-ibl-focus:#2f6bff}.ui-ibl__head{height:52px}.ui-ibl__tabs button{height:32px;border-radius:8px}
@@ -120,7 +122,7 @@ for (const name of names) {
     output = output.replaceAll('strokeWidth="1.4"', clean ? 'strokeWidth="1.25"' : 'strokeWidth="1.5"');
     if (clean) for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) output = output.replaceAll(prefix, `${prefix}c`);
     output = await format(output, { parser: "typescript", printWidth: 120 });
-    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox";
+    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox" || name === "assistant-overview";
     const basename = name === "agent-thread-screen" ? "agent-thread" : name;
     const relative = `${screen ? "screens" : "components"}/${basename}${clean ? "-clean" : ""}.tsx`;
     const target = path.join(root, relative);

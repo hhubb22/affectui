@@ -189,6 +189,7 @@ Agent components, recorded live from [affectui.com](https://www.affectui.com). I
 - [Local Agent / Thread screen](./screens/agent-thread.md) — Orchestrator conversation, decisions, task details, offline recovery, uploads and away summaries, with Classic and Clean components.
 - [Local Agent / Tasks screen](./screens/agent-tasks.md) — Project groups, keyboard task navigation, inline creation, task inspection and editable artifact tabs, with Classic and Clean components.
 - [Local Agent / Inbox screen](./screens/inbox.md) — Decision queue, visual picks, approvals, free answers, sent feedback and task/artifact context, with Classic and Clean components.
+- [Local AI Chat / Overview screen](./screens/assistant-overview.md) — Start page with composer, activity grid, recent chats, usage, files made and monthly trends, with Classic and Clean components.
 - [Why affectUI](#why-affectui)
 - [Choose the UI for your workflow](#choose-the-ui-for-your-workflow)
 - [Install](#install)

@@ -465,11 +465,14 @@ function isEditing(target: EventTarget | null) {
   return target instanceof HTMLElement && !!target.closest('input,textarea,select,[contenteditable="true"]');
 }
 
+/** `logo` renders in a small tile instead of `icon`; `keywords` only widen the search. Separate `shortcut` keys with spaces, such as "⌘ 1" or "G H". */
 export type CommandMenuItem = {
   id: string;
   label: string;
   description?: string;
   icon?: ReactNode;
+  logo?: ReactNode;
+  keywords?: string;
   shortcut?: string;
   disabled?: boolean;
   onSelect?: () => void;
@@ -535,7 +538,7 @@ export function CommandMenu({
       commands: (Array.isArray(group.commands) ? group.commands : []).filter(
         (command) =>
           command &&
-          `${command.label} ${command.description ?? ""}`
+          `${command.label} ${command.description ?? ""} ${command.keywords ?? ""}`
             .toLocaleLowerCase()
             .includes(query.trim().toLocaleLowerCase()),
       ),
@@ -682,7 +685,7 @@ export function CommandMenu({
                       if (event.target instanceof HTMLImageElement) event.target.style.visibility = "hidden";
                     }}
                   >
-                    {command.icon ?? (
+                    {command.icon ?? command.logo ?? (
                       <Icon
                         name={
                           command.id === "email"
@@ -794,6 +797,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   navigation?: AppRailItem[];
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
+  /** Offer “Ask assistant about …” as the first search result for any query. */
+  onAsk?: (query: string) => void;
   /** Register the built-in Mod+K listener. Disable when the application owns its command palette. */
   globalShortcut?: boolean;
   sidebarCollapsed?: boolean;
@@ -863,6 +868,407 @@ export const defaultChatRail = {
   active: "Chats",
 };
 
+const wsGlyphs = {
+  invite: (
+    <>
+      <path d="M3 20.5c.3-3.7 3.3-6.8 7-7 .3 0 .6 0 1-.1l1 .1c.7 0 1.4.2 2 .4" />
+      <path d="M18 15.5v6M21 18.5h-6" />
+      <circle cx="11" cy="6.5" r="4" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M21.32 7.14 20.82 6.28C20.45 5.64 20.26 5.31 19.95 5.18 19.63 5.05 19.27 5.16 18.55 5.36L17.33 5.7C16.87 5.81 16.39 5.75 15.97 5.53L15.64 5.34C15.28 5.11 15 4.77 14.85 4.37L14.51 3.38C14.29 2.72 14.18 2.39 13.92 2.2 13.66 2.01 13.31 2.01 12.62 2.01H11.51C10.81 2.01 10.46 2.01 10.2 2.2 9.94 2.39 9.83 2.72 9.61 3.38L9.28 4.37C9.12 4.77 8.85 5.11 8.49 5.34L8.15 5.53C7.73 5.75 7.25 5.81 6.79 5.7L5.57 5.36C4.86 5.16 4.5 5.05 4.18 5.18 3.86 5.31 3.67 5.64 3.3 6.28L2.81 7.14C2.46 7.75 2.28 8.05 2.32 8.38 2.35 8.7 2.58 8.96 3.05 9.48L4.08 10.63C4.34 10.95 4.52 11.51 4.52 12.01 4.52 12.51 4.34 13.06 4.08 13.38L3.05 14.54C2.58 15.06 2.35 15.32 2.32 15.64 2.28 15.96 2.46 16.27 2.81 16.87L3.3 17.73C3.67 18.38 3.86 18.7 4.18 18.83 4.5 18.96 4.86 18.86 5.57 18.66L6.79 18.31C7.25 18.21 7.73 18.27 8.15 18.48L8.49 18.68C8.85 18.91 9.12 19.24 9.28 19.64L9.61 20.64C9.83 21.3 9.94 21.63 10.2 21.82 10.46 22.01 10.81 22.01 11.51 22.01H12.62C13.31 22.01 13.66 22.01 13.92 21.82 14.18 21.63 14.29 21.3 14.51 20.64L14.85 19.64C15 19.24 15.28 18.91 15.64 18.68L15.97 18.48C16.39 18.27 16.87 18.21 17.33 18.31L18.55 18.66C19.27 18.86 19.63 18.96 19.95 18.83 20.26 18.7 20.45 18.38 20.82 17.73L21.32 16.87C21.67 16.27 21.84 15.96 21.81 15.64 21.77 15.32 21.54 15.06 21.07 14.54L20.04 13.38C19.79 13.06 19.61 12.51 19.61 12.01 19.61 11.51 19.79 10.95 20.04 10.63L21.07 9.48C21.54 8.96 21.77 8.7 21.81 8.38 21.84 8.05 21.67 7.75 21.32 7.14Z" />
+      <circle cx="12.02" cy="12" r="3.5" />
+    </>
+  ),
+  analytics: (
+    <>
+      <path d="M7 17v-4M12 17V7M17 17v-6" />
+      <path d="M2.5 12c0-4.48 0-6.72 1.39-8.11S7.52 2.5 12 2.5s6.72 0 8.11 1.39S21.5 7.52 21.5 12s0 6.72-1.39 8.11S16.48 21.5 12 21.5s-6.72 0-8.11-1.39S2.5 16.48 2.5 12Z" />
+    </>
+  ),
+  billing: (
+    <>
+      <path d="M2 12c0-3.54 0-5.31 1.05-6.49.17-.19.36-.36.56-.52C4.86 4 6.74 4 10.5 4h3c3.76 0 5.64 0 6.89.99.2.16.39.33.56.52C22 6.69 22 8.46 22 12s0 5.31-1.05 6.49c-.17.19-.36.36-.56.52-1.25.99-3.13.99-6.89.99h-3c-3.76 0-5.64 0-6.89-.99-.2-.16-.39-.33-.56-.52C2 17.31 2 15.54 2 12ZM10 16h1.5M14.5 16H18M2 9h20" />
+    </>
+  ),
+  usage: (
+    <>
+      <path d="M4.32 19.68C3 18.36 3 16.24 3 12s0-6.36 1.32-7.68S7.76 3 12 3s6.36 0 7.68 1.32S21 7.76 21 12s0 6.36-1.32 7.68S16.24 21 12 21s-6.36 0-7.68-1.32Z" />
+      <path d="m7 14 2.79-2.79a1 1 0 0 1 1.42 0l1.58 1.58a1 1 0 0 0 1.42 0L17 10" />
+    </>
+  ),
+  members: (
+    <>
+      <path d="M18.5 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM8 11a3 3 0 0 1 0-6M14.5 14C9.81 14 7 16.5 7 19c0 1.1.84 2 1.88 2h11.25c1.03 0 1.87-.9 1.87-2 0-2.5-2.81-5-7.5-5ZM4 20h-.5C2.67 20 2 19.23 2 18.28c0-1.61 1.27-3.22 3.5-3.92" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8.25h.01" />
+    </>
+  ),
+  docs: (
+    <>
+      <path d="M15.5 7h-7M12.5 11h-4M20 22H6a2 2 0 0 1 0-4h14V6c0-1.89 0-2.83-.59-3.41C18.83 2 17.89 2 16 2h-6C7.17 2 5.76 2 4.88 2.88 4 3.76 4 5.17 4 8v12M19.5 18s-1 .76-1 2 1 2 1 2" />
+    </>
+  ),
+  changelog: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 8v4l2 2" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.91 2.06C12.73 12.03 12 12.67 12 13.5M12 16.75h.01" />
+    </>
+  ),
+  switch: (
+    <>
+      <path d="M20 17H4M17 14s3 2.21 3 3-3 3-3 3M5 7h15M7 4S4 6.21 4 7s3 3 3 3" />
+    </>
+  ),
+  plus: <path d="M12 4v16M20 12H4" />,
+  check: <path d="m5 14 3.5 3.5L19 6.5" />,
+  next: <path d="M9 6s6 4.42 6 6-6 6-6 6" />,
+};
+function WsGlyph({ name, size = 15 }: { name: keyof typeof wsGlyphs; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {wsGlyphs[name]}
+    </svg>
+  );
+}
+const assistantSpark = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <defs>
+      <linearGradient id="ui-asc-spark" x1="0" y1="0" x2="1" y2="1">
+        <stop stopColor="#7C5CFF" />
+        <stop offset="1" stopColor="#2F9BFF" />
+      </linearGradient>
+    </defs>
+    <path
+      fill="url(#ui-asc-spark)"
+      d="M12 2.5c.6 3.9 2.1 6.4 4.4 7.6 1.1.6 2.4.9 4.1 1.1v1.6c-4.6.6-7.3 3-8.5 8.7h-1.6c-.6-3.9-2.1-6.4-4.4-7.6-1.1-.6-2.4-.9-4.1-1.1v-1.6c4.6-.6 7.3-3 8.5-8.7z"
+    />
+  </svg>
+);
+const foldText = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+function SearchMatch({ text, query }: { text: string; query: string }) {
+  const folded = foldText(text),
+    needle = foldText(query),
+    at = needle && folded.length === text.length ? folded.indexOf(needle) : -1;
+  return at < 0 ? (
+    <>{text}</>
+  ) : (
+    <>
+      {text.slice(0, at)}
+      <mark>{text.slice(at, at + needle.length)}</mark>
+      {text.slice(at + needle.length)}
+    </>
+  );
+}
+
+/** The shell's ⌘K search: grouped commands with a sliding highlight, Tab between groups and an optional “Ask assistant” row. The first five visible “suggestions” run with Mod+1–5. */
+function ShellSearch({
+  groups,
+  placeholder,
+  onRun,
+  onAsk,
+  onClose,
+}: {
+  groups: CommandMenuGroup[];
+  placeholder: string;
+  onRun: (command: CommandMenuItem) => void;
+  onAsk?: (query: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState(""),
+    [selectedKey, setSelectedKey] = useState<string | null>(null),
+    [lit, setLit] = useState(true);
+  const [pill, setPill] = useState<{ y: number; h: number } | null>(null),
+    [height, setHeight] = useState(0);
+  const input = useRef<HTMLInputElement>(null),
+    list = useRef<HTMLDivElement>(null),
+    inner = useRef<HTMLDivElement>(null),
+    reveal = useRef(false),
+    id = useId();
+  const mod = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+  const q = query.trim(),
+    needle = foldText(q);
+  const shown: { id: string; label: string; commands: (CommandMenuItem & { key: string })[] }[] = (
+    Array.isArray(groups) ? groups : []
+  )
+    .filter(Boolean)
+    .map((group) => ({
+      ...group,
+      commands: (Array.isArray(group.commands) ? group.commands : [])
+        .filter(
+          (command) =>
+            command &&
+            (!needle ||
+              foldText(`${command.label} ${command.description ?? ""} ${command.keywords ?? ""}`).includes(needle)),
+        )
+        .map((command, index) => ({
+          ...command,
+          key: `${group.id}:${command.id}`,
+          shortcut: group.id === "suggestions" && index < 5 ? `⌘ ${index + 1}` : command.shortcut,
+        })),
+    }))
+    .filter((group) => group.commands.length);
+  if (q && onAsk)
+    shown.unshift({
+      id: "ask",
+      label: "Assistant",
+      commands: [
+        { id: "ask", key: "ask", label: `Ask assistant about “${q}”`, logo: assistantSpark, onSelect: () => onAsk(q) },
+      ],
+    });
+  const flat = shown.flatMap((group) => group.commands).filter((command) => !command.disabled);
+  const selected = flat.find((command) => command.key === selectedKey) ?? flat[0];
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    input.current?.focus({ preventScroll: true });
+    return () => {
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const box = list.current,
+      row = box?.querySelector<HTMLElement>(`[data-key="${CSS.escape(selected?.key ?? "")}"]`);
+    if (!box || !row) {
+      setPill(null);
+      return;
+    }
+    setPill({ y: row.offsetTop, h: row.offsetHeight });
+    if (!reveal.current) return;
+    reveal.current = false;
+    const label = row.previousElementSibling?.classList.contains("ui-asc__cmd-label")
+      ? (row.previousElementSibling as HTMLElement).offsetHeight
+      : 0;
+    const top = row.offsetTop - 8 - label,
+      bottom = row.offsetTop + row.offsetHeight + 8;
+    if (top < box.scrollTop) box.scrollTop = top;
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+  }, [selected?.key, flat.length]);
+  useLayoutEffect(() => {
+    const box = list.current,
+      content = inner.current;
+    if (!box || !content) return;
+    const measure = () => {
+      const style = getComputedStyle(box);
+      setHeight(
+        Math.min(
+          content.offsetHeight + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
+          parseFloat(style.maxHeight) || Infinity,
+        ),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  const move = (step: number) => {
+    if (!flat.length || !selected) return;
+    reveal.current = true;
+    setLit(true);
+    const target = flat[(flat.indexOf(selected) + step + flat.length) % flat.length];
+    if (target) setSelectedKey(target.key);
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter" && selected) {
+      event.preventDefault();
+      onRun(selected);
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+      if (shown.length < 2) return;
+      const current = shown.findIndex((group) => group.commands.some((command) => command.key === selected?.key));
+      const next = event.shiftKey ? (current <= 0 ? shown.length - 1 : current - 1) : (current + 1) % shown.length;
+      const target = shown[next]?.commands.find((command) => !command.disabled);
+      if (target) {
+        reveal.current = true;
+        setLit(true);
+        setSelectedKey(target.key);
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (query) {
+        setQuery("");
+        setSelectedKey(null);
+      } else onClose();
+    } else if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
+      const command = flat.find((item) => item.shortcut?.split(" ").at(-1) === event.key);
+      if (command) {
+        event.preventDefault();
+        onRun(command);
+      }
+    }
+  };
+  return (
+    <div
+      className="ui-asc__cmd"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="ui-asc__cmd-card">
+        <label className="ui-asc__cmd-search">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="7.25" cy="7.25" r="4.75" />
+            <path d="m13.5 13.5-2.9-2.9" />
+          </svg>
+          <input
+            ref={input}
+            value={query}
+            dir="auto"
+            placeholder={placeholder}
+            aria-label="Search commands"
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={`${id}-list`}
+            aria-activedescendant={selected ? `${id}-${selected.key}` : undefined}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelectedKey(null);
+            }}
+            onKeyDown={onKeyDown}
+          />
+          <kbd className="ui-asc__cmd-enter" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <path d="M12.5 4v3a2 2 0 0 1-2 2h-7M6 6.5 3.5 9 6 11.5" />
+            </svg>
+          </kbd>
+        </label>
+        <div
+          ref={list}
+          id={`${id}-list`}
+          className="ui-asc__cmd-list"
+          role="listbox"
+          aria-label="Commands"
+          style={height ? { height } : undefined}
+          onMouseLeave={() => setLit(false)}
+        >
+          {pill && (
+            <span
+              className="ui-asc__cmd-pill"
+              data-lit={lit || undefined}
+              style={{ transform: `translateY(${pill.y}px)`, height: pill.h }}
+              aria-hidden="true"
+            />
+          )}
+          <div ref={inner}>
+            {shown.map((group) => (
+              <div role="group" aria-label={group.label} className="ui-asc__cmd-group" key={group.id}>
+                {group.id !== "ask" && group.label && (
+                  <span className="ui-asc__cmd-label" dir="auto">
+                    {group.label}
+                  </span>
+                )}
+                {group.commands.map((command) => {
+                  const keys = command.shortcut
+                    ?.split(" ")
+                    .filter(Boolean)
+                    .map((key) => (key === "⌘" ? mod : key));
+                  return (
+                    <button
+                      type="button"
+                      role="option"
+                      tabIndex={-1}
+                      id={`${id}-${command.key}`}
+                      data-key={command.key}
+                      aria-selected={command.key === selected?.key}
+                      disabled={command.disabled}
+                      className="ui-asc__cmd-item"
+                      key={command.key}
+                      onMouseMove={() => {
+                        setLit(true);
+                        if (command.key !== selected?.key && !command.disabled) setSelectedKey(command.key);
+                      }}
+                      onClick={() => onRun(command)}
+                    >
+                      <span className={command.logo ? "ui-asc__cmd-logo" : "ui-asc__cmd-icon"}>
+                        {command.logo ?? command.icon ?? (
+                          <Icon
+                            name={
+                              command.id.startsWith("chat:")
+                                ? "chat"
+                                : command.id.startsWith("project:")
+                                  ? "folder"
+                                  : command.id === "new-chat"
+                                    ? "compose"
+                                    : "document"
+                            }
+                          />
+                        )}
+                      </span>
+                      <span className="ui-asc__cmd-text">
+                        <span className="ui-asc__cmd-name" dir="auto" title={command.label}>
+                          <SearchMatch text={command.label} query={q} />
+                        </span>
+                        {command.description && (
+                          <span className="ui-asc__cmd-hint" dir="auto" title={command.description}>
+                            <SearchMatch text={command.description} query={q} />
+                          </span>
+                        )}
+                      </span>
+                      {keys?.length ? (
+                        <span className="ui-asc__cmd-keys" aria-hidden="true">
+                          {keys.map((key, index) => (
+                            <kbd key={index}>{key}</kbd>
+                          ))}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {!flat.length && (
+              <p className="ui-asc__cmd-empty" role="status">
+                No results for “{q}”
+              </p>
+            )}
+          </div>
+        </div>
+        <footer className="ui-asc__cmd-foot">
+          <span>
+            <kbd>Tab</kbd> to jump between sections
+          </span>
+          <span>
+            <span className="ui-asc__cmd-keys">
+              <kbd>{mod}</kbd>
+              <kbd>K</kbd>
+            </span>
+            to open
+          </span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
 export function AppShell({
   sidebar: sidebarContent,
@@ -877,6 +1283,7 @@ export function AppShell({
   onNavigate,
   navigation,
   commands: commandGroupsProp,
+  onAsk,
   globalShortcut = true,
   sidebarCollapsed: collapsedProp,
   defaultSidebarCollapsed = false,
@@ -947,6 +1354,8 @@ export function AppShell({
   const [menu, setMenu] = useState<
     "workspace" | "account" | "projects" | "chat" | "chat-project" | "appearance" | "language" | null
   >(null);
+  const [wsOpen, setWsOpen] = useState<string | null>(null);
+  useEffect(() => setWsOpen(null), [menu]);
   const [menuChat, setMenuChat] = useState<string | null>(null),
     [renaming, setRenaming] = useState<string | null>(null),
     [renameValue, setRenameValue] = useState("");
@@ -1269,6 +1678,55 @@ export function AppShell({
     setMenu(null);
     anchor.current?.focus({ preventScroll: true });
   };
+  const wsItem = (label: string, icon: keyof typeof wsGlyphs) => (
+    <button type="button" role="menuitem" className="ui-asc__wsm-item" key={label} onClick={() => menuAction(label)}>
+      <WsGlyph name={icon} />
+      <span className="ui-asc__wsm-label" title={label}>
+        {labels.action(label)}
+      </span>
+    </button>
+  );
+  const wsSub = (label: string, icon: keyof typeof wsGlyphs, items: ReactNode) => (
+    <span className="ui-asc__wsm-sub" data-open={wsOpen === label || undefined}>
+      <button
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={wsOpen === label}
+        className="ui-asc__wsm-item"
+        onClick={() => setWsOpen(wsOpen === label ? null : label)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowRight") {
+            event.preventDefault();
+            const panel = event.currentTarget.nextElementSibling;
+            setWsOpen(label);
+            requestAnimationFrame(() => panel?.querySelector<HTMLElement>("button")?.focus());
+          }
+        }}
+      >
+        <WsGlyph name={icon} />
+        <span className="ui-asc__wsm-label" title={label}>
+          {labels.action(label)}
+        </span>
+        <WsGlyph name="next" size={14} />
+      </button>
+      <span
+        className="ui-asc__wsm-panel"
+        role="menu"
+        aria-label={label}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            event.stopPropagation();
+            setWsOpen(null);
+            (event.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
+          }
+        }}
+      >
+        {items}
+      </span>
+    </span>
+  );
   const commandGroups: CommandMenuGroup[] =
     commandGroupsProp ??
     (navigation
@@ -1683,7 +2141,7 @@ export function AppShell({
           key={menu}
           anchor={anchor}
           root={root}
-          className="ui-asc__menu"
+          className={menu === "workspace" ? "ui-asc__menu ui-asc__ws-menu" : "ui-asc__menu"}
           id={`${id}-menu`}
           label={
             menu === "chat"
@@ -1694,31 +2152,59 @@ export function AppShell({
                   ? workspace
                   : labels.account
           }
-          side={menu === "account" || menu === "workspace" ? "right" : "bottom"}
+          side={menu === "account" || (menu === "workspace" && !navigation) ? "right" : "bottom"}
           onClose={() => setMenu(null)}
         >
           {menu === "workspace" && (
             <>
-              {[
-                "Invite people",
-                "Workspace settings",
-                "Analytics",
-                "Billing",
-                "Usage & limits",
-                "Members",
+              {wsItem("Invite people", "invite")}
+              <span className="ui-asc__wsm-sep" role="separator" />
+              {wsItem("Workspace settings", "settings")}
+              {wsItem("Analytics", "analytics")}
+              {wsItem("Billing", "billing")}
+              {wsItem("Usage & limits", "usage")}
+              {wsItem("Members", "members")}
+              <span className="ui-asc__wsm-sep" role="separator" />
+              {wsSub(
                 "Learn more",
+                "info",
+                <>
+                  {wsItem("Documentation", "docs")}
+                  {wsItem("Changelog", "changelog")}
+                  {wsItem("Help & feedback", "help")}
+                </>,
+              )}
+              <span className="ui-asc__wsm-sep" role="separator" />
+              {wsSub(
                 "Switch workspace",
-              ].map((label, index) => (
-                <button
-                  type="button"
-                  role="menuitem"
-                  key={label}
-                  data-divider={index === 1 || index === 6 || index === 7 || undefined}
-                  onClick={() => menuAction(label)}
-                >
-                  {labels.action(label)}
-                </button>
-              ))}
+                "switch",
+                <>
+                  {[
+                    [workspace, "Pro · 8 members"],
+                    ["Personal", "Free"],
+                  ]
+                    .filter((entry, index, all) => all.findIndex((other) => other[0] === entry[0]) === index)
+                    .map(([name, plan]) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={name === workspace}
+                        className="ui-asc__wsm-item"
+                        data-rich=""
+                        key={name}
+                        onClick={() => menuAction(`Switch workspace: ${name}`)}
+                      >
+                        <span className="ui-asc__wsm-label" title={name}>
+                          <span>{name}</span>
+                          <small>{plan}</small>
+                        </span>
+                        {name === workspace && <WsGlyph name="check" size={14} />}
+                      </button>
+                    ))}
+                  <span className="ui-asc__wsm-sep" role="separator" />
+                  {wsItem("Create workspace", "plus")}
+                </>,
+              )}
             </>
           )}
           {menu === "projects" && (
@@ -1900,18 +2386,15 @@ export function AppShell({
         </FloatingMenu>
       )}
       {searchOpen && (
-        <CommandMenu
+        <ShellSearch
           groups={commandGroups}
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
+          placeholder="Type a command or search…"
+          onAsk={onAsk}
+          onClose={() => setSearchOpen(false)}
           onRun={(command) => {
-            if (
-              !commandGroups.some((group) => group.commands.some((item) => item.id === command && item.onSelect)) &&
-              !command.startsWith("chat:") &&
-              !command.startsWith("project:") &&
-              command !== "new-chat"
-            )
-              onNavigate?.(command);
+            setSearchOpen(false);
+            if (command.onSelect) command.onSelect();
+            else if (command.id !== "new-chat") onNavigate?.(command.id);
           }}
         />
       )}
@@ -8983,6 +9466,438 @@ const css = /* css */ `
   --ui-asc-accent: #4d8dff;
   --ui-asc-focus: rgba(77, 141, 255, 0.5);
   --ui-asc-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+}
+.ui-asc__menu.ui-asc__ws-menu {
+  --ui-asc-wsm-hover: rgba(0, 0, 0, 0.03);
+  --ui-asc-wsm-ring: rgba(0, 0, 0, 0.1);
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  width: 240px;
+  padding: 4px;
+  overflow: visible;
+  box-shadow:
+    0 0 0 0.5px var(--ui-asc-wsm-ring),
+    0 12px 32px -8px rgba(0, 0, 0, 0.16);
+  transform-origin: top left;
+  animation: ui-asc-wsm-pop 220ms var(--ui-asc-ease);
+}
+.ui-asc__menu .ui-asc__wsm-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4286;
+  color: var(--ui-asc-text);
+  text-align: left;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.ui-asc__menu .ui-asc__wsm-item[data-rich] {
+  min-height: 44px;
+  padding: 6px 10px;
+}
+.ui-asc__wsm-item > svg {
+  flex: none;
+  color: var(--ui-asc-muted);
+}
+.ui-asc__wsm-item > svg:last-child:not(:first-child) {
+  margin-left: auto;
+  color: var(--ui-asc-ink);
+}
+.ui-asc__wsm-sub .ui-asc__wsm-item > svg:last-child:not(:first-child) {
+  color: var(--ui-asc-faint);
+}
+.ui-asc__menu .ui-asc__wsm-label {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+}
+.ui-asc__menu .ui-asc__wsm-item[data-rich] .ui-asc__wsm-label {
+  display: grid;
+  gap: 1px;
+}
+.ui-asc__wsm-label > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-asc__wsm-label small {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-asc-faint);
+}
+.ui-asc__menu .ui-asc__wsm-item:hover,
+.ui-asc__menu .ui-asc__wsm-item:focus-visible,
+.ui-asc__menu .ui-asc__wsm-sub:is(:hover, :focus-within, [data-open]) > .ui-asc__wsm-item {
+  background: var(--ui-asc-wsm-hover);
+  color: var(--ui-asc-ink);
+}
+.ui-asc__wsm-item[aria-checked="true"] {
+  color: var(--ui-asc-ink);
+  font-weight: 500;
+}
+.ui-asc__wsm-item[aria-checked="true"] small {
+  font-weight: 400;
+}
+.ui-asc__wsm-sep {
+  display: block;
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--ui-asc-line);
+}
+.ui-asc__wsm-sub {
+  position: relative;
+  display: block;
+}
+.ui-asc__wsm-panel {
+  position: absolute;
+  z-index: 1;
+  top: -4px;
+  left: calc(100% + 4px);
+  display: none;
+  gap: 1px;
+  width: 240px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--ui-asc-card);
+  box-shadow:
+    0 0 0 0.5px var(--ui-asc-wsm-ring),
+    0 12px 32px -8px rgba(0, 0, 0, 0.16);
+  animation: ui-asc-fade 120ms ease;
+}
+.ui-asc__wsm-panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  width: 8px;
+}
+.ui-asc__wsm-sub:is(:hover, :focus-within, [data-open]) > .ui-asc__wsm-panel {
+  display: grid;
+}
+@keyframes ui-asc-wsm-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+@container ui-asc (max-width:899.99px) {
+  .ui-asc__wsm-panel {
+    position: static;
+    width: auto;
+    margin: 2px 0 4px;
+    padding: 0 0 0 14px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    animation: none;
+  }
+  .ui-asc__wsm-panel::before {
+    display: none;
+  }
+  .ui-asc__wsm-sub:hover:not(:focus-within, [data-open]) > .ui-asc__wsm-panel {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .ui-asc__menu .ui-asc__wsm-item {
+    min-height: 40px;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-asc__menu.ui-asc__ws-menu {
+  --ui-asc-wsm-hover: rgba(255, 255, 255, 0.05);
+  --ui-asc-wsm-ring: rgba(255, 255, 255, 0.14);
+}
+.ui-asc__cmd {
+  --ui-asc-cmd-strong: #000;
+  --ui-asc-cmd-icon: rgba(0, 0, 0, 0.447);
+  --ui-asc-cmd-ring: rgba(0, 0, 0, 0.1);
+  --ui-asc-cmd-active: rgba(0, 0, 0, 0.06);
+  --ui-asc-cmd-tile: #fff;
+  --ui-asc-cmd-mark: rgba(0, 96, 226, 0.12);
+  --ui-asc-cmd-caret: rgba(0, 96, 226, 0.765);
+  --ui-asc-cmd-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 12px 28px -10px rgba(0, 0, 0, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: min(12vh, 96px) 16px 16px;
+  background: rgba(0, 0, 0, 0.12);
+  animation: ui-asc-fade 200ms ease both;
+}
+.ui-asc__cmd-card {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 600px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--ui-asc-card);
+  box-shadow: var(--ui-asc-cmd-shadow);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ui-asc-ink);
+  animation: ui-asc-cmd-in 260ms var(--ui-asc-ease) both;
+}
+@keyframes ui-asc-cmd-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.ui-asc__cmd-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 12px 0 14px;
+  border-bottom: 0.5px solid var(--ui-asc-line);
+  cursor: text;
+}
+.ui-asc__cmd-search > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ui-asc-cmd-icon);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.ui-asc .ui-asc__cmd-search input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ui-asc-ink);
+  caret-color: var(--ui-asc-cmd-caret);
+  outline: none;
+}
+.ui-asc__cmd-search input::placeholder {
+  color: var(--ui-asc-faint);
+}
+.ui-asc__cmd kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 0.5px var(--ui-asc-cmd-ring);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--ui-asc-muted);
+  transition: color 140ms ease;
+}
+.ui-asc__cmd .ui-asc__cmd-enter {
+  padding: 0 4px;
+  color: var(--ui-asc-cmd-icon);
+}
+.ui-asc__cmd-enter svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ui-asc__cmd-list {
+  position: relative;
+  max-height: 360px;
+  padding: 0 4px 4px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  transition: height 320ms var(--ui-asc-ease);
+}
+.ui-asc__cmd-group {
+  display: flex;
+  flex-direction: column;
+}
+.ui-asc__cmd-group:first-child:not(:has(.ui-asc__cmd-label)) {
+  padding-top: 4px;
+}
+.ui-asc__cmd-label {
+  padding: 10px 8px 4px;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--ui-asc-muted);
+}
+.ui-asc__cmd-pill {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  right: 4px;
+  border-radius: 6px;
+  background: var(--ui-asc-cmd-active);
+  opacity: 0;
+  transition:
+    transform 90ms ease-out,
+    height 90ms ease-out,
+    opacity 140ms ease;
+}
+.ui-asc__cmd-pill[data-lit] {
+  opacity: 1;
+}
+.ui-asc .ui-asc__cmd-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 6px;
+  text-align: start;
+}
+.ui-asc .ui-asc__cmd-item:active:not(:disabled) {
+  transform: none;
+}
+.ui-asc .ui-asc__cmd-item:focus-visible {
+  outline: none;
+}
+.ui-asc__cmd-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--ui-asc-cmd-tile);
+  box-shadow:
+    0 0 0 0.5px var(--ui-asc-cmd-ring),
+    0 1px 1px -1px rgba(0, 0, 0, 0.1);
+  color: var(--ui-asc-cmd-strong);
+}
+.ui-asc__cmd-logo svg {
+  width: 12px;
+  height: 12px;
+}
+.ui-asc__cmd-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  color: var(--ui-asc-cmd-icon);
+  transition: color 140ms ease;
+}
+.ui-asc__cmd-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.ui-asc__cmd-item[aria-selected="true"] .ui-asc__cmd-icon {
+  color: var(--ui-asc-ink);
+}
+.ui-asc__cmd-text {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.ui-asc__cmd-name,
+.ui-asc__cmd-hint {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ui-asc__cmd-name {
+  color: var(--ui-asc-ink);
+}
+.ui-asc__cmd-hint {
+  color: var(--ui-asc-muted);
+}
+.ui-asc__cmd mark {
+  border-radius: 3px;
+  background: var(--ui-asc-cmd-mark);
+  color: inherit;
+}
+.ui-asc__cmd-keys {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+.ui-asc__cmd-item[aria-selected="true"] kbd {
+  color: var(--ui-asc-text);
+}
+.ui-asc__cmd-empty {
+  margin: 0;
+  padding: 12px 8px;
+  color: var(--ui-asc-muted);
+}
+.ui-asc__cmd-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-top: 0.5px solid var(--ui-asc-line);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-asc-muted);
+}
+.ui-asc__cmd-foot > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+@container (max-width:480px) {
+  .ui-asc__cmd-item .ui-asc__cmd-keys,
+  .ui-asc__cmd-foot,
+  .ui-asc__cmd .ui-asc__cmd-enter,
+  .ui-asc__cmd-hint {
+    display: none;
+  }
+  .ui-asc .ui-asc__cmd-item {
+    height: 40px;
+  }
+}
+@media (hover: none) and (pointer: coarse) {
+  .ui-asc .ui-asc__cmd-item {
+    height: 44px;
+  }
+  .ui-asc__cmd-search {
+    height: 52px;
+  }
+}
+:where(.dark, [data-theme="dark"]) .ui-asc__cmd {
+  background: rgba(0, 0, 0, 0.45);
+  --ui-asc-cmd-strong: #fff;
+  --ui-asc-cmd-icon: rgba(255, 255, 255, 0.5);
+  --ui-asc-cmd-ring: rgba(255, 255, 255, 0.12);
+  --ui-asc-cmd-active: rgba(255, 255, 255, 0.08);
+  --ui-asc-cmd-tile: #2a2a2d;
+  --ui-asc-cmd-mark: rgba(77, 141, 255, 0.24);
+  --ui-asc-cmd-caret: #4d8dff;
+  --ui-asc-cmd-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.4);
 }
 
 .ui-afdc {

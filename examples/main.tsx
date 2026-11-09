@@ -38,6 +38,26 @@ const ClassicInboxScreen = lazy(() =>
     default: module.InboxScreen,
   })),
 );
+const CleanOverviewScreen = lazy(() =>
+  import("../screens/assistant-overview-clean").then((module) => ({
+    default: module.AssistantOverviewScreen,
+  })),
+);
+const ClassicOverviewScreen = lazy(() =>
+  import("../screens/assistant-overview").then((module) => ({
+    default: module.AssistantOverviewScreen,
+  })),
+);
+const CleanOverviewCards = lazy(() =>
+  import("../components/overview-cards-clean").then((module) => ({
+    default: module.OverviewCards,
+  })),
+);
+const ClassicOverviewCards = lazy(() =>
+  import("../components/overview-cards").then((module) => ({
+    default: module.OverviewCards,
+  })),
+);
 const CleanScreen = lazy(() =>
   import("../screens/agent-chat-rail-clean").then((module) => ({
     default: module.AgentChatRailScreen,
@@ -143,6 +163,39 @@ function Preview() {
         Screen={clean ? CleanInboxScreen : ClassicInboxScreen}
       />
     );
+  if (query.get("screen") === "assistant-overview") {
+    const OverviewScreen = clean ? CleanOverviewScreen : ClassicOverviewScreen;
+    return (
+      <div data-theme={theme} style={{ height: "100%" }}>
+        <OverviewScreen
+          defaultTheme={theme}
+          layout={query.get("layout") === "flat" ? "flat" : "inset"}
+          onNavigate={(label) => {
+            setNotice(label);
+            window.setTimeout(() => setNotice(""), 1800);
+          }}
+          onSend={(text) => setNotice(`Sent: ${text}`)}
+        />
+        {notice && (
+          <output
+            aria-label="Navigation"
+            style={{
+              position: "fixed",
+              top: 16,
+              left: "50%",
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "#232326",
+              color: "white",
+              font: "12px system-ui",
+            }}
+          >
+            {notice}
+          </output>
+        )}
+      </div>
+    );
+  }
   if (query.get("screen") === "agent-tasks")
     return (
       <TaskDemos
@@ -311,6 +364,12 @@ function Preview() {
       <Thread />
     ) : component === "artifact-workspace" ? (
       <Workspace />
+    ) : component === "overview-cards" ? (
+      clean ? (
+        <CleanOverviewCards onNavigate={setNotice} />
+      ) : (
+        <ClassicOverviewCards onNavigate={setNotice} />
+      )
     ) : component === "command-menu" ? (
       <Commands inline onRun={setNotice} />
     ) : component === "tool-activity" ? (
