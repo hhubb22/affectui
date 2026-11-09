@@ -5483,6 +5483,8 @@ export type AgentThreadProps = {
   /** A stop intent is pending; do not infer that tools have stopped. */
   stopping?: boolean;
   renderMessageContent?: (message: AgentMessage, defaultContent: ReactNode) => ReactNode;
+  /** Replaces the message list and its scrolling/log semantics; undefined keeps the built-in timeline. */
+  timeline?: ReactNode;
   labels?: Partial<AgentThreadLabels>;
   formatTime?: (timestamp: number) => string;
   messages?: AgentMessage[];
@@ -5563,6 +5565,7 @@ export function AgentThread({
   managed = false,
   stopping = false,
   renderMessageContent,
+  timeline,
   labels: labelsProp,
   formatTime = defaultThreadFormatTime,
   messages: messagesProp,
@@ -5764,12 +5767,13 @@ export function AgentThread({
     controllers.current.clear();
     setVoicePreview(false);
   }, [managed]);
+  const builtInTimeline = timeline === undefined;
   useLayoutEffect(() => {
     const el = scroll.current;
     if (!el) return;
     if (follow.current) el.scrollTop = el.scrollHeight;
     else setNewCount((count) => count + 1);
-  }, [messages]);
+  }, [messages, builtInTimeline]);
   useEffect(() => {
     const el = scroll.current,
       content = column.current;
@@ -5780,7 +5784,7 @@ export function AgentThread({
     observer.observe(content);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [builtInTimeline]);
   const latest = () => {
     follow.current = true;
     setAway(false);
@@ -6285,7 +6289,7 @@ export function AgentThread({
     return () => {
       disposed = true;
     };
-  }, [lastSeen]);
+  }, [lastSeen, builtInTimeline]);
   useEffect(() => {
     if (managed) return;
     let hiddenAt = 0;
@@ -6296,13 +6300,13 @@ export function AgentThread({
     document.addEventListener("visibilitychange", visibility);
     return () => document.removeEventListener("visibilitychange", visibility);
   }, [managed, awayAfter]);
-  const shortcutActions = useRef({ latest, streaming, stop, voicePreview });
-  shortcutActions.current = { latest, streaming, stop, voicePreview };
+  const shortcutActions = useRef({ latest, streaming, stop, voicePreview, builtInTimeline });
+  shortcutActions.current = { latest, streaming, stop, voicePreview, builtInTimeline };
   useEffect(() => {
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || isEditing(event.target)) return;
       if (document.activeElement !== document.body && !root.current?.contains(document.activeElement)) return;
-      if (event.key === "End") {
+      if (event.key === "End" && shortcutActions.current.builtInTimeline) {
         event.preventDefault();
         shortcutActions.current.latest();
       }
@@ -6610,225 +6614,247 @@ export function AgentThread({
         onReconnect={connectionState.reconnect}
       />
       <div className="ui-thc__body">
-        <div
-          ref={scroll}
-          className="ui-thc__scroll"
-          onScroll={() => {
-            const el = scroll.current;
-            if (!el) return;
-            const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40;
-            follow.current = pinned;
-            setAway(!pinned);
-            if (pinned) setNewCount(0);
-          }}
-        >
-          <div
-            ref={column}
-            className="ui-thc__column"
-            role="log"
-            aria-label={labels.conversation}
-            aria-live="polite"
-            aria-relevant="additions"
-            aria-busy={streaming}
-          >
-            {!list.length && (
-              <div className="ui-thc__empty">
-                <span className="ui-thc__empty-icon">
-                  <Icon name="spark" size={26} />
-                </span>
-                <h2>{labels.emptyTitle}</h2>
-                <p>{labels.emptyDescription}</p>
-              </div>
-            )}
-            {list.map((message, messageIndex) => (
-              <div className="ui-thc__message" data-message-id={message.id} key={message.id}>
-                {messageIndex === boundaryIndex && (
-                  <div ref={unreadBoundary} className="ui-thc__unread-boundary">
-                    <AwaySummary
-                      labels={labels.away}
-                      formatTime={formatTime}
-                      tasks={[...completedTasks.values()]}
-                      decisions={awayDecisions}
-                      since={lastSeen}
-                      onOpenTask={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
-                      onOpenDecision={showDecision}
-                      onOpenTasks={() => onNavigate?.("Tasks")}
-                      onOpenInbox={() => openInbox()}
-                      onMarkRead={read}
-                    />
+        {!builtInTimeline ? (
+          timeline
+        ) : (
+          <>
+            <div
+              ref={scroll}
+              className="ui-thc__scroll"
+              onScroll={() => {
+                const el = scroll.current;
+                if (!el) return;
+                const pinned = el.scrollHeight - el.clientHeight - el.scrollTop < 40;
+                follow.current = pinned;
+                setAway(!pinned);
+                if (pinned) setNewCount(0);
+              }}
+            >
+              <div
+                ref={column}
+                className="ui-thc__column"
+                role="log"
+                aria-label={labels.conversation}
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-busy={streaming}
+              >
+                {!list.length && (
+                  <div className="ui-thc__empty">
+                    <span className="ui-thc__empty-icon">
+                      <Icon name="spark" size={26} />
+                    </span>
+                    <h2>{labels.emptyTitle}</h2>
+                    <p>{labels.emptyDescription}</p>
                   </div>
                 )}
-                {message.role === "user" ? (
-                  <div className="ui-thc__user" data-status={message.status ?? "sent"} data-answer={message.answer?.id}>
-                    <span className="ui-thc__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>
-                    {message.answer && (
-                      <span className="ui-thc__answer-context" title={message.answer.question}>
-                        {labels.answerContext(message.answer.question)}
-                      </span>
+                {list.map((message, messageIndex) => (
+                  <div className="ui-thc__message" data-message-id={message.id} key={message.id}>
+                    {messageIndex === boundaryIndex && (
+                      <div ref={unreadBoundary} className="ui-thc__unread-boundary">
+                        <AwaySummary
+                          labels={labels.away}
+                          formatTime={formatTime}
+                          tasks={[...completedTasks.values()]}
+                          decisions={awayDecisions}
+                          since={lastSeen}
+                          onOpenTask={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                          onOpenDecision={showDecision}
+                          onOpenTasks={() => onNavigate?.("Tasks")}
+                          onOpenInbox={() => openInbox()}
+                          onMarkRead={read}
+                        />
+                      </div>
                     )}
-                    {content(
-                      message,
-                      <>
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="ui-thc__attachments">
-                            {message.attachments.map((file, index) => (
-                              <span key={`${file.name}-${index}`}>
-                                <Icon name="document" size={14} />
-                                {file.name}
-                              </span>
-                            ))}
-                          </div>
+                    {message.role === "user" ? (
+                      <div
+                        className="ui-thc__user"
+                        data-status={message.status ?? "sent"}
+                        data-answer={message.answer?.id}
+                      >
+                        <span className="ui-thc__sr">{message.answer ? labels.youAnswered : labels.youSaid}</span>
+                        {message.answer && (
+                          <span className="ui-thc__answer-context" title={message.answer.question}>
+                            {labels.answerContext(message.answer.question)}
+                          </span>
                         )}
-                        {message.text && (
-                          <p className="ui-thc__bubble" dir="auto">
-                            {message.text}
-                          </p>
-                        )}
-                      </>,
-                    )}
-                    {message.status && message.status !== "sent" && (
-                      <span className="ui-thc__send-status">
-                        {message.status === "failed" ? (
+                        {content(
+                          message,
                           <>
-                            <Icon name="warning" size={12} />
-                            {labels.sendFailed} ·{" "}
-                            <button type="button" onClick={() => retry(message.id)}>
-                              {labels.retry}
-                            </button>
-                          </>
-                        ) : message.status === "queued" ? (
-                          labels.queued
-                        ) : (
-                          labels.sending
+                            {message.attachments && message.attachments.length > 0 && (
+                              <div className="ui-thc__attachments">
+                                {message.attachments.map((file, index) => (
+                                  <span key={`${file.name}-${index}`}>
+                                    <Icon name="document" size={14} />
+                                    {file.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {message.text && (
+                              <p className="ui-thc__bubble" dir="auto">
+                                {message.text}
+                              </p>
+                            )}
+                          </>,
                         )}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="ui-thc__assistant" data-streaming={message.streaming || undefined}>
-                    {messageIndex === 0 || list[messageIndex - 1].role === "user" || messageIndex === boundaryIndex ? (
-                      <div className="ui-thc__who">
-                        <span className="ui-thc__avatar" data-busy={message.streaming || undefined} aria-hidden="true">
-                          {[0, 2, 4, 6, 8].map((pixel, index) => (
-                            <i
-                              key={pixel}
-                              style={{
-                                gridArea: `${Math.floor(pixel / 3) + 1}/${(pixel % 3) + 1}`,
-                                animationDelay: `${index * 130}ms`,
-                              }}
-                            />
-                          ))}
-                        </span>
-                        <span>{assistantName}</span>
-                        {message.at != null && Number.isFinite(message.at) && (
-                          <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>
+                        {message.status && message.status !== "sent" && (
+                          <span className="ui-thc__send-status">
+                            {message.status === "failed" ? (
+                              <>
+                                <Icon name="warning" size={12} />
+                                {labels.sendFailed} ·{" "}
+                                <button type="button" onClick={() => retry(message.id)}>
+                                  {labels.retry}
+                                </button>
+                              </>
+                            ) : message.status === "queued" ? (
+                              labels.queued
+                            ) : (
+                              labels.sending
+                            )}
+                          </span>
                         )}
                       </div>
                     ) : (
-                      <span className="ui-thc__sr">{assistantName}:</span>
-                    )}
-                    {content(
-                      message,
-                      <>
-                        {message.tools && message.tools.length > 0 && (
-                          <ToolActivity
-                            labels={labels.tools}
-                            tools={message.tools}
-                            onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
-                          />
+                      <div className="ui-thc__assistant" data-streaming={message.streaming || undefined}>
+                        {messageIndex === 0 ||
+                        list[messageIndex - 1].role === "user" ||
+                        messageIndex === boundaryIndex ? (
+                          <div className="ui-thc__who">
+                            <span
+                              className="ui-thc__avatar"
+                              data-busy={message.streaming || undefined}
+                              aria-hidden="true"
+                            >
+                              {[0, 2, 4, 6, 8].map((pixel, index) => (
+                                <i
+                                  key={pixel}
+                                  style={{
+                                    gridArea: `${Math.floor(pixel / 3) + 1}/${(pixel % 3) + 1}`,
+                                    animationDelay: `${index * 130}ms`,
+                                  }}
+                                />
+                              ))}
+                            </span>
+                            <span>{assistantName}</span>
+                            {message.at != null && Number.isFinite(message.at) && (
+                              <time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="ui-thc__sr">{assistantName}:</span>
                         )}
-                        {message.parts
-                          ?.slice(0, 1)
-                          .map(
-                            (part) =>
-                              part.kind === "tools" && (
-                                <ToolActivity
-                                  labels={labels.tools}
-                                  key={part.id}
-                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                                />
-                              ),
-                          )}
-                        {message.text && textPart(message.text, !!message.streaming)}
-                        {message.parts?.map((part, index) =>
-                          index === 0 && part.kind === "tools" ? null : (
-                            <div className="ui-thc__part" key={`${part.kind}-${index}`}>
-                              {part.kind === "tools" ? (
-                                <ToolActivity
-                                  labels={labels.tools}
-                                  tools={part.tools.map((tool) => ({ ...tool, duration: tool.duration ?? tool.ms }))}
-                                />
-                              ) : part.kind === "text" ? (
-                                textPart(
-                                  part.text,
-                                  !!message.streaming && index === message.parts!.length - 1 && !message.text,
-                                )
-                              ) : part.kind === "task" ? (
-                                <ThreadTaskCard
-                                  labels={labels.task}
-                                  task={part.task}
-                                  onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
-                                />
-                              ) : part.kind === "artifacts" ? (
-                                fileChips(part.names)
-                              ) : part.kind === "decision" ? (
-                                <button
-                                  type="button"
-                                  className="ui-thc__asked"
-                                  onClick={() => showDecision(part.ask.id)}
-                                >
-                                  <i data-answered={!!answers[part.ask.id] || undefined} />
-                                  <span>{labels.asked(part.ask.question)}</span>
-                                  <small>
-                                    ·{" "}
-                                    {answers[part.ask.id]
-                                      ? labels.answeredBelow
-                                      : decisions.some((decision) => decision.id === part.ask.id)
-                                        ? labels.waiting
-                                        : labels.inInbox}
-                                  </small>
-                                </button>
-                              ) : (
-                                <div className="ui-thc__error" role="status">
-                                  <Icon name="warning" size={14} />
-                                  <span dir="auto">{part.text}</span>
-                                  {part.retry && (
-                                    <button type="button" onClick={() => retry(message.id)}>
-                                      {labels.retry}
+                        {content(
+                          message,
+                          <>
+                            {message.tools && message.tools.length > 0 && (
+                              <ToolActivity
+                                labels={labels.tools}
+                                tools={message.tools}
+                                onRetry={mode === "chat" && onRetry ? () => retry(message.id) : undefined}
+                              />
+                            )}
+                            {message.parts
+                              ?.slice(0, 1)
+                              .map(
+                                (part) =>
+                                  part.kind === "tools" && (
+                                    <ToolActivity
+                                      labels={labels.tools}
+                                      key={part.id}
+                                      tools={part.tools.map((tool) => ({
+                                        ...tool,
+                                        duration: tool.duration ?? tool.ms,
+                                      }))}
+                                    />
+                                  ),
+                              )}
+                            {message.text && textPart(message.text, !!message.streaming)}
+                            {message.parts?.map((part, index) =>
+                              index === 0 && part.kind === "tools" ? null : (
+                                <div className="ui-thc__part" key={`${part.kind}-${index}`}>
+                                  {part.kind === "tools" ? (
+                                    <ToolActivity
+                                      labels={labels.tools}
+                                      tools={part.tools.map((tool) => ({
+                                        ...tool,
+                                        duration: tool.duration ?? tool.ms,
+                                      }))}
+                                    />
+                                  ) : part.kind === "text" ? (
+                                    textPart(
+                                      part.text,
+                                      !!message.streaming && index === message.parts!.length - 1 && !message.text,
+                                    )
+                                  ) : part.kind === "task" ? (
+                                    <ThreadTaskCard
+                                      labels={labels.task}
+                                      task={part.task}
+                                      onOpen={(id) => (onOpenTask ? onOpenTask(id) : onNavigate?.("Tasks"))}
+                                    />
+                                  ) : part.kind === "artifacts" ? (
+                                    fileChips(part.names)
+                                  ) : part.kind === "decision" ? (
+                                    <button
+                                      type="button"
+                                      className="ui-thc__asked"
+                                      onClick={() => showDecision(part.ask.id)}
+                                    >
+                                      <i data-answered={!!answers[part.ask.id] || undefined} />
+                                      <span>{labels.asked(part.ask.question)}</span>
+                                      <small>
+                                        ·{" "}
+                                        {answers[part.ask.id]
+                                          ? labels.answeredBelow
+                                          : decisions.some((decision) => decision.id === part.ask.id)
+                                            ? labels.waiting
+                                            : labels.inInbox}
+                                      </small>
                                     </button>
+                                  ) : (
+                                    <div className="ui-thc__error" role="status">
+                                      <Icon name="warning" size={14} />
+                                      <span dir="auto">{part.text}</span>
+                                      {part.retry && (
+                                        <button type="button" onClick={() => retry(message.id)}>
+                                          {labels.retry}
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          ),
+                              ),
+                            )}
+                            {message.files && fileChips(message.files)}
+                          </>,
                         )}
-                        {message.files && fileChips(message.files)}
-                      </>,
-                    )}
-                    {message.stopped && (
-                      <span className="ui-thc__stopped">
-                        <Icon name="stop" size={11} />
-                        {labels.stopped}
-                      </span>
+                        {message.stopped && (
+                          <span className="ui-thc__stopped">
+                            <Icon name="stop" size={11} />
+                            {labels.stopped}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-        {away && boundaryIndex < 0 && (
-          <button
-            type="button"
-            className="ui-thc__jump"
-            aria-label={labels.jumpToLatest(newCount, streaming)}
-            aria-keyshortcuts="End"
-            onClick={latest}
-          >
-            <Icon name="arrow" size={14} />
-            {newCount ? labels.newLines(newCount) : labels.latest}
-            {streaming && <span className="ui-thc__jump-live" />}
-          </button>
+            </div>
+            {away && boundaryIndex < 0 && (
+              <button
+                type="button"
+                className="ui-thc__jump"
+                aria-label={labels.jumpToLatest(newCount, streaming)}
+                aria-keyshortcuts="End"
+                onClick={latest}
+              >
+                <Icon name="arrow" size={14} />
+                {newCount ? labels.newLines(newCount) : labels.latest}
+                {streaming && <span className="ui-thc__jump-live" />}
+              </button>
+            )}
+          </>
         )}
       </div>
       <footer className="ui-thc__foot">
@@ -7429,6 +7455,7 @@ export function AgentThreadScreen({
   managed = false,
   stopping,
   renderMessageContent,
+  timeline,
   threadLabels,
   formatTime,
   messages: messagesProp,
@@ -7687,6 +7714,7 @@ export function AgentThreadScreen({
         managed={managed}
         stopping={stopping}
         renderMessageContent={renderMessageContent}
+        timeline={timeline}
         labels={threadLabels}
         formatTime={formatTime}
         decisionRequest={focusRequest}
