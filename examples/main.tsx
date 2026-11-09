@@ -58,6 +58,27 @@ const ClassicFilesScreen = lazy(() =>
     default: module.FilesScreen,
   })),
 );
+const CleanIntegrationsScreen = lazy(() =>
+  import("../screens/integrations-clean").then((module) => ({
+    default: module.IntegrationsScreen,
+  })),
+);
+const ClassicIntegrationsScreen = lazy(() =>
+  import("../screens/integrations").then((module) => ({
+    default: module.IntegrationsScreen,
+  })),
+);
+const CleanAppDirectory = lazy(() =>
+  import("../components/app-directory-clean").then((module) => ({
+    default: module.AppDirectory,
+  })),
+);
+const ClassicAppDirectory = lazy(() =>
+  import("../components/app-directory").then((module) => ({
+    default: module.AppDirectory,
+  })),
+);
+const IntegrationDemos = lazy(() => import("./integration-demos"));
 const CleanFilesBrowser = lazy(() =>
   import("../components/files-browser-clean").then((module) => ({
     default: module.FilesBrowser,
@@ -189,6 +210,59 @@ function Preview() {
     presets.find((item) => item.id === query.get("state"))?.id ?? "live",
   );
   const ThreadScreen = clean ? CleanThreadScreen : ClassicThreadScreen;
+  if (
+    query.get("screen") === "integrations" ||
+    component === "app-directory" ||
+    component === "integration-card" ||
+    component === "integration-request" ||
+    component === "controlled-integrations"
+  ) {
+    const Screen = clean ? CleanIntegrationsScreen : ClassicIntegrationsScreen;
+    const Directory = clean ? CleanAppDirectory : ClassicAppDirectory;
+    return (
+      <div
+        data-theme={theme}
+        style={{
+          height: "100%",
+          overflow: "auto",
+          background:
+            theme === "dark" ? (clean ? "#1c1c1e" : "#232326") : "white",
+          containerType: "inline-size",
+          containerName: clean ? "ui-asc" : "ui-as",
+        }}
+      >
+        {component === "app-directory" ? (
+          <Directory />
+        ) : component ? (
+          <IntegrationDemos name={component} clean={clean} />
+        ) : (
+          <Screen
+            defaultTheme={theme}
+            layout={query.get("layout") === "flat" ? "flat" : "inset"}
+            onNavigate={setNotice}
+          />
+        )}
+        {notice && (
+          <output
+            aria-label="Navigation"
+            style={{
+              position: "fixed",
+              zIndex: 80,
+              top: 16,
+              left: "50%",
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "#232326",
+              color: "white",
+              font: "12px system-ui",
+            }}
+          >
+            {notice}
+          </output>
+        )}
+      </div>
+    );
+  }
   if (query.get("screen") === "agent-chat" || component === "campaign-brief") {
     const AgentChat = clean ? CleanAgentChat : ClassicAgentChat;
     const CampaignBrief = clean ? CleanCampaignBrief : ClassicCampaignBrief;

@@ -190,6 +190,7 @@ Agent components, recorded live from [affectui.com](https://www.affectui.com). I
 - [Local Agent / Tasks screen](./screens/agent-tasks.md) — Project groups, keyboard task navigation, inline creation, task inspection and editable artifact tabs, with Classic and Clean components.
 - [Local Agent / Inbox screen](./screens/inbox.md) — Decision queue, visual picks, approvals, free answers, sent feedback and task/artifact context, with Classic and Clean components.
 - [Local AI Chat / Overview screen](./screens/assistant-overview.md) — Start page with composer, activity grid, recent chats, usage, files made and monthly trends, with Classic and Clean components.
+- [Local Integrations screen](./screens/integrations.md) — Searchable app directory, connection states, category expansion and Request form, recorded with anim-recorder and available as standalone Classic/Clean components.
 - [Why affectUI](#why-affectui)
 - [Choose the UI for your workflow](#choose-the-ui-for-your-workflow)
 - [Install](#install)

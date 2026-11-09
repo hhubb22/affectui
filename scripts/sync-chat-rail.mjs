@@ -19,6 +19,9 @@ const dependencies = {
 Object.assign(dependencies, { "inbox-options": [], "inbox-feedback": [], "inbox-list": [], "inbox-item-view": ["inbox-options","inbox-feedback"], "inbox-task-context": [], "inbox": ["app-shell","artifact-workspace","workspace-start","inbox-list","inbox-item-view","inbox-task-context"] , "overview-cards": [], "assistant-overview": ["app-shell","artifact-workspace","workspace-start","chat-composer","overview-cards"] });
 Object.assign(dependencies, { "files-browser": [], "files": ["app-shell", "files-browser", "workspace-sidebar"], "workspace-sidebar": [], "campaign-brief": [], "agent-chat": ["app-shell", "workspace-sidebar", "chat-composer", "artifact-workspace", "workspace-start", "campaign-brief"] });
 const prefixes = ["ui-ta", "ui-cm", "ui-cc", "ui-aw", "ui-as", "ui-th", "ui-acr", "ui-tk", "ui-dd", "ui-cn", "ui-ay", "ui-up", "ui-td", "ui-tsr", "ui-tpr", "ui-tcr", "ui-tls", "ui-tin", "ui-afd", "ui-aiv", "ui-wst", "ui-ats", "ui-ibo", "ui-ibf", "ui-ibl", "ui-ibv", "ui-ibx", "ui-ibs", "ui-ovc", "ui-aov", "ui-fbr", "ui-fls", "ui-wsf", "ui-cbr", "ui-agc"];
+names.push("integration-card", "integration-request", "app-directory", "integrations");
+prefixes.push("ui-icd", "ui-irq", "ui-apd", "ui-igs");
+Object.assign(dependencies, { "integration-card": [], "integration-request": [], "app-directory": ["integration-card", "integration-request"], "integrations": ["app-shell", "workspace-sidebar", "app-directory"] });
 function dependenciesFor(name, seen = new Set()) {
   for (const dependency of dependencies[name]) if (!seen.has(dependency)) dependenciesFor(dependency, seen);
   seen.add(name); return [...seen];
@@ -50,6 +53,12 @@ const fragments = Object.fromEntries(names.map(name => {
   return [name, { code: code.trim(), css: css.trim() }];
 }));
 const classic = `
+.ui-icd{--ui-icd-ink:#171717;--ui-icd-text:#404040;--ui-icd-muted:#737373;--ui-icd-faint:#b5b5b5;--ui-icd-line:#e5e5e5;--ui-icd-focus:#2f6bff;--ui-icd-shadow:0 0 0 1px var(--ui-icd-line),0 1px 2px rgba(0,0,0,.06)}.ui-icd .ui-icd__action{width:32px;height:32px;border-radius:10px}
+.ui-irq{--ui-irq-ink:#171717;--ui-irq-muted:#737373;--ui-irq-line:#e5e5e5;--ui-irq-focus:#2f6bff}.ui-irq .ui-irq__button{height:32px;border-radius:8px;background:linear-gradient(#323137,#201e25);color:#fff}.ui-irq__popover{border:1px solid var(--ui-irq-line);border-radius:14px}
+.ui-apd{--ui-apd-ink:#171717;--ui-apd-text:#404040;--ui-apd-muted:#737373;--ui-apd-line:#e5e5e5;--ui-apd-chip:#f5f5f5;--ui-apd-focus:#2f6bff}
+:where(.dark,[data-theme="dark"]) .ui-icd{--ui-icd-card:#232326;--ui-icd-ink:#ededed;--ui-icd-text:#c4c4c4;--ui-icd-muted:#8f8f8f;--ui-icd-line:rgba(255,255,255,.1);--ui-icd-focus:#6b95ff}
+:where(.dark,[data-theme="dark"]) .ui-irq{--ui-irq-card:#232326;--ui-irq-ink:#ededed;--ui-irq-muted:#8f8f8f;--ui-irq-line:rgba(255,255,255,.1);--ui-irq-focus:#6b95ff}
+:where(.dark,[data-theme="dark"]) .ui-apd{--ui-apd-card:#232326;--ui-apd-ink:#ededed;--ui-apd-strong:#fff;--ui-apd-text:#c4c4c4;--ui-apd-muted:#8f8f8f;--ui-apd-line:rgba(255,255,255,.1);--ui-apd-chip:#2a2a2d;--ui-apd-focus:#6b95ff}
 .ui-cbr{--ui-cbr-ink:#171717;--ui-cbr-text:#404040;--ui-cbr-muted:#737373;--ui-cbr-faint:#b5b5b5;--ui-cbr-line:#e5e5e5;--ui-cbr-chip:#f5f5f5;--ui-cbr-focus:#2f6bff}.ui-cbr__card,.ui-cbr__product,.ui-cbr__go,.ui-cbr__activity{box-shadow:inset 0 0 0 1px var(--ui-cbr-line),0 1px 2px rgba(0,0,0,.06)}.ui-cbr .ui-cbr__generate{height:32px;border-radius:8px;background:linear-gradient(#323137,#201e25);color:#fff}
 :where(.dark,[data-theme="dark"]) .ui-cbr{--ui-cbr-card:#232326;--ui-cbr-ink:#ededed;--ui-cbr-text:#c4c4c4;--ui-cbr-muted:#8f8f8f;--ui-cbr-faint:#6b6b70;--ui-cbr-line:rgba(255,255,255,.1);--ui-cbr-chip:#2a2a2d;--ui-cbr-focus:#6b95ff}
 .ui-ovc{--ui-ovc-ink:#171717;--ui-ovc-text:#404040;--ui-ovc-muted:#737373;--ui-ovc-line:#e5e5e5;--ui-ovc-chip:#f5f5f5;--ui-ovc-hover:#fafafa;--ui-ovc-focus:#2f6bff}.ui-ovc__card{border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
@@ -125,7 +134,7 @@ for (const name of names) {
     output = output.replaceAll('strokeWidth="1.4"', clean ? 'strokeWidth="1.25"' : 'strokeWidth="1.5"');
     if (clean) for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) output = output.replaceAll(prefix, `${prefix}c`);
     output = await format(output, { parser: "typescript", printWidth: 120 });
-    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox" || name === "assistant-overview" || name === "files" || name === "agent-chat";
+    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox" || name === "assistant-overview" || name === "files" || name === "agent-chat" || name === "integrations";
     const basename = name === "agent-thread-screen" ? "agent-thread" : name;
     const relative = `${screen ? "screens" : "components"}/${basename}${clean ? "-clean" : ""}.tsx`;
     const target = path.join(root, relative);

@@ -222,3 +222,40 @@ const controlledCampaignContract = {
   },
 } satisfies CampaignScreenClassic & CampaignScreenClean;
 void [matchingCampaignInterfaces, controlledCampaignContract];
+
+import type { AppDirectoryProps as DirectoryClassic } from "../components/app-directory";
+import type { AppDirectoryProps as DirectoryClean } from "../components/app-directory-clean";
+import type { IntegrationCardProps as IntegrationClassic } from "../components/integration-card";
+import type { IntegrationCardProps as IntegrationClean } from "../components/integration-card-clean";
+import type { IntegrationRequestProps as RequestClassic } from "../components/integration-request";
+import type { IntegrationRequestProps as RequestClean } from "../components/integration-request-clean";
+import type { IntegrationsScreenProps as IntegrationsClassic } from "../screens/integrations";
+import type { IntegrationsScreenProps as IntegrationsClean } from "../screens/integrations-clean";
+const matchingIntegrationInterfaces: [
+  Equal<DirectoryClassic, DirectoryClean>,
+  Equal<IntegrationClassic, IntegrationClean>,
+  Equal<RequestClassic, RequestClean>,
+  Equal<IntegrationsClassic, IntegrationsClean>,
+] = [true, true, true, true];
+const controlledIntegrationsContract = {
+  directoryProps: {
+    integrations: [],
+    connected: [],
+    onConnectedChange: (ids) => ids.join(","),
+    onConnectionChange: async (integration, connected) => {
+      void [integration.id, connected];
+    },
+    filter: "Available",
+    search: "calendar",
+    onFilterChange: (filter) => filter,
+    onSearchChange: (search) => search,
+    requestProps: {
+      open: false,
+      onOpenChange: (open) => open,
+      onRequest: async (tool) => {
+        void tool;
+      },
+    },
+  },
+} satisfies IntegrationsClassic & IntegrationsClean;
+void [matchingIntegrationInterfaces, controlledIntegrationsContract];

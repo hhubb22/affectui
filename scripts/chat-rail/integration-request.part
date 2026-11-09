@@ -1,0 +1,52 @@
+export type IntegrationRequestProps = {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Resolve to confirm delivery, reject to retain the draft with an error. No built-in network request. */
+  onRequest?: (name: string) => void | Promise<void>;
+  className?: string;
+};
+
+/** Anchored request form, with keyboard dismissal, focus restoration and async feedback. */
+export function IntegrationRequest({ open: openProp, defaultOpen = false, onOpenChange, onRequest, className }: IntegrationRequestProps) {
+  const [open, setOpen] = useControllable(openProp, defaultOpen, onOpenChange);
+  const [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(""), [sent, setSent] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const root = useRef<HTMLDivElement>(null), popover = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), input = useRef<HTMLInputElement>(null), pending = useRef(false), alive = useRef(true), id = useId();
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => { if (root.current && popover.current) setOffset(Math.min(0, root.current.getBoundingClientRect().right - popover.current.offsetWidth - 16)); };
+    place(); window.addEventListener("resize", place); return () => window.removeEventListener("resize", place);
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    input.current?.focus({ preventScroll: true });
+    const dismiss = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const key = (event: WindowEventMap["keydown"]) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current?.focus({ preventScroll: true }); } };
+    document.addEventListener("pointerdown", dismiss); document.addEventListener("keydown", key, true);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", key, true); };
+  }, [open, openProp, onOpenChange]);
+  return <div ref={root} className={["ui-irq", className].filter(Boolean).join(" ")}>
+    <style href="ui-integration-request" precedence="default">{css}</style>
+    <button ref={trigger} type="button" className="ui-irq__button" aria-expanded={open} aria-controls={`${id}-dialog`} onClick={() => setOpen(!open)}><Icon name="plus" size={14}/><span>Request</span></button>
+    {open && <div ref={popover} className="ui-irq__popover" style={{ right: offset }} id={`${id}-dialog`} role="dialog" aria-labelledby={`${id}-title`}><form onSubmit={async event => {
+      event.preventDefault(); const tool = name.trim(); if (!tool || pending.current) return;
+      pending.current = true; setBusy(true); setError("");
+      try { await onRequest?.(tool); if (!alive.current) return; setSent(true); setName(""); setOpen(false); trigger.current?.focus({ preventScroll: true }); }
+      catch (failure) { if (alive.current) setError(failure instanceof Error ? failure.message : "Couldn't send your request. Try again."); }
+      finally { pending.current = false; if (alive.current) setBusy(false); }
+    }}><b id={`${id}-title`}>Request an integration</b><span>Which tool should we add next?</span><input ref={input} aria-label="Tool name" placeholder="e.g. Pipedrive" value={name} disabled={busy} aria-invalid={!!error || undefined} aria-describedby={error ? `${id}-error` : undefined} onChange={event => { setName(event.target.value); setError(""); }}/>{error && <span role="alert" className="ui-irq__error" id={`${id}-error`}>{error}</span>}<button type="submit" className="ui-irq__button" disabled={!name.trim() || busy} aria-busy={busy || undefined}>{busy ? "Sending…" : "Send request"}</button></form></div>}
+    <span className="ui-irq__status" role="status">{sent ? "Request sent" : ""}</span>
+  </div>;
+}
+
+/* ---------- Styles ---------- */
+.ui-irq{--ui-irq-card:#fff;--ui-irq-ink:rgba(0,0,0,.88);--ui-irq-muted:rgba(0,0,0,.45);--ui-irq-line:rgba(0,0,0,.08);--ui-irq-focus:rgba(0,96,226,.7);--ui-irq-danger:#e5484d;--ui-irq-ease:cubic-bezier(.22,1,.36,1);position:relative;display:inline-flex;flex:none;color:var(--ui-irq-ink);font:400 13px/20px Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.ui-irq,.ui-irq *,.ui-irq *::before,.ui-irq *::after{box-sizing:border-box}.ui-irq .ui-irq__button{display:flex;align-items:center;justify-content:center;gap:4px;height:24px;max-width:100%;padding:0 8px 0 6px;border:0;border-radius:6px;background:var(--ui-irq-ink);color:var(--ui-irq-card);font-family:inherit;font-weight:500;font-size:12px;line-height:16px;white-space:nowrap;cursor:pointer;transition:background-color 140ms,opacity 140ms,transform 160ms var(--ui-irq-ease)}.ui-irq__button:disabled{opacity:.4;cursor:default}.ui-irq__button:active:not(:disabled){transform:scale(.97)}.ui-irq__button:focus-visible,.ui-irq input:focus-visible{outline:2px solid var(--ui-irq-focus);outline-offset:2px}
+.ui-irq__popover{position:absolute;z-index:30;top:calc(100% + 8px);right:0;width:min(260px,calc(100vw - 48px));padding:14px;border-radius:12px;background:var(--ui-irq-card);box-shadow:0 0 0 .5px var(--ui-irq-line),0 12px 28px -10px rgba(0,0,0,.16),0 1px 2px rgba(0,0,0,.05);transform-origin:top right;animation:ui-irq-popover 220ms var(--ui-irq-ease)}.ui-irq form{display:grid;gap:6px}.ui-irq b{font-size:13px;font-weight:500}.ui-irq form>span{font-size:12.5px;color:var(--ui-irq-muted)}.ui-irq input{width:100%;min-width:0;height:32px;margin:6px 0 4px;padding:0 10px;border:0;border-radius:7px;background:var(--ui-irq-card);box-shadow:0 0 0 .5px var(--ui-irq-line),0 1px 2px rgba(0,0,0,.05);color:var(--ui-irq-ink);font:inherit}.ui-irq input::placeholder{color:var(--ui-irq-muted)}.ui-irq form>.ui-irq__error{color:var(--ui-irq-danger);overflow-wrap:anywhere}.ui-irq__status{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
+@keyframes ui-irq-popover{from{transform:scale(.96) translateY(-4px);opacity:0}to{transform:none;opacity:1}}
+@media(hover:hover) and (pointer:fine){.ui-irq__button:hover:not(:disabled){background:color-mix(in srgb,var(--ui-irq-ink) 90%,var(--ui-irq-card))}}
+@media(pointer:coarse){.ui-irq .ui-irq__button{height:32px}.ui-irq input{height:36px;font-size:16px}}
+@media(prefers-reduced-motion:reduce){.ui-irq *{animation:none!important;transition:none!important}}
+:where(.dark,[data-theme="dark"]) .ui-irq{--ui-irq-card:#1c1c1e;--ui-irq-ink:rgba(255,255,255,.9);--ui-irq-muted:rgba(255,255,255,.45);--ui-irq-line:rgba(255,255,255,.1);--ui-irq-focus:#4d8dff;--ui-irq-danger:#ff6369}

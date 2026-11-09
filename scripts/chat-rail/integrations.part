@@ -1,0 +1,20 @@
+export type IntegrationsScreenProps = Omit<AppShellProps, "children" | "navigation"> & {
+  directoryProps?: AppDirectoryProps;
+};
+const integrationsNavigation: AppRailItem[] = [
+  ...defaultWorkspaceNavigation,
+  ...["Q3 Campaign", "Brand assets", "Hiring", "Research"].map(label => ({ label, section: "Projects", icon: <WorkspaceNavGlyph name="project"/> })),
+];
+
+/** The recorded app directory inside the shared, resizable workspace shell. */
+export function IntegrationsScreen({ directoryProps, workspace = "Acme", user = { name: "Alex Morgan", email: "alex@acme.com" }, defaultActive = "Integrations", onNavigate, sidebarFooter, className, ...shellProps }: IntegrationsScreenProps) {
+  return <AppShell {...shellProps} workspace={workspace} user={user} defaultActive={defaultActive} onNavigate={onNavigate} navigation={integrationsNavigation} sidebarFooter={sidebarFooter === undefined ? <WorkspaceSidebarFooter workspace={workspace} onNavigate={onNavigate}/> : sidebarFooter} className={["ui-igs", className].filter(Boolean).join(" ")}>
+    <style href="ui-integrations" precedence="default">{css}</style>
+    <div className="ui-igs__scroll"><AppDirectory {...directoryProps}/></div>
+  </AppShell>;
+}
+
+/* ---------- Styles ---------- */
+.ui-igs.ui-as[data-navigation] .ui-as__main{overflow:hidden;border:1px solid var(--ui-as-line);box-shadow:none}.ui-igs__scroll{height:100%;overflow:auto;container:ui-igs-main / inline-size;overscroll-behavior:contain;color-scheme:light}
+:where(.dark,[data-theme="dark"]) .ui-igs__scroll{color-scheme:dark}
+@container ui-as (max-width:600px){.ui-igs .ui-as__app{padding:6px}}
