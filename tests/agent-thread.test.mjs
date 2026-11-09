@@ -402,9 +402,9 @@ test("collapsing the sidebar and narrow containers preserve focus, theme and red
   await page.waitForTimeout(450);
   assert.equal(
     Math.round((await page.locator(".ui-asc__main").boundingBox()).x),
-    8,
+    48,
   );
-  await button("Open sidebar").click();
+  await button("Expand sidebar").click();
   await page.waitForTimeout(450);
   await page.setViewportSize({ width: 768, height: 900 });
   await page.waitForTimeout(450);

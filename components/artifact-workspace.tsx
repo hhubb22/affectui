@@ -274,7 +274,13 @@ function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
   if ((event.target as HTMLElement).matches("input,textarea")) return;
   const items = [
     ...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),[role="option"][tabindex]'),
-  ].filter((el) => !el.closest("[inert],[hidden]") && el.getClientRects().length > 0);
+  ].filter(
+    (el) =>
+      !el.closest("[inert],[hidden]") &&
+      el.getClientRects().length > 0 &&
+      getComputedStyle(el).visibility !== "hidden" &&
+      (!event.currentTarget.matches('[role="menu"]') || el.closest('[role="menu"]') === event.currentTarget),
+  );
   const index = items.indexOf(document.activeElement as HTMLElement);
   const next =
     event.key === "ArrowDown"
@@ -301,6 +307,7 @@ function FloatingMenu({
   label,
   side = "bottom",
   align = "start",
+  gap = side === "right" ? 10 : 8,
 }: {
   anchor: RefObject<HTMLElement | null>;
   root: RefObject<HTMLElement | null>;
@@ -311,6 +318,7 @@ function FloatingMenu({
   label: string;
   side?: "top" | "bottom" | "right";
   align?: "start" | "end";
+  gap?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -331,10 +339,17 @@ function FloatingMenu({
         bottomEdge = Math.min(window.innerHeight - 8, (boundary?.bottom ?? window.innerHeight) - 8);
       const maxHeight = Math.max(80, bottomEdge - topEdge);
       const width = menu.offsetWidth,
-        height = Math.min(menu.scrollHeight, maxHeight);
-      let x = side === "right" ? a.right + 10 : align === "end" ? a.right - width : a.left;
-      let y = side === "top" ? a.top - height - 8 : side === "right" ? a.top : a.bottom + 8;
-      if (side === "bottom" && y + height > bottomEdge && a.top - height - 8 >= topEdge) y = a.top - height - 8;
+        height = Math.min(menu.offsetHeight, maxHeight);
+      let x = side === "right" ? a.right + gap : align === "end" ? a.right - width : a.left;
+      let y =
+        side === "top"
+          ? a.top - height - gap
+          : side === "right"
+            ? align === "end"
+              ? a.bottom - height
+              : a.top
+            : a.bottom + gap;
+      if (side === "bottom" && y + height > bottomEdge && a.top - height - gap >= topEdge) y = a.top - height - gap;
       x = Math.max(leftEdge, Math.min(x, rightEdge - width));
       y = Math.max(topEdge, Math.min(y, bottomEdge - height));
       setPosition({ left: x - r.left + origin.scrollLeft, top: y - r.top + origin.scrollTop, maxHeight });
@@ -349,7 +364,7 @@ function FloatingMenu({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [anchor, root, side, align]);
+  }, [anchor, root, side, align, gap]);
   useEffect(() => {
     const target = anchor.current;
     ref.current

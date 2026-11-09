@@ -76,16 +76,16 @@ function useMorph(value: string) {
 
 function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
   if ((event.target as HTMLElement).matches("input,textarea")) return;
-  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),[role="option"][tabindex]')].filter(el => !el.closest("[inert],[hidden]") && el.getClientRects().length > 0);
+  const items = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),[role="option"][tabindex]')].filter(el => !el.closest("[inert],[hidden]") && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && (!event.currentTarget.matches('[role="menu"]') || el.closest('[role="menu"]') === event.currentTarget));
   const index = items.indexOf(document.activeElement as HTMLElement);
   const next = event.key === "ArrowDown" ? (index + 1) % items.length : event.key === "ArrowUp" ? (index - 1 + items.length) % items.length : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : null;
   if (next === null || !items.length) return;
   event.preventDefault(); items[next]?.focus();
 }
 
-function FloatingMenu({ anchor, root, children, onClose, className, id, label, side = "bottom", align = "start" }: {
+function FloatingMenu({ anchor, root, children, onClose, className, id, label, side = "bottom", align = "start", gap = side === "right" ? 10 : 8 }: {
   anchor: RefObject<HTMLElement | null>; root: RefObject<HTMLElement | null>; children: ReactNode;
-  onClose: () => void; className: string; id: string; label: string; side?: "top" | "bottom" | "right"; align?: "start" | "end";
+  onClose: () => void; className: string; id: string; label: string; side?: "top" | "bottom" | "right"; align?: "start" | "end"; gap?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose); closeRef.current = onClose;
@@ -99,10 +99,10 @@ function FloatingMenu({ anchor, root, children, onClose, className, id, label, s
       const leftEdge = Math.max(8, (boundary?.left ?? 0) + 8), rightEdge = Math.min(window.innerWidth - 8, (boundary?.right ?? window.innerWidth) - 8);
       const topEdge = Math.max(8, (boundary?.top ?? 0) + 8), bottomEdge = Math.min(window.innerHeight - 8, (boundary?.bottom ?? window.innerHeight) - 8);
       const maxHeight = Math.max(80, bottomEdge - topEdge);
-      const width = menu.offsetWidth, height = Math.min(menu.scrollHeight, maxHeight);
-      let x = side === "right" ? a.right + 10 : align === "end" ? a.right - width : a.left;
-      let y = side === "top" ? a.top - height - 8 : side === "right" ? a.top : a.bottom + 8;
-      if (side === "bottom" && y + height > bottomEdge && a.top - height - 8 >= topEdge) y = a.top - height - 8;
+      const width = menu.offsetWidth, height = Math.min(menu.offsetHeight, maxHeight);
+      let x = side === "right" ? a.right + gap : align === "end" ? a.right - width : a.left;
+      let y = side === "top" ? a.top - height - gap : side === "right" ? align === "end" ? a.bottom - height : a.top : a.bottom + gap;
+      if (side === "bottom" && y + height > bottomEdge && a.top - height - gap >= topEdge) y = a.top - height - gap;
       x = Math.max(leftEdge, Math.min(x, rightEdge - width)); y = Math.max(topEdge, Math.min(y, bottomEdge - height));
       setPosition({ left: x - r.left + origin.scrollLeft, top: y - r.top + origin.scrollTop, maxHeight });
     };
@@ -110,7 +110,7 @@ function FloatingMenu({ anchor, root, children, onClose, className, id, label, s
     const observer = new ResizeObserver(update); if (ref.current) observer.observe(ref.current);
     window.addEventListener("resize", update); window.addEventListener("scroll", update, true);
     return () => { observer.disconnect(); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
-  }, [anchor, root, side, align]);
+  }, [anchor, root, side, align, gap]);
   useEffect(() => {
     const target = anchor.current;
     ref.current?.querySelector<HTMLElement>('[aria-checked="true"],input,button:not(:disabled)')?.focus({ preventScroll: true });

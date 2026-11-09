@@ -277,7 +277,13 @@ function moveMenuFocus(event: KeyboardEvent<HTMLElement>) {
   if ((event.target as HTMLElement).matches("input,textarea")) return;
   const items = [
     ...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled),[role="option"][tabindex]'),
-  ].filter((el) => !el.closest("[inert],[hidden]") && el.getClientRects().length > 0);
+  ].filter(
+    (el) =>
+      !el.closest("[inert],[hidden]") &&
+      el.getClientRects().length > 0 &&
+      getComputedStyle(el).visibility !== "hidden" &&
+      (!event.currentTarget.matches('[role="menu"]') || el.closest('[role="menu"]') === event.currentTarget),
+  );
   const index = items.indexOf(document.activeElement as HTMLElement);
   const next =
     event.key === "ArrowDown"
@@ -304,6 +310,7 @@ function FloatingMenu({
   label,
   side = "bottom",
   align = "start",
+  gap = side === "right" ? 10 : 8,
 }: {
   anchor: RefObject<HTMLElement | null>;
   root: RefObject<HTMLElement | null>;
@@ -314,6 +321,7 @@ function FloatingMenu({
   label: string;
   side?: "top" | "bottom" | "right";
   align?: "start" | "end";
+  gap?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -334,10 +342,17 @@ function FloatingMenu({
         bottomEdge = Math.min(window.innerHeight - 8, (boundary?.bottom ?? window.innerHeight) - 8);
       const maxHeight = Math.max(80, bottomEdge - topEdge);
       const width = menu.offsetWidth,
-        height = Math.min(menu.scrollHeight, maxHeight);
-      let x = side === "right" ? a.right + 10 : align === "end" ? a.right - width : a.left;
-      let y = side === "top" ? a.top - height - 8 : side === "right" ? a.top : a.bottom + 8;
-      if (side === "bottom" && y + height > bottomEdge && a.top - height - 8 >= topEdge) y = a.top - height - 8;
+        height = Math.min(menu.offsetHeight, maxHeight);
+      let x = side === "right" ? a.right + gap : align === "end" ? a.right - width : a.left;
+      let y =
+        side === "top"
+          ? a.top - height - gap
+          : side === "right"
+            ? align === "end"
+              ? a.bottom - height
+              : a.top
+            : a.bottom + gap;
+      if (side === "bottom" && y + height > bottomEdge && a.top - height - gap >= topEdge) y = a.top - height - gap;
       x = Math.max(leftEdge, Math.min(x, rightEdge - width));
       y = Math.max(topEdge, Math.min(y, bottomEdge - height));
       setPosition({ left: x - r.left + origin.scrollLeft, top: y - r.top + origin.scrollTop, maxHeight });
@@ -352,7 +367,7 @@ function FloatingMenu({
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
-  }, [anchor, root, side, align]);
+  }, [anchor, root, side, align, gap]);
   useEffect(() => {
     const target = anchor.current;
     ref.current
@@ -722,6 +737,7 @@ const defaultAppShellLabels = {
   openSidebar: "Open sidebar",
   closeSidebar: "Close sidebar",
   collapseSidebar: "Collapse sidebar",
+  expandSidebar: "Expand sidebar",
   resizeSidebar: "Resize sidebar",
   panelTitle: "Artifacts",
   openPanel: (title: string) => `Open ${title.toLowerCase()}`,
@@ -909,6 +925,49 @@ const wsGlyphs = {
   switch: (
     <>
       <path d="M20 17H4M17 14s3 2.21 3 3-3 3-3 3M5 7h15M7 4S4 6.21 4 7s3 3 3 3" />
+    </>
+  ),
+  language: (
+    <>
+      <path d="M5 5.83h6M7.7 5.83V5M9.5 5.83c-.32 1.13-.98 2.2-1.74 3.14M5.84 11c.61-.56 1.3-1.25 1.92-2.03M7.76 8.97c-.38-.45-.92-1.18-1.08-1.51M7.76 8.97l1.16 1.2M13.5 19l2.5-6 2.5 6M14.33 17h3.34M14 10V8c0-2.83 0-4.24-.88-5.12S10.83 2 8 2s-4.24 0-5.12.88S2 5.17 2 8s0 4.24.88 5.12S5.17 14 8 14h2" />
+      <rect x="10" y="10" width="12" height="12" rx="4" />
+      <path d="M4 16.5c0 1.4 0 2.1.34 2.61.15.22.33.41.55.55.5.34 1.21.34 2.61.34M20 7.5c0-1.4 0-2.1-.34-2.61a2 2 0 0 0-.55-.55C18.61 4 17.9 4 16.5 4" />
+    </>
+  ),
+  appearance: (
+    <>
+      <path d="M22 12C22 6.48 17.52 2 12 2S2 6.48 2 12s4.48 10 10 10c.84 0 2 .12 2-1 0-.61-.32-1.08-.63-1.55-.46-.68-.92-1.36-.37-2.45.67-1.33 1.78-1.33 3.48-1.33.85 0 1.85 0 3.02-.17 2.1-.3 2.5-1.59 2.5-3.5Z" />
+      <circle cx="9.5" cy="8.5" r="1.5" />
+      <circle cx="16.5" cy="9.5" r="1.5" />
+      <path d="M7 15h.01" />
+    </>
+  ),
+  system: (
+    <>
+      <path d="M8 21h8M10 21c.83 0 1.5-.67 1.5-1.5V17h1v2.5c0 .83.67 1.5 1.5 1.5M12 17v4" />
+      <rect x="2" y="3" width="20" height="14" rx="5" />
+    </>
+  ),
+  light: (
+    <>
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 2v1.5M12 20.5V22M19.07 19.07l-1.06-1.06M5.99 5.99 4.93 4.93M22 12h-1.5M3.5 12H2M19.07 4.93l-1.06 1.06M5.99 18.01l-1.06 1.06" />
+    </>
+  ),
+  dark: <path d="M21.5 14.08a8.56 8.56 0 0 1-12.58-7.56c0-1.45.36-2.82 1-4.02A9.63 9.63 0 1 0 21.5 14.08Z" />,
+  integrations: (
+    <>
+      <path d="M15.5 2v4M8.5 6V2M6 7.61C5.94 6.74 6.64 6 7.53 6h8.94c.89 0 1.59.74 1.53 1.61l-.19 2.38a10 10 0 0 1-1.68 4.79l-.6.88a3.08 3.08 0 0 1-2.55 1.34h-1.96a3.08 3.08 0 0 1-2.55-1.34l-.6-.88a10 10 0 0 1-1.68-4.79ZM12 17v5M11 9h2" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M16.95 12.18c.25.63-.44 1.39-1.82 2.91-1.46 1.6-2.21 2.4-3.13 2.41-.92-.01-1.67-.81-3.13-2.41-1.38-1.52-2.07-2.28-1.82-2.91.3-.64 1.19-.68 2.95-.68V5c0-.47 0-.7.05-.89a1.5 1.5 0 0 1 1.06-1.06C11.3 3 11.53 3 12 3s.7 0 .89.05a1.5 1.5 0 0 1 1.06 1.06c.05.19.05.42.05.89v6.5c1.76 0 2.65.04 2.95.68ZM5 21h14" />
+    </>
+  ),
+  logout: (
+    <>
+      <path d="M15.5 8.04c-.04-1.16-.18-1.89-.64-2.45-.65-.82-1.77-1.07-4-1.58l-1-.23c-3.4-.77-5.09-1.16-6.23-.27C2.5 4.4 2.5 6.13 2.5 9.57v4.86c0 3.44 0 5.17 1.13 6.06 1.14.89 2.83.5 6.23-.27l1-.23c2.23-.51 3.35-.76 4-1.58.46-.56.6-1.29.64-2.45M18.5 9.01s3 2.21 3 3-3 3-3 3M21 12.01H8.5" />
     </>
   ),
   plus: <path d="M12 4v16M20 12H4" />,
@@ -1330,9 +1389,7 @@ export function AppShell({
     [narrow, setNarrow] = useState(false),
     [searchOpen, setSearchOpen] = useState(false);
   const [folders, setFolders] = useState<string[]>(["Summer collection"]);
-  const [menu, setMenu] = useState<
-    "workspace" | "account" | "projects" | "chat" | "chat-project" | "appearance" | "language" | null
-  >(null);
+  const [menu, setMenu] = useState<"workspace" | "account" | "projects" | "chat" | "chat-project" | null>(null);
   const [wsOpen, setWsOpen] = useState<string | null>(null);
   useEffect(() => setWsOpen(null), [menu]);
   const [menuChat, setMenuChat] = useState<string | null>(null),
@@ -1360,6 +1417,13 @@ export function AppShell({
   const currentMenuChat = list.find((chat) => chat.id === menuChat);
   const hasPanel = panel != null,
     railWidth = rail ? 52 : 0;
+  const iconSidebar = !!navigation && !rail && sidebarContent === undefined;
+  const userAvatar =
+    user.avatar && !brokenAvatar ? (
+      <img src={user.avatar} alt="" onError={() => setBrokenAvatar(true)} />
+    ) : (
+      initials(user.name)
+    );
   const visiblePanel = hasPanel && panelOpen;
   const drawer = narrow && (sidebarOpen || visiblePanel);
   useEffect(() => {
@@ -1694,12 +1758,12 @@ export function AppShell({
         role="menu"
         aria-label={label}
         onKeyDown={(event) => {
+          event.stopPropagation();
           if (event.key === "ArrowLeft") {
             event.preventDefault();
-            event.stopPropagation();
             setWsOpen(null);
             (event.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
-          }
+          } else moveMenuFocus(event);
         }}
       >
         {items}
@@ -1750,6 +1814,7 @@ export function AppShell({
       data-theme={theme === "system" ? (systemDark ? "dark" : undefined) : theme}
       data-layout={layout === "flat" ? "flat" : "inset"}
       data-rail={!!rail || undefined}
+      data-navigation={iconSidebar || undefined}
       data-sidebar-open={sidebarOpen || undefined}
       data-sidebar-collapsed={collapsed || undefined}
       data-panel-open={visiblePanel || undefined}
@@ -1814,7 +1879,7 @@ export function AppShell({
           className="ui-as__side"
           id={`${id}-sidebar`}
           aria-label={labels.sidebar}
-          inert={narrow ? !sidebarOpen : collapsed}
+          inert={narrow ? !sidebarOpen : collapsed && !iconSidebar}
         >
           {rail && (
             <nav className="ui-as__rail" aria-label={labels.apps}>
@@ -1899,13 +1964,24 @@ export function AppShell({
                       >
                         <span>{initials(workspace).slice(0, 1)}</span>
                         <strong>{workspace}</strong>
-                        <Icon name="chevron" size={12} />
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M18 9s-4.42 6-6 6-6-6-6-6" />
+                        </svg>
                       </button>
                       <button
                         type="button"
                         className="ui-as__icon-btn"
-                        aria-label={labels.collapseSidebar}
-                        onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(true))}
+                        aria-label={collapsed && !narrow ? labels.expandSidebar : labels.collapseSidebar}
+                        onClick={() => (narrow ? setSidebarOpen(false) : setCollapsed(!collapsed))}
                       >
                         <Icon name="panel" />
                       </button>
@@ -1913,6 +1989,7 @@ export function AppShell({
                     <button
                       type="button"
                       className="ui-as__nav-search"
+                      aria-label={labels.search}
                       aria-haspopup="dialog"
                       aria-expanded={searchOpen}
                       onClick={() => setSearchOpen(true)}
@@ -1930,6 +2007,7 @@ export function AppShell({
                           <button
                             type="button"
                             className="ui-as__nav-item"
+                            aria-label={item.label}
                             aria-current={active === item.label ? "page" : undefined}
                             disabled={item.disabled}
                             onClick={() => navigate(item.label)}
@@ -2054,11 +2132,12 @@ export function AppShell({
                   <button
                     type="button"
                     className="ui-as__account-row"
+                    aria-label={user.name}
                     aria-haspopup="menu"
                     aria-expanded={menu === "account"}
                     {...trigger("account")}
                   >
-                    <span className="ui-as__user-initials">{initials(user.name)}</span>
+                    <span className="ui-as__user-initials">{userAvatar}</span>
                     <span>{user.name}</span>
                     <Icon name="chevron" size={12} />
                   </button>
@@ -2120,7 +2199,11 @@ export function AppShell({
           key={menu}
           anchor={anchor}
           root={root}
-          className={menu === "workspace" ? "ui-as__menu ui-as__ws-menu" : "ui-as__menu"}
+          className={
+            menu === "workspace" || menu === "account"
+              ? `ui-as__menu ui-as__ws-menu${menu === "account" ? " ui-as__account-menu" : ""}`
+              : "ui-as__menu"
+          }
           id={`${id}-menu`}
           label={
             menu === "chat"
@@ -2131,7 +2214,17 @@ export function AppShell({
                   ? workspace
                   : labels.account
           }
-          side={menu === "account" || (menu === "workspace" && !navigation) ? "right" : "bottom"}
+          side={
+            menu === "account" ? (rail ? "right" : "top") : menu === "workspace" && !navigation ? "right" : "bottom"
+          }
+          align={menu === "account" && rail ? "end" : "start"}
+          gap={
+            menu === "account" && rail
+              ? 12
+              : menu === "account" || (menu === "workspace" && !!navigation)
+                ? 6
+                : undefined
+          }
           onClose={() => setMenu(null)}
         >
           {menu === "workspace" && (
@@ -2242,78 +2335,113 @@ export function AppShell({
           {menu === "account" && (
             <>
               <div className="ui-as__menu-user">
-                <span className="ui-as__user-initials">{initials(user.name)}</span>
+                <span className="ui-as__user-initials">{userAvatar}</span>
                 <span>
                   <strong>{user.name}</strong>
-                  <small>{user.email ?? ""}</small>
+                  {user.email && <small>{user.email}</small>}
                 </span>
               </div>
-              <button type="button" role="menuitem" onClick={() => setMenu("language")}>
-                {labels.language}
-                <span>
-                  {language}
-                  <Icon name="chevron" size={12} />
-                </span>
-              </button>
-              <button type="button" role="menuitem" onClick={() => setMenu("appearance")}>
-                {labels.appearance}
-                <Icon name="chevron" size={12} />
-              </button>
-              {["Integrations", "Settings", "Download apps", "Changelog", "Learn more", "Log out"].map(
-                (label, index) => (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    key={label}
-                    data-divider={index === 2 || index === 3 || index === 5 || undefined}
-                    onClick={() => menuAction(label)}
-                  >
-                    {labels.action(label)}
-                  </button>
-                ),
+              {wsSub(
+                labels.language,
+                "language",
+                <>
+                  {(
+                    [
+                      [
+                        "English",
+                        <>
+                          <rect width="20" height="14" fill="#012169" />
+                          <path d="M0 0 20 14M20 0 0 14" stroke="#fff" strokeWidth="2.8" />
+                          <path d="M0 0 20 14M20 0 0 14" stroke="#c8102e" />
+                          <path d="M10 0v14M0 7h20" stroke="#fff" strokeWidth="4.2" />
+                          <path d="M10 0v14M0 7h20" stroke="#c8102e" strokeWidth="2.4" />
+                        </>,
+                      ],
+                      [
+                        "Deutsch",
+                        <>
+                          <rect width="20" height="4.67" fill="#1f1f1f" />
+                          <rect y="4.67" width="20" height="4.67" fill="#dd0000" />
+                          <rect y="9.33" width="20" height="4.67" fill="#ffce00" />
+                        </>,
+                      ],
+                      [
+                        "Français",
+                        <>
+                          <rect width="6.67" height="14" fill="#002395" />
+                          <rect x="6.67" width="6.67" height="14" fill="#fff" />
+                          <rect x="13.33" width="6.67" height="14" fill="#ed2939" />
+                        </>,
+                      ],
+                      [
+                        "Español",
+                        <>
+                          <rect width="20" height="14" fill="#aa151b" />
+                          <rect y="3.5" width="20" height="7" fill="#f1bf00" />
+                        </>,
+                      ],
+                    ] as const
+                  ).map(([label, flag]) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={language === label}
+                      className="ui-as__wsm-item"
+                      key={label}
+                      onClick={() => {
+                        setLanguage(label);
+                        menuAction(`Language: ${label}`);
+                      }}
+                    >
+                      <svg className="ui-as__wsm-flag" viewBox="0 0 20 14" aria-hidden="true">
+                        {flag}
+                      </svg>
+                      <span className="ui-as__wsm-label">{label}</span>
+                      {language === label && <WsGlyph name="check" size={14} />}
+                    </button>
+                  ))}
+                </>,
               )}
-            </>
-          )}
-          {menu === "language" && (
-            <>
-              <div className="ui-as__menu-label">{labels.language}</div>
-              {["English", "Deutsch", "Français", "Español"].map((label) => (
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={language === label}
-                  key={label}
-                  onClick={() => {
-                    setLanguage(label);
-                    onNavigate?.(`Language: ${label}`);
-                    setMenu(null);
-                  }}
-                >
-                  {label}
-                  {language === label && <Icon name="check" size={13} />}
-                </button>
-              ))}
-            </>
-          )}
-          {menu === "appearance" && (
-            <>
-              <div className="ui-as__menu-label">{labels.appearance}</div>
-              {(["light", "dark", "system"] as const).map((value) => (
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={theme === value}
-                  key={value}
-                  onClick={() => {
-                    setTheme(value);
-                    setMenu(null);
-                    anchor.current?.focus();
-                  }}
-                >
-                  {labels.theme(value)}
-                  {theme === value && <Icon name="check" size={13} />}
-                </button>
-              ))}
+              {wsSub(
+                labels.appearance,
+                "appearance",
+                <>
+                  {(["system", "light", "dark"] as const).map((value) => (
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={theme === value}
+                      className="ui-as__wsm-item"
+                      key={value}
+                      onClick={() => {
+                        setTheme(value);
+                        setMenu(null);
+                        anchor.current?.focus();
+                      }}
+                    >
+                      <WsGlyph name={value} />
+                      <span className="ui-as__wsm-label">{labels.theme(value)}</span>
+                      {theme === value && <WsGlyph name="check" size={14} />}
+                    </button>
+                  ))}
+                </>,
+              )}
+              {wsItem("Integrations", "integrations")}
+              {wsItem("Settings", "settings")}
+              <span className="ui-as__wsm-sep" role="separator" />
+              {wsItem("Download apps", "download")}
+              <span className="ui-as__wsm-sep" role="separator" />
+              {wsItem("Changelog", "changelog")}
+              {wsSub(
+                "Learn more",
+                "info",
+                <>
+                  {wsItem("Documentation", "docs")}
+                  {wsItem("Help & feedback", "help")}
+                </>,
+              )}
+              <span className="ui-as__wsm-sep" role="separator" />
+              {wsItem("Log out", "logout")}
             </>
           )}
           {menu === "chat" &&
@@ -6418,7 +6546,7 @@ const css = /* css */ `
   box-shadow: none;
   border-radius: 0;
   margin: 0;
-  padding: 7px 8px 8px;
+  padding: 10px 8px 8px 10px;
   line-height: 1.4286;
   overflow: hidden;
 }
@@ -6429,31 +6557,45 @@ const css = /* css */ `
   flex-direction: column;
 }
 .ui-as__nav-head {
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
-  min-height: 32px;
-  margin-bottom: 10px;
+  height: 28px;
+  min-height: 28px;
+  margin-bottom: 12px;
 }
 .ui-as__nav-workspace {
   display: flex;
   align-items: center;
-  gap: 7px;
-  flex: 1;
+  gap: 6px;
   min-width: 0;
-  padding: 4px 7px;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
   text-align: left;
+}
+.ui-as__nav-workspace:hover,
+.ui-as__account-row:hover {
+  background: rgba(0, 0, 0, 0.03);
 }
 .ui-as__nav-workspace > span {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: 1px;
   background: var(--ui-as-card);
-  border-radius: 6px;
-  box-shadow: 0 0 0 0.5px var(--ui-as-line);
-  font-size: 10px;
+  border-radius: 5px;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 1px 1px rgba(0, 0, 0, 0.12);
+  font-size: 10.5px;
   font-weight: 500;
+  transition: opacity 140ms ease;
 }
 .ui-as__nav-workspace > strong {
   font-size: 14px;
@@ -6469,17 +6611,18 @@ const css = /* css */ `
 .ui-as__nav-search {
   display: flex;
   align-items: center;
-  gap: 7px;
+  flex: none;
+  gap: 8px;
   width: 100%;
-  height: 32px;
+  height: 30px;
   border-radius: 8px !important;
-  padding: 0 10px !important;
+  padding: 0 6px 0 8px !important;
   background: var(--ui-as-card) !important;
   box-shadow: 0 0 0 0.5px var(--ui-as-line);
   color: var(--ui-as-muted) !important;
-  margin-bottom: 11px;
+  margin-bottom: 12px;
   text-align: left;
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 .ui-as__nav-search > span {
   flex: 1;
@@ -6528,19 +6671,30 @@ const css = /* css */ `
   padding: 18px 8px 4px;
 }
 .ui-as__side-col[data-navigation] .ui-as__account-row {
-  min-height: 36px;
+  flex: none;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 6px;
+  gap: 7px;
+  border-radius: 8px;
+  font-size: 13px !important;
   font-weight: 500;
   margin-top: auto;
 }
 .ui-as__side-col[data-navigation] .ui-as__user-initials {
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
   font-size: 9px;
   color: var(--ui-as-accent);
   background: rgba(0, 96, 226, 0.08);
 }
 .ui-as__side-col[data-navigation] .ui-as__account-row > svg {
   color: var(--ui-as-faint);
+}
+.ui-as .ui-as__nav-workspace:active:not(:disabled),
+.ui-as .ui-as__account-row:active:not(:disabled),
+.ui-as .ui-as__wsm-item:active:not(:disabled) {
+  transform: none;
 }
 .ui-as[data-sidebar-collapsed] .ui-as__app {
   grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
@@ -6561,6 +6715,76 @@ const css = /* css */ `
 }
 .ui-as[data-sidebar-collapsed] .ui-as__side + .ui-as__resizer {
   visibility: hidden;
+}
+@container ui-as (min-width:900px) {
+  .ui-as[data-navigation] .ui-as__app {
+    transition-duration: 420ms;
+  }
+  .ui-as[data-navigation] .ui-as__side {
+    overflow: hidden;
+  }
+  .ui-as[data-navigation] .ui-as__side-col {
+    flex: none;
+    width: var(--ui-as-sidebar-width);
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__app {
+    grid-template-columns: 48px 0 minmax(0, 1fr) 0 0;
+    padding-left: 0;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed][data-panel-open] .ui-as__app {
+    grid-template-columns: 48px 0 minmax(0, 1fr) 4px var(--ui-as-panel-width);
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__side {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__open-side {
+    display: none;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed]
+    :is(
+      .ui-as__nav-workspace > strong,
+      .ui-as__nav-workspace > svg,
+      .ui-as__nav-search > span,
+      .ui-as__nav-search > kbd,
+      .ui-as__nav-item > span:not(.ui-as__nav-icon),
+      .ui-as__nav-item > small,
+      .ui-as__account-row > span:nth-child(2),
+      .ui-as__account-row > svg
+    ) {
+    display: none;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed]
+    :is(.ui-as__nav-workspace, .ui-as__nav-search, .ui-as__nav-item, .ui-as__account-row) {
+    width: fit-content;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__nav-search {
+    padding-right: 8px !important;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__nav-section {
+    color: transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    background: linear-gradient(var(--ui-as-line), var(--ui-as-line)) 0 50% / 28px 0.5px no-repeat;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed] .ui-as__nav-head > .ui-as__icon-btn {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30px;
+    opacity: 0;
+    transition: opacity 140ms ease;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed]:has(.ui-as__side:hover, .ui-as__nav-head :focus-visible)
+    .ui-as__nav-head
+    > .ui-as__icon-btn {
+    opacity: 1;
+  }
+  .ui-as[data-navigation][data-sidebar-collapsed]:has(.ui-as__side:hover, .ui-as__nav-head :focus-visible)
+    .ui-as__nav-workspace
+    > span {
+    opacity: 0;
+  }
 }
 @container ui-as (max-width:899.99px) {
   .ui-as[data-sidebar-collapsed] .ui-as__app,
@@ -7432,7 +7656,7 @@ const css = /* css */ `
   z-index: 1;
   top: -4px;
   left: calc(100% + 4px);
-  display: none;
+  display: grid;
   gap: 1px;
   width: 240px;
   padding: 4px;
@@ -7441,7 +7665,11 @@ const css = /* css */ `
   box-shadow:
     0 0 0 0.5px var(--ui-as-wsm-ring),
     0 12px 32px -8px rgba(0, 0, 0, 0.16);
-  animation: ui-as-fade 120ms ease;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 120ms ease,
+    visibility 0s 120ms;
 }
 .ui-as__wsm-panel::before {
   content: "";
@@ -7451,8 +7679,10 @@ const css = /* css */ `
   left: -8px;
   width: 8px;
 }
-.ui-as__wsm-sub:is(:hover, :focus-within, [data-open]) > .ui-as__wsm-panel {
-  display: grid;
+.ui-as__wsm-sub:is(:hover, [data-open]) > .ui-as__wsm-panel {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms ease;
 }
 @keyframes ui-as-wsm-pop {
   from {
@@ -7460,22 +7690,82 @@ const css = /* css */ `
     transform: scale(0.96) translateY(-4px);
   }
 }
+.ui-as__menu.ui-as__account-menu {
+  width: calc(var(--ui-as-sidebar-width) - 18px);
+  transform-origin: bottom left;
+  animation-name: ui-as-account-pop;
+}
+.ui-as[data-sidebar-collapsed] .ui-as__account-menu {
+  width: calc(var(--ui-as-sidebar-width) - 20px);
+}
+.ui-as[data-rail] .ui-as__account-menu {
+  width: 244px;
+}
+.ui-as__account-menu .ui-as__menu-user {
+  padding: 8px 10px 10px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--ui-as-line);
+}
+.ui-as__account-menu .ui-as__menu-user strong {
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.ui-as__account-menu .ui-as__menu-user small {
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.ui-as__account-menu .ui-as__user-initials {
+  color: var(--ui-as-accent);
+  background: rgba(0, 96, 226, 0.08);
+}
+.ui-as__account-menu .ui-as__wsm-panel {
+  width: 100%;
+}
+.ui-as__user-initials {
+  overflow: hidden;
+}
+.ui-as__user-initials > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ui-as__wsm-flag {
+  width: 16px;
+  height: 11px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 0.5px var(--ui-as-line);
+}
+@keyframes ui-as-account-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
 @container ui-as (max-width:899.99px) {
-  .ui-as__wsm-panel {
+  .ui-as:not([data-rail]) .ui-as__account-menu {
+    width: calc(min(320px, 100% - 40px) - 16px);
+  }
+}
+@container ui-as (max-width:600px) {
+  .ui-as__wsm-panel,
+  .ui-as__account-menu .ui-as__wsm-panel {
     position: static;
+    display: none;
     width: auto;
     margin: 2px 0 4px;
     padding: 0 0 0 14px;
     border-radius: 0;
     background: none;
     box-shadow: none;
-    animation: none;
+    transition: none;
   }
   .ui-as__wsm-panel::before {
     display: none;
   }
-  .ui-as__wsm-sub:hover:not(:focus-within, [data-open]) > .ui-as__wsm-panel {
-    display: none;
+  .ui-as__wsm-sub[data-open] > .ui-as__wsm-panel {
+    display: grid;
   }
 }
 @media (pointer: coarse) {
@@ -7486,6 +7776,9 @@ const css = /* css */ `
 :where(.dark, [data-theme="dark"]) .ui-as__menu.ui-as__ws-menu {
   --ui-as-wsm-hover: rgba(255, 255, 255, 0.05);
   --ui-as-wsm-ring: rgba(255, 255, 255, 0.14);
+}
+:where(.dark, [data-theme="dark"]) :is(.ui-as__nav-workspace, .ui-as__account-row):hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 .ui-as__cmd {
   --ui-as-cmd-strong: #000;

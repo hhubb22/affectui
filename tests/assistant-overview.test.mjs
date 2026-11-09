@@ -131,12 +131,20 @@ test("narrow containers stack the cards into two columns and then one", async ()
 test("the workspace menu opens under its button with icons and hover/arrow submenus", async () => {
   await visit();
   const trigger = page.locator(".ui-asc__nav-workspace");
+  const triggerBox = await trigger.boundingBox();
+  assert.ok(Math.abs(triggerBox.width - 94.55) < 1);
+  assert.equal(triggerBox.height, 30);
+  await trigger.hover();
+  await page.mouse.down();
+  assert.equal(await trigger.evaluate(el => getComputedStyle(el).transform), "none");
+  await page.mouse.up();
+  await page.keyboard.press("Escape");
   await trigger.click();
   const menu = page.getByRole("menu", { name: "Acme" });
   await menu.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
   const [anchor, box] = [await trigger.boundingBox(), await menu.boundingBox()];
   assert.equal(Math.round(box.x), Math.round(anchor.x));
-  assert.equal(Math.round(box.y - anchor.y - anchor.height), 8);
+  assert.equal(Math.round(box.y - anchor.y - anchor.height), 6);
   assert.equal(Math.round(box.width), 240);
   assert.equal(await page.evaluate(() => document.activeElement.textContent), "Invite people");
   assert.equal(await menu.locator(":scope > button svg").count(), 6);
@@ -155,6 +163,67 @@ test("the workspace menu opens under its button with icons and hover/arrow subme
   await page.keyboard.press("Escape");
   assert.equal(await menu.count(), 0);
   assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+});
+
+test("the account menu opens above the user and keeps its parent while choosing language and theme", async () => {
+  await visit();
+  const trigger = page.getByRole("button", { name: /Alex Morgan/ });
+  await trigger.click();
+  const menu = page.getByRole("menu", { name: "Account", exact: true });
+  await menu.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+  const anchor = await trigger.boundingBox(), box = await menu.boundingBox();
+  assert.equal(box.width, anchor.width);
+  assert.equal(box.x, anchor.x);
+  assert.equal(Math.round(anchor.y - box.y - box.height), 6);
+  assert.match(await menu.textContent(), /alex@acme.com/);
+  assert.equal(await menu.getByRole("menu", { name: "Language", exact: true }).isVisible(), false);
+  const appearance = page.getByRole("menuitem", { name: "Appearance", exact: true });
+  await appearance.hover();
+  const themes = page.getByRole("menu", { name: "Appearance", exact: true });
+  await themes.waitFor({ state: "visible" });
+  assert.ok((await themes.boundingBox()).x >= box.x + box.width);
+  await appearance.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "menuitemradio");
+  assert.equal(await page.getByRole("menuitemradio", { name: "System", exact: true }).evaluate(el => el === document.activeElement), true);
+  await page.getByRole("menuitemradio", { name: "Dark", exact: true }).click();
+  assert.equal(await page.locator(".ui-asc").getAttribute("data-theme"), "dark");
+  assert.equal(await menu.count(), 0);
+  assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+  await trigger.click();
+  await page.getByRole("menuitem", { name: "Language", exact: true }).hover();
+  await page.getByRole("menuitemradio", { name: "Deutsch", exact: true }).click();
+  assert.equal(await navigation(), "Language: Deutsch");
+  await trigger.click();
+  await page.getByRole("menuitem", { name: "Language", exact: true }).hover();
+  assert.equal(await page.getByRole("menuitemradio", { name: "Deutsch", exact: true }).getAttribute("aria-checked"), "true");
+  await page.keyboard.press("Escape");
+  assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+});
+
+test("sidebar collapse keeps an interactive 48px icon rail without squeezing its contents", async () => {
+  await visit();
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  const intermediate = await page.locator(".ui-asc__app").evaluate(el => {
+    const animation = el.getAnimations().find(a => a.transitionProperty === "grid-template-columns");
+    if (animation) { animation.pause(); animation.currentTime = 100; }
+    const side = document.querySelector(".ui-asc__side"), content = document.querySelector(".ui-asc__side-col");
+    const result = { width: side.getBoundingClientRect().width, contentWidth: content.getBoundingClientRect().width, visible: getComputedStyle(side).visibility, inset: getComputedStyle(el).paddingLeft };
+    animation?.finish();
+    return result;
+  });
+  assert.ok(Math.abs(intermediate.width - 104.98) < 1, "100ms frame matches the original 420ms easing");
+  assert.ok(intermediate.contentWidth >= 270);
+  assert.equal(intermediate.visible, "visible");
+  assert.equal(intermediate.inset, "0px");
+  assert.equal((await page.locator(".ui-asc__main").boundingBox()).x, 48);
+  assert.equal(await page.getByRole("button", { name: "Folders", exact: true }).isVisible(), true);
+  await page.getByRole("button", { name: "Alex Morgan", exact: true }).click();
+  assert.equal(await page.getByRole("menu", { name: "Account", exact: true }).isVisible(), true);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Expand sidebar", exact: true }).click();
+  await page.locator(".ui-asc__app").evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
+  assert.equal((await page.locator(".ui-asc__main").boundingBox()).x, 272);
 });
 
 test("command search groups, renumbers suggestions, jumps sections and navigates", async () => {
