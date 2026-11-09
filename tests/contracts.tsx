@@ -176,3 +176,49 @@ void [
   managedScreenContract,
   controlledTextareaContract,
 ];
+
+import type { FilesBrowserProps as FilesClassic } from "../components/files-browser";
+import type { FilesBrowserProps as FilesClean } from "../components/files-browser-clean";
+import type { FilesScreenProps as FilesScreenClassic } from "../screens/files";
+import type { FilesScreenProps as FilesScreenClean } from "../screens/files-clean";
+const matchingFilesInterfaces: [
+  Equal<FilesClassic, FilesClean>,
+  Equal<FilesScreenClassic, FilesScreenClean>,
+] = [true, true];
+const controlledFilesContract = {
+  folders: [],
+  templates: [],
+  onFoldersChange: (folders) => folders.map((folder) => folder.id),
+  onTemplatesChange: (templates) => templates.map((template) => template.type),
+  onOpenFolder: (folder) => folder.name,
+  onOpenTemplate: (template) => template.owner,
+} satisfies FilesClassic & FilesClean;
+void [matchingFilesInterfaces, controlledFilesContract];
+
+import type { AgentChatScreenProps as CampaignScreenClassic } from "../screens/agent-chat";
+import type { AgentChatScreenProps as CampaignScreenClean } from "../screens/agent-chat-clean";
+import type { CampaignBriefProps as BriefClassic } from "../components/campaign-brief";
+import type { CampaignBriefProps as BriefClean } from "../components/campaign-brief-clean";
+const matchingCampaignInterfaces: [
+  Equal<CampaignScreenClassic, CampaignScreenClean>,
+  Equal<BriefClassic, BriefClean>,
+] = [true, true];
+const controlledCampaignContract = {
+  messages: [],
+  onMessagesChange: (messages) => messages.map((message) => message.role),
+  onSend: (text, options) => [text, options.model],
+  onStop: () => {},
+  busy: false,
+  files: [],
+  onFilesChange: (files) => files.map((file) => file.name),
+  briefProps: {
+    angle: "Social proof",
+    channels: { instagram: false, tiktok: true, facebook: true },
+    section: "assets",
+    assets: [],
+    generating: true,
+    onGenerate: () => {},
+    onAngleChange: (angle) => angle,
+  },
+} satisfies CampaignScreenClassic & CampaignScreenClean;
+void [matchingCampaignInterfaces, controlledCampaignContract];

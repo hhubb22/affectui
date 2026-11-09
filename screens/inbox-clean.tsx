@@ -43,6 +43,7 @@ type IconName =
   | "plus"
   | "more"
   | "pin"
+  | "unpin"
   | "panel"
   | "mic"
   | "send"
@@ -129,7 +130,20 @@ const iconPaths: Record<IconName, ReactNode> = {
       <circle cx="19" cy="12" r=".7" />
     </>
   ),
-  pin: <path d="m9 3 10 10-4 1-3 4-3-3-6 6M8 4l12 12M8 4l-2 7 7 7" />,
+  pin: (
+    <g strokeWidth="1.9">
+      <path d="M3 21L8 16" />
+      <path d="M13.2585 18.8714C9.51516 18.0215 5.97844 14.4848 5.12853 10.7415C4.99399 10.1489 4.92672 9.85266 5.12161 9.37197C5.3165 8.89129 5.55457 8.74255 6.03071 8.44509C7.10705 7.77265 8.27254 7.55888 9.48209 7.66586C11.1793 7.81598 12.0279 7.89104 12.4512 7.67048C12.8746 7.44991 13.1622 6.93417 13.7376 5.90269L14.4664 4.59604C14.9465 3.73528 15.1866 3.3049 15.7513 3.10202C16.316 2.89913 16.6558 3.02199 17.3355 3.26771C18.9249 3.84236 20.1576 5.07505 20.7323 6.66449C20.978 7.34417 21.1009 7.68401 20.898 8.2487C20.6951 8.8134 20.2647 9.05346 19.4039 9.53358L18.0672 10.2792C17.0376 10.8534 16.5229 11.1406 16.3024 11.568C16.0819 11.9955 16.162 12.8256 16.3221 14.4859C16.4399 15.7068 16.2369 16.88 15.5555 17.9697C15.2577 18.4458 15.1088 18.6839 14.6283 18.8786C14.1477 19.0733 13.8513 19.006 13.2585 18.8714Z" />
+    </g>
+  ),
+  unpin: (
+    <g strokeWidth="1.9">
+      <path d="M7.5 8C6.95863 8.1281 6.49932 8.14239 5.99268 8.45891C5.07234 9.03388 4.85108 9.71674 5.08821 10.7612C5.94028 14.5139 9.48599 18.0596 13.2388 18.9117C14.2834 19.1489 14.9661 18.928 15.5416 18.0077C15.8411 17.5288 15.8716 17.0081 16 16.5" />
+      <path d="M12 7.79915C12.1776 7.77794 12.3182 7.74034 12.4295 7.68235C13.3997 7.17686 13.9291 5.53361 14.4498 4.60009C14.9311 3.73715 15.1718 3.30567 15.7379 3.10227C16.3041 2.89888 16.6448 3.02205 17.3262 3.26839C18.9197 3.8445 20.1555 5.08032 20.7316 6.6738C20.9779 7.35521 21.1011 7.69591 20.8977 8.26204C20.6943 8.82817 20.2628 9.06884 19.3999 9.55018C18.4608 10.074 16.7954 10.6108 16.2905 11.5898C16.2345 11.6983 16.1978 11.8327 16.1769 12" />
+      <path d="M3 21L8 16" />
+      <path d="M3 3L21 21" />
+    </g>
+  ),
   panel: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="3" />
@@ -850,6 +864,8 @@ export type AppShellLabels = typeof defaultAppShellLabels;
 export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & {
   /** Replace the navigation column, retaining the aside, resizer and drawer. null hides its contents. */
   sidebar?: ReactNode;
+  /** Content above the account button in the built-in sidebar. */
+  sidebarFooter?: ReactNode;
   /** A row above main and panel. No row is added for undefined or null. */
   header?: ReactNode;
   labels?: Partial<AppShellLabels>;
@@ -862,6 +878,8 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   onNavigate?: (label: string) => void;
   /** A regular application navigation sidebar, instead of the project/chat list. */
   navigation?: AppRailItem[];
+  /** Retain project/chat history below the regular navigation. */
+  showChatHistory?: boolean;
   /** Replace the shell's default command-search groups with application-specific commands. */
   commands?: CommandMenuGroup[];
   /** Offer “Ask assistant about …” as the first search result for any query. */
@@ -1382,6 +1400,7 @@ function ShellSearch({
 /** A resizable application shell with optional icon rail, project/chat navigation and an artifact panel. */
 export function AppShell({
   sidebar: sidebarContent,
+  sidebarFooter,
   header,
   labels: labelsProp,
   workspace = "Fieldwork",
@@ -1392,6 +1411,7 @@ export function AppShell({
   onActiveChange,
   onNavigate,
   navigation,
+  showChatHistory = false,
   commands: commandGroupsProp,
   onAsk,
   globalShortcut = true,
@@ -1460,7 +1480,7 @@ export function AppShell({
   const [systemDark, setSystemDark] = useState(false),
     [narrow, setNarrow] = useState(false),
     [searchOpen, setSearchOpen] = useState(false);
-  const [folders, setFolders] = useState<string[]>(["Summer collection"]);
+  const [folders, setFolders] = useState<string[]>(() => (projectsProp ?? defaultProjects).slice(0, 1));
   const [menu, setMenu] = useState<"workspace" | "account" | "projects" | "chat" | "chat-project" | null>(null);
   const [wsOpen, setWsOpen] = useState<string | null>(null);
   useEffect(() => setWsOpen(null), [menu]);
@@ -1782,8 +1802,13 @@ export function AppShell({
         >
           <Icon name="more" size={14} />
         </button>
-        <button type="button" aria-label={labels.pin(chat.title, !!chat.pinned)} onClick={() => pinChat(chat)}>
-          <Icon name="pin" size={12} />
+        <button
+          type="button"
+          aria-label={labels.pin(chat.title, !!chat.pinned)}
+          aria-pressed={!!chat.pinned}
+          onClick={() => pinChat(chat)}
+        >
+          <Icon name={chat.pinned ? "unpin" : "pin"} size={14} />
         </button>
       </span>
     </div>
@@ -2018,7 +2043,11 @@ export function AppShell({
               </button>
             </nav>
           )}
-          <div className="ui-asc__side-col" data-navigation={!!navigation || undefined}>
+          <div
+            className="ui-asc__side-col"
+            data-navigation={!!navigation || undefined}
+            data-history={showChatHistory || undefined}
+          >
             {sidebarContent !== undefined ? (
               sidebarContent
             ) : (
@@ -2082,7 +2111,10 @@ export function AppShell({
                             aria-label={item.label}
                             aria-current={active === item.label ? "page" : undefined}
                             disabled={item.disabled}
-                            onClick={() => navigate(item.label)}
+                            onClick={() => {
+                              if (showChatHistory && item.label === labels.newChat) onNewChat?.();
+                              navigate(item.label);
+                            }}
                           >
                             <span
                               className="ui-asc__nav-icon"
@@ -2101,38 +2133,40 @@ export function AppShell({
                     </nav>
                   </div>
                 ) : (
-                  <>
-                    <header className="ui-asc__side-head">
-                      <button
-                        type="button"
-                        className="ui-asc__project"
-                        aria-haspopup="menu"
-                        aria-expanded={menu === "projects"}
-                        aria-controls={menu === "projects" ? `${id}-menu` : undefined}
-                        {...trigger("projects")}
-                      >
-                        <span title={project || labels.allProjects}>{project || labels.allProjects}</span>
-                        <Icon name="chevron" size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className="ui-asc__icon-btn"
-                        aria-label={labels.search}
-                        title={labels.searchHint}
-                        onClick={() => setSearchOpen(true)}
-                      >
-                        <Icon name="search" />
-                      </button>
-                      <button
-                        type="button"
-                        className="ui-asc__mobile-close ui-asc__icon-btn"
-                        aria-label={labels.closeSidebar}
-                        onClick={() => setSidebarOpen(false)}
-                      >
-                        <Icon name="panel" />
-                      </button>
-                    </header>
-                    <nav className="ui-asc__chat-nav" aria-label={labels.conversations}>
+                  <header className="ui-asc__side-head">
+                    <button
+                      type="button"
+                      className="ui-asc__project"
+                      aria-haspopup="menu"
+                      aria-expanded={menu === "projects"}
+                      aria-controls={menu === "projects" ? `${id}-menu` : undefined}
+                      {...trigger("projects")}
+                    >
+                      <span title={project || labels.allProjects}>{project || labels.allProjects}</span>
+                      <Icon name="chevron" size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-asc__icon-btn"
+                      aria-label={labels.search}
+                      title={labels.searchHint}
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <Icon name="search" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-asc__mobile-close ui-asc__icon-btn"
+                      aria-label={labels.closeSidebar}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <Icon name="panel" />
+                    </button>
+                  </header>
+                )}
+                {(!navigation || showChatHistory) && (
+                  <nav className="ui-asc__chat-nav" aria-label={labels.conversations}>
+                    {!navigation && (
                       <button
                         type="button"
                         className="ui-asc__new-chat"
@@ -2144,62 +2178,61 @@ export function AppShell({
                         <Icon name="compose" size={16} />
                         {labels.newChat}
                       </button>
-                      {shown.some((chat) => chat.pinned) && (
-                        <div className="ui-asc__group">
-                          <h2>{labels.pinned}</h2>
-                          {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
-                        </div>
-                      )}
+                    )}
+                    {shown.some((chat) => chat.pinned) && (
                       <div className="ui-asc__group">
-                        <h2>{labels.projects}</h2>
-                        {projectList
-                          .filter((name) => !project || name === project)
-                          .map((name) => (
-                            <div key={name}>
-                              <button
-                                type="button"
-                                className="ui-asc__folder"
-                                aria-expanded={folders.includes(name)}
-                                aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
-                                onClick={() =>
-                                  setFolders(
-                                    folders.includes(name)
-                                      ? folders.filter((item) => item !== name)
-                                      : [...folders, name],
-                                  )
-                                }
-                              >
-                                <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
-                                <span title={name}>{name}</span>
-                                <span className="ui-asc__folder-chevron">
-                                  <Icon name="chevron" size={12} />
-                                </span>
-                              </button>
-                              <div
-                                className="ui-asc__folder-wrap"
-                                data-open={folders.includes(name)}
-                                id={`${id}-folder-${encodeURIComponent(name)}`}
-                                inert={!folders.includes(name)}
-                              >
-                                <div>
-                                  {shown
-                                    .filter((chat) => chat.project === name && !chat.pinned)
-                                    .map((chat) => row(chat, true))}
-                                </div>
+                        <h2>{labels.pinned}</h2>
+                        {shown.filter((chat) => chat.pinned).map((chat) => row(chat))}
+                      </div>
+                    )}
+                    <div className="ui-asc__group">
+                      <h2>{labels.projects}</h2>
+                      {projectList
+                        .filter((name) => !project || name === project)
+                        .map((name) => (
+                          <div key={name}>
+                            <button
+                              type="button"
+                              className="ui-asc__folder"
+                              aria-expanded={folders.includes(name)}
+                              aria-controls={`${id}-folder-${encodeURIComponent(name)}`}
+                              onClick={() =>
+                                setFolders(
+                                  folders.includes(name) ? folders.filter((item) => item !== name) : [...folders, name],
+                                )
+                              }
+                            >
+                              <Icon name={folders.includes(name) ? "folder-open" : "folder"} size={16} />
+                              <span title={name}>{name}</span>
+                              <span className="ui-asc__folder-chevron">
+                                <Icon name="chevron" size={12} />
+                              </span>
+                            </button>
+                            <div
+                              className="ui-asc__folder-wrap"
+                              data-open={folders.includes(name)}
+                              id={`${id}-folder-${encodeURIComponent(name)}`}
+                              inert={!folders.includes(name)}
+                            >
+                              <div>
+                                {shown
+                                  .filter((chat) => chat.project === name && !chat.pinned)
+                                  .map((chat) => row(chat, true))}
                               </div>
                             </div>
-                          ))}
+                          </div>
+                        ))}
+                    </div>
+                    {shown.some((chat) => !chat.project && !chat.pinned) && (
+                      <div className="ui-asc__group">
+                        <h2>{labels.chats}</h2>
+                        {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
                       </div>
-                      {shown.some((chat) => !chat.project && !chat.pinned) && (
-                        <div className="ui-asc__group">
-                          <h2>{labels.chats}</h2>
-                          {shown.filter((chat) => !chat.project && !chat.pinned).map((chat) => row(chat))}
-                        </div>
-                      )}
-                      {!shown.length && <p className="ui-asc__empty">{labels.empty}</p>}
-                    </nav>
-                  </>
+                    )}
+                    {!shown.length && <p className="ui-asc__empty">{labels.empty}</p>}
+                  </nav>
                 )}
+                {sidebarFooter}
                 {!rail && (
                   <button
                     type="button"
@@ -7022,6 +7055,18 @@ const css = /* css */ `
   --ui-cmc-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 24px 80px -20px rgba(0, 0, 0, 0.6);
 }
 
+.ui-asc__side-col[data-history] > .ui-asc__navigation {
+  flex: none;
+}
+.ui-asc__side-col[data-history] > .ui-asc__chat-nav {
+  padding-top: 0;
+  padding-bottom: 16px;
+}
+@container ui-asc (min-width:900px) {
+  .ui-asc[data-navigation][data-sidebar-collapsed] .ui-asc__chat-nav {
+    visibility: hidden;
+  }
+}
 .ui-asc__app[data-header] {
   grid-template-rows: auto minmax(0, 1fr);
 }

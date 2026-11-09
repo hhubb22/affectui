@@ -1,0 +1,19 @@
+export type FilesScreenProps = Omit<AppShellProps, "children" | "navigation"> & {
+  browserProps?: FilesBrowserProps;
+};
+const filesNavigation: AppRailItem[] = [
+  ...defaultWorkspaceNavigation,
+  ...["Q3 Campaign", "Brand assets", "Hiring", "Research"].map(label => ({ label, section: "Projects", icon: <WorkspaceNavGlyph name="project"/> })),
+];
+
+/** The recorded Files overview, composed with the existing workspace/account menus and resizable navigation. */
+export function FilesScreen({ browserProps, workspace = "Acme", user = { name: "Alex Morgan", email: "alex@acme.com" }, defaultActive = "Folders", onNavigate, sidebarFooter, className, ...shellProps }: FilesScreenProps) {
+  return <AppShell {...shellProps} workspace={workspace} user={user} defaultActive={defaultActive} onNavigate={onNavigate} navigation={filesNavigation} sidebarFooter={sidebarFooter === undefined ? <WorkspaceSidebarFooter workspace={workspace} onNavigate={onNavigate}/> : sidebarFooter} className={["ui-fls", className].filter(Boolean).join(" ")}>
+    <style href="ui-files" precedence="default">{css}</style>
+    <div className="ui-fls__scroll"><FilesBrowser currentUser={user.name} onOpenFolder={folder => onNavigate?.(folder.name)} onOpenTemplate={template => onNavigate?.(template.name)} {...browserProps}/></div>
+  </AppShell>;
+}
+
+/* ---------- Styles ---------- */
+.ui-fls.ui-as[data-navigation] .ui-as__main{overflow:hidden;border:1px solid var(--ui-as-line);box-shadow:none}.ui-fls__scroll{height:100%;overflow:auto;container:ui-fls-main / inline-size;overscroll-behavior:contain}
+@container ui-as (max-width:600px){.ui-fls .ui-as__app{padding:6px}}

@@ -162,6 +162,10 @@ test("C/N creation supports project menus, multiline drafts, repeated Enter and 
   );
   await input().press("Escape");
   assert.equal(await input().count(), 0);
+  await page.waitForFunction(
+    (el) => el === document.activeElement,
+    await button("New task").elementHandle(),
+  );
   assert.equal(await focused(button("New task")), true);
   await page.keyboard.press("n");
   await input().fill("jknc stay in the draft");

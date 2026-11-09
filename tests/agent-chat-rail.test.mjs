@@ -51,9 +51,12 @@ test("project filtering, creation and sidebar rename/pin/archive", async () => {
   await button("Options for Best fabric for a summer overshirt").click(); await page.getByRole("menuitem", { name: /Rename/ }).click();
   await page.getByLabel("Chat name", { exact: true }).fill("Fabric research"); await page.getByLabel("Chat name", { exact: true }).press("Enter");
   assert.equal(await button("Fabric research").count(), 1);
-  await page.locator('.ui-asc__chat-row[data-active]').hover(); await button("Pin Fabric research").click();
+  await page.locator('.ui-asc__chat-row[data-active]').hover();
+  assert.equal(await button("Pin Fabric research").getAttribute("aria-pressed"), "false");
+  await button("Pin Fabric research").click();
   await page.locator('.ui-asc__chat-row[data-active]').hover();
   assert.equal(await button("Unpin Fabric research").count(), 1);
+  assert.equal(await button("Unpin Fabric research").getAttribute("aria-pressed"), "true");
   await page.locator('.ui-asc__chat-row[data-active]').hover(); await button("Options for Fabric research").click(); await page.getByRole("menuitem", { name: /Archive/ }).click();
   assert.equal(await button("Fabric research").count(), 0);
   await button("All projects").click(); await page.getByRole("menuitem", { name: "New project", exact: true }).click(); await page.getByLabel("Project name", { exact: true }).fill("Q4 launch"); await button("Create project").click();

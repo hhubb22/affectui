@@ -83,6 +83,10 @@ test("decision numbers, pager, free text, Later/Show and answered links stay in 
   assert.equal(await page.getByRole("option").count(), 0);
   await button("Show").click();
   await page.getByRole("option").first().waitFor();
+  await page.waitForFunction(
+    (el) => el === document.activeElement,
+    await page.getByRole("option").first().elementHandle(),
+  );
   assert.equal(
     await page
       .getByRole("option")
@@ -101,6 +105,10 @@ test("decision numbers, pager, free text, Later/Show and answered links stay in 
   assert.equal(
     await page.locator('[data-answer="queue"] .ui-thc__bubble').innerText(),
     "SQS",
+  );
+  await page.waitForFunction(
+    (el) => el === document.activeElement,
+    await input().elementHandle(),
   );
   assert.equal(
     await input().evaluate((el) => el === document.activeElement),

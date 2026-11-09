@@ -48,6 +48,46 @@ const ClassicOverviewScreen = lazy(() =>
     default: module.AssistantOverviewScreen,
   })),
 );
+const CleanFilesScreen = lazy(() =>
+  import("../screens/files-clean").then((module) => ({
+    default: module.FilesScreen,
+  })),
+);
+const ClassicFilesScreen = lazy(() =>
+  import("../screens/files").then((module) => ({
+    default: module.FilesScreen,
+  })),
+);
+const CleanFilesBrowser = lazy(() =>
+  import("../components/files-browser-clean").then((module) => ({
+    default: module.FilesBrowser,
+  })),
+);
+const ClassicFilesBrowser = lazy(() =>
+  import("../components/files-browser").then((module) => ({
+    default: module.FilesBrowser,
+  })),
+);
+const CleanAgentChat = lazy(() =>
+  import("../screens/agent-chat-clean").then((module) => ({
+    default: module.AgentChatScreen,
+  })),
+);
+const ClassicAgentChat = lazy(() =>
+  import("../screens/agent-chat").then((module) => ({
+    default: module.AgentChatScreen,
+  })),
+);
+const CleanCampaignBrief = lazy(() =>
+  import("../components/campaign-brief-clean").then((module) => ({
+    default: module.CampaignBrief,
+  })),
+);
+const ClassicCampaignBrief = lazy(() =>
+  import("../components/campaign-brief").then((module) => ({
+    default: module.CampaignBrief,
+  })),
+);
 const CleanOverviewCards = lazy(() =>
   import("../components/overview-cards-clean").then((module) => ({
     default: module.OverviewCards,
@@ -149,6 +189,107 @@ function Preview() {
     presets.find((item) => item.id === query.get("state"))?.id ?? "live",
   );
   const ThreadScreen = clean ? CleanThreadScreen : ClassicThreadScreen;
+  if (query.get("screen") === "agent-chat" || component === "campaign-brief") {
+    const AgentChat = clean ? CleanAgentChat : ClassicAgentChat;
+    const CampaignBrief = clean ? CleanCampaignBrief : ClassicCampaignBrief;
+    return (
+      <div
+        data-theme={theme}
+        style={{
+          height: "100%",
+          background: theme === "dark" ? "#1c1c1e" : "white",
+        }}
+      >
+        {component === "campaign-brief" ? (
+          <div
+            style={{
+              width: "min(368px, 100%)",
+              height: "100%",
+              overflow: "auto",
+              padding: 16,
+            }}
+          >
+            <CampaignBrief
+              onGenerate={() => setNotice("Generation requested")}
+            />
+          </div>
+        ) : (
+          <AgentChat
+            defaultTheme={theme}
+            layout={query.get("layout") === "flat" ? "flat" : "inset"}
+            onNavigate={setNotice}
+          />
+        )}
+        {notice && (
+          <output
+            aria-label="Navigation"
+            style={{
+              position: "fixed",
+              zIndex: 80,
+              top: 16,
+              left: "50%",
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "#232326",
+              color: "white",
+              font: "12px system-ui",
+            }}
+          >
+            {notice}
+          </output>
+        )}
+      </div>
+    );
+  }
+  if (query.get("screen") === "files" || component === "files-browser") {
+    const FilesScreen = clean ? CleanFilesScreen : ClassicFilesScreen;
+    const FilesBrowser = clean ? CleanFilesBrowser : ClassicFilesBrowser;
+    const browserProps = {
+      onOpenFolder: (folder: { name: string }) =>
+        setNotice(`Folder: ${folder.name}`),
+      onOpenTemplate: (template: { name: string }) =>
+        setNotice(`Template: ${template.name}`),
+    };
+    return (
+      <div
+        data-theme={theme}
+        style={{
+          height: "100%",
+          containerType: "inline-size",
+          containerName: "ui-as ui-asc ui-fls-main ui-flsc-main",
+        }}
+      >
+        {component === "files-browser" ? (
+          <FilesBrowser {...browserProps} />
+        ) : (
+          <FilesScreen
+            defaultTheme={theme}
+            layout={query.get("layout") === "flat" ? "flat" : "inset"}
+            browserProps={browserProps}
+            onNavigate={setNotice}
+          />
+        )}
+        {notice && (
+          <output
+            aria-label="Navigation"
+            style={{
+              position: "fixed",
+              zIndex: 80,
+              top: 16,
+              left: "50%",
+              padding: "6px 14px",
+              borderRadius: 8,
+              background: "#232326",
+              color: "white",
+              font: "12px system-ui",
+            }}
+          >
+            {notice}
+          </output>
+        )}
+      </div>
+    );
+  }
   if (
     query.get("screen") === "inbox" ||
     component?.startsWith("inbox-") ||
