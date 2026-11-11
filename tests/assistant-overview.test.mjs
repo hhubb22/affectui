@@ -260,3 +260,36 @@ test("command search groups, renumbers suggestions, jumps sections and navigates
   await input.press("Escape");
   assert.equal(await dialog.count(), 0);
 });
+
+test("controlled workspaces, custom workspace/account menus, and nullable user work end-to-end", async () => {
+  await page.goto(`${base}/?component=managed-workspaces`, { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+  const events = () => page.getByLabel("Runtime events").textContent().then(text => JSON.parse(text));
+  const wsTrigger = page.getByRole("button", { name: "Engineering", exact: true });
+  await wsTrigger.click();
+  const wsMenu = page.getByRole("menu", { name: "Engineering", exact: true });
+  assert.equal(await wsMenu.getByRole("menuitem", { name: "Invite people" }).count(), 0);
+  await wsMenu.getByRole("menuitem", { name: "Members", exact: true }).click();
+  assert.deepEqual(await events(), ["workspace-menu:members"]);
+  await wsTrigger.click();
+  await page.getByRole("menuitem", { name: "Switch workspace" }).hover();
+  assert.equal(await page.getByRole("menuitemradio", { name: /^Engineering/ }).getAttribute("aria-checked"), "true");
+  await page.getByRole("menuitemradio", { name: /^Design/ }).click();
+  assert.deepEqual(await events(), ["workspace-menu:members", "workspace:design"]);
+  assert.equal(await page.getByRole("button", { name: "Design", exact: true }).isVisible(), true);
+  await page.getByRole("button", { name: "Design", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Switch workspace" }).hover();
+  await page.getByRole("menuitem", { name: "Create workspace", exact: true }).click();
+  assert.deepEqual(await events(), ["workspace-menu:members", "workspace:design", "create-workspace"]);
+
+  const accountTrigger = page.getByRole("button", { name: "Ada Lovelace", exact: true });
+  await accountTrigger.click();
+  const accountMenu = page.getByRole("menu", { name: "Account", exact: true });
+  assert.equal(await accountMenu.getByRole("menuitem", { name: "Language", exact: true }).count(), 0);
+  assert.equal(await accountMenu.getByRole("menuitem", { name: "Appearance", exact: true }).isVisible(), true);
+  await accountMenu.getByRole("menuitem", { name: "Sign out", exact: true }).click();
+  assert.deepEqual(await events(), ["workspace-menu:members", "workspace:design", "create-workspace", "account:signout"]);
+
+  await page.getByRole("button", { name: "Toggle user", exact: true }).click();
+  assert.equal(await accountTrigger.count(), 0);
+});

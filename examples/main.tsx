@@ -16,6 +16,8 @@ const ClassicThreadScreen = lazy(() =>
 const ThreadDemos = lazy(() => import("./thread-demos"));
 const ThreadFixtures = lazy(() => import("./thread-fixtures"));
 const ManagedFixtures = lazy(() => import("./managed-fixtures"));
+const ScheduleAndInputDemos = lazy(() => import("./schedule-and-input-demos"));
+const SettingsAndRunningDemos = lazy(() => import("./settings-and-running-demos"));
 const CleanTasksScreen = lazy(() =>
   import("../screens/agent-tasks-clean").then((module) => ({
     default: module.AgentTasksScreen,
@@ -444,6 +446,36 @@ function Preview() {
     );
   if (component === "controlled-thread" || component === "upload-thread")
     return <ThreadFixtures variant={component} />;
+  if (
+    query.get("screen") === "agent-schedules" ||
+    component === "managed-schedules" ||
+    component === "managed-inbox-view" ||
+    component === "schedules-inputs"
+  )
+    return (
+      <ScheduleAndInputDemos
+        variant={component ?? "agent-schedules"}
+        clean={clean}
+        theme={theme}
+        loading={query.get("loading") === "1"}
+      />
+    );
+  const screenParam = query.get("screen");
+  if (
+    screenParam === "settings-profile" ||
+    screenParam === "settings-general" ||
+    screenParam === "settings-members" ||
+    component === "running-now" ||
+    component === "managed-members"
+  )
+    return (
+      <SettingsAndRunningDemos
+        variant={component ?? screenParam ?? "running-now"}
+        clean={clean}
+        theme={theme}
+        loading={query.get("loading") === "1"}
+      />
+    );
   if (component?.startsWith("managed-"))
     return <ManagedFixtures variant={component} clean={clean} theme={theme} />;
   if (query.get("screen") === "agent-thread")

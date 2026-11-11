@@ -1,5 +1,13 @@
-import type { AppShellProps as ShellClassic } from "../components/app-shell";
-import type { AppShellProps as ShellClean } from "../components/app-shell-clean";
+import type {
+  AppShellProps as ShellClassic,
+  AppShellWorkspace as ShellWorkspaceClassic,
+  AppShellMenuItem as ShellMenuClassic,
+} from "../components/app-shell";
+import type {
+  AppShellProps as ShellClean,
+  AppShellWorkspace as ShellWorkspaceClean,
+  AppShellMenuItem as ShellMenuClean,
+} from "../components/app-shell-clean";
 import type { AgentThreadProps as ThreadClassic } from "../components/agent-thread";
 import type { AgentThreadProps as ThreadClean } from "../components/agent-thread-clean";
 import type { ArtifactWorkspaceProps as WorkspaceClassic } from "../components/artifact-workspace";
@@ -170,10 +178,32 @@ const controlledTextareaContract: ComposerClean["textareaProps"] = {
   // @ts-expect-error Use the existing onValueChange API, not an overriding textarea event.
   onChange: () => {},
 };
+const managedShellWorkspacesContract: ShellClassic & ShellClean = {
+  workspace: "Engineering",
+  workspaceId: "eng",
+  workspaces: [{ id: "eng", name: "Engineering", subtitle: "Admin" }] satisfies
+    ShellWorkspaceClassic[] &
+    ShellWorkspaceClean[],
+  onSelectWorkspace: (id) => id,
+  onCreateWorkspace: () => {},
+  workspaceMenuItems: [
+    { id: "members", label: "Members", onSelect: () => {} },
+    { kind: "separator" },
+  ] satisfies ShellMenuClassic[] & ShellMenuClean[],
+  user: null,
+  accountMenuItems: [
+    { id: "password", label: "Change password", onSelect: () => {} },
+    { kind: "separator" },
+    { id: "logout", label: "Sign out", danger: true, onSelect: () => {} },
+  ] satisfies ShellMenuClassic[] & ShellMenuClean[],
+  showLanguageMenu: false,
+  showAppearanceMenu: true,
+};
 void [
   managedComposerContract,
   managedDockContract,
   managedScreenContract,
+  managedShellWorkspacesContract,
   controlledTextareaContract,
 ];
 
@@ -259,3 +289,104 @@ const controlledIntegrationsContract = {
   },
 } satisfies IntegrationsClassic & IntegrationsClean;
 void [matchingIntegrationInterfaces, controlledIntegrationsContract];
+
+import type { TextFieldProps as TextFieldClassic } from "../components/text-field";
+import type { TextFieldProps as TextFieldClean } from "../components/text-field-clean";
+import type { SelectProps as SelectClassic } from "../components/select";
+import type { SelectProps as SelectClean } from "../components/select-clean";
+import type { SwitchProps as SwitchClassic } from "../components/switch";
+import type { SwitchProps as SwitchClean } from "../components/switch-clean";
+import type { InboxViewProps as InboxViewClassic } from "../components/inbox-view";
+import type { InboxViewProps as InboxViewClean } from "../components/inbox-view-clean";
+import type {
+  ScheduleBoardProps as ScheduleBoardClassic,
+  ScheduleInspectorProps as ScheduleInspectorClassic,
+} from "../components/schedule-board";
+import type {
+  ScheduleBoardProps as ScheduleBoardClean,
+  ScheduleInspectorProps as ScheduleInspectorClean,
+} from "../components/schedule-board-clean";
+import type { AgentSchedulesScreenProps as SchedulesScreenClassic } from "../screens/agent-schedules";
+import type { AgentSchedulesScreenProps as SchedulesScreenClean } from "../screens/agent-schedules-clean";
+const matchingMilestone2Interfaces: [
+  Equal<TextFieldClassic, TextFieldClean>,
+  Equal<SelectClassic, SelectClean>,
+  Equal<SwitchClassic, SwitchClean>,
+  Equal<InboxViewClassic, InboxViewClean>,
+  Equal<ScheduleBoardClassic, ScheduleBoardClean>,
+  Equal<ScheduleInspectorClassic, ScheduleInspectorClean>,
+  Equal<SchedulesScreenClassic, SchedulesScreenClean>,
+] = [true, true, true, true, true, true, true];
+const managedInboxAndScheduleContracts = {
+  inbox: {
+    items: [
+      {
+        id: "invite-1",
+        kind: "approval",
+        listTitle: "Invite room",
+        question: "Invitation to Invite room",
+        task: "Workspace invite",
+        at: 0,
+      },
+    ],
+    managed: true,
+    showTabs: false,
+    allowFreeText: false,
+    submittingId: "invite-1",
+    confirmedId: undefined,
+    collapsingId: undefined,
+    error: "Failed",
+    itemLabels: () => ({ approve: "Accept", decline: "Decline" }),
+  } satisfies InboxViewClassic & InboxViewClean,
+  schedules: {
+    managed: true,
+    schedules: [
+      {
+        id: "sched-1",
+        name: "Browser report",
+        cadence: "Every Tue at 09:30",
+        panelCadence: "Tue at 09:30 · Asia/Kathmandu",
+        runs: [1000],
+      },
+    ],
+    labels: {
+      listHeading: "Scheduled threads",
+      panelPause: "Pause schedule",
+      panelResume: "Enable schedule",
+    },
+  } satisfies SchedulesScreenClassic & SchedulesScreenClean,
+};
+void [matchingMilestone2Interfaces, managedInboxAndScheduleContracts];
+
+import type { RunningNowProps as RunningNowClassic } from "../components/running-now";
+import type { RunningNowProps as RunningNowClean } from "../components/running-now-clean";
+import type {
+  SettingsPageProps as SettingsPageClassic,
+  SettingsCardProps as SettingsCardClassic,
+  SettingsRowProps as SettingsRowClassic,
+  SettingsMembersPanelProps as SettingsMembersPanelClassic,
+} from "../components/settings-panel";
+import type {
+  SettingsPageProps as SettingsPageClean,
+  SettingsCardProps as SettingsCardClean,
+  SettingsRowProps as SettingsRowClean,
+  SettingsMembersPanelProps as SettingsMembersPanelClean,
+} from "../components/settings-panel-clean";
+import type { SettingsProfileScreenProps as SettingsProfileClassic } from "../screens/settings-profile";
+import type { SettingsProfileScreenProps as SettingsProfileClean } from "../screens/settings-profile-clean";
+import type { SettingsGeneralScreenProps as SettingsGeneralClassic } from "../screens/settings-general";
+import type { SettingsGeneralScreenProps as SettingsGeneralClean } from "../screens/settings-general-clean";
+import type { SettingsMembersScreenProps as SettingsMembersClassic } from "../screens/settings-members";
+import type { SettingsMembersScreenProps as SettingsMembersClean } from "../screens/settings-members-clean";
+
+const matchingMilestone3Interfaces: [
+  Equal<RunningNowClassic, RunningNowClean>,
+  Equal<SettingsPageClassic, SettingsPageClean>,
+  Equal<SettingsCardClassic, SettingsCardClean>,
+  Equal<SettingsRowClassic, SettingsRowClean>,
+  Equal<SettingsMembersPanelClassic, SettingsMembersPanelClean>,
+  Equal<SettingsProfileClassic, SettingsProfileClean>,
+  Equal<SettingsGeneralClassic, SettingsGeneralClean>,
+  Equal<SettingsMembersClassic, SettingsMembersClean>,
+] = [true, true, true, true, true, true, true, true];
+void matchingMilestone3Interfaces;

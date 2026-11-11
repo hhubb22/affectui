@@ -1,0 +1,328 @@
+export function createDefaultAgentSchedules(now = Date.now()): AgentSchedule[] {
+  const min = 60000;
+  const hour = 60 * min;
+  const day = 24 * hour;
+  const atHour = (h: number, m: number, offsetDays = 0) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + offsetDays);
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+  };
+  const series = (h: number, m: number, filter: (dow: number) => boolean = () => true, past = 1, future = 4) => {
+    const all: number[] = [];
+    for (let offset = -7; offset <= 14 && all.filter((t) => t > now).length < future; offset++) {
+      const ts = atHour(h, m, offset);
+      if (filter(new Date(ts).getDay())) all.push(ts);
+    }
+    return [...all.filter((t) => t <= now).slice(-past), ...all.filter((t) => t > now)];
+  };
+  const weekday = (dow: number) => dow >= 1 && dow <= 5;
+  const soon = now + 6000;
+  const biHourly: number[] = [];
+  for (let d = 0; d <= 1; d++) for (let h = 8; h <= 20; h += 2) biHourly.push(atHour(h, 0, d));
+  const firstOfNextMonth = (() => {
+    const d = new Date(now);
+    d.setMonth(d.getMonth() + 1, 1);
+    d.setHours(9, 0, 0, 0);
+    return d.getTime();
+  })();
+  const fridays = series(16, 0, (dow) => dow === 5, 1, 2);
+  const lastBefore = (runs: number[]) => runs.filter((t) => t <= now).pop() ?? now - 7 * day;
+  const mornings = series(7, 45, weekday);
+  const standups = series(16, 30, weekday);
+  const nightly = series(2, 0);
+  const dayFmt = new Intl.DateTimeFormat("en", { weekday: "long" });
+  const hmFmt = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit", hour12: false });
+
+  return [
+    {
+      id: "scan",
+      name: "Competitor scan",
+      project: "Northwind",
+      tone: "orange",
+      prompt: "Check the nine makers' sites and shops for new prices, models and campaigns – and tell me what changed since last week.",
+      cadence: `Every ${dayFmt.format(soon)} at ${hmFmt.format(soon)}`,
+      runs: [soon - 7 * day, soon, soon + 7 * day],
+      duration: 9000,
+      cost: 3.1,
+      history: [
+        { at: soon - 7 * day, outcome: "done", summary: "2 makers cut prices, 1 new model", cost: 3.42 },
+        { at: soon - 14 * day, outcome: "done", summary: "Nothing changed", cost: 2.8 },
+        { at: soon - 21 * day, outcome: "failed", summary: "Three shops blocked the browser", cost: 1.2 },
+      ],
+    },
+    {
+      id: "triage",
+      name: "Inbox triage",
+      project: "Platform",
+      tone: "purple",
+      prompt: "Sort new support emails: answer the easy ones, label the rest and put anything urgent in my Inbox.",
+      cadence: "Every 2 hours, 8:00 – 20:00",
+      runs: biHourly,
+      duration: 2 * min,
+      cost: 0.18,
+      history: [
+        { at: lastBefore(biHourly), outcome: "done", summary: "Answered 6, labeled 11", cost: 0.21 },
+        { at: lastBefore(biHourly) - 2 * hour, outcome: "needs", summary: "1 refund over 50 € waits for you", cost: 0.16 },
+      ],
+    },
+    {
+      id: "numbers",
+      name: "Northwind numbers",
+      project: "Northwind",
+      tone: "orange",
+      prompt: "Refresh the client dashboard so it's ready before their team opens it at 8:30.",
+      cadence: "Every weekday at 7:45",
+      runs: mornings,
+      duration: 4 * min,
+      cost: 0.42,
+      history: [{ at: lastBefore(mornings), outcome: "done", summary: "Dashboard ready 4 minutes later", cost: 0.4 }],
+    },
+    {
+      id: "standup",
+      name: "Standup notes",
+      project: "Platform",
+      tone: "purple",
+      prompt: "Collect what moved since yesterday from GitHub and Slack and post a short note in #platform.",
+      cadence: "Every weekday at 16:30",
+      runs: standups,
+      duration: 3 * min,
+      cost: 0.26,
+      history: [{ at: lastBefore(standups), outcome: "done", summary: "Posted in #platform", cost: 0.24 }],
+    },
+    {
+      id: "weekly",
+      name: "Weekly update",
+      project: "Northwind",
+      tone: "orange",
+      prompt: "Draft the weekly update for Priya – what shipped, what needs her answer – and ask me before sending it.",
+      cadence: "Every Friday at 16:00",
+      runs: fridays,
+      cost: 0.55,
+      history: [{ at: lastBefore(fridays), outcome: "needs", summary: "Draft waits for your OK", cost: 0.51 }],
+    },
+    {
+      id: "evals",
+      name: "Nightly evals",
+      project: "Evalkit",
+      tone: "teal",
+      prompt: "Run the benchmark suite on the latest build and post the scores.",
+      cadence: "Every night at 2:00",
+      runs: nightly,
+      paused: true,
+      cost: 4.8,
+      history: [{ at: lastBefore(nightly), outcome: "done", summary: "Scores up 1.2 on average", cost: 5.1 }],
+    },
+    {
+      id: "invoices",
+      name: "Invoice reminders",
+      project: "Internal",
+      tone: "gray",
+      prompt: "Remind clients whose invoices are more than 14 days late – politely, once.",
+      cadence: "On the 1st of every month",
+      runs: [firstOfNextMonth],
+      cost: 0.3,
+      history: [{ at: firstOfNextMonth - 31 * day, outcome: "failed", summary: "Stripe didn't answer – try again", cost: 0.02 }],
+    },
+  ];
+}
+
+export type AgentSchedulesScreenProps = Omit<
+  AppShellProps,
+  "children" | "panel" | "panelTitle" | "navigation" | "onSelect" | "onPause"
+> & {
+  schedules?: AgentSchedule[];
+  defaultSchedules?: AgentSchedule[];
+  onSchedulesChange?: (schedules: AgentSchedule[]) => void;
+  selected?: string | null;
+  defaultSelected?: string | null;
+  onSelectedChange?: (id: string | null) => void;
+  onSelect?: (id: string) => void;
+  onPause?: (id: string, paused: boolean) => void;
+  onRunNow?: (id: string) => void;
+  onSkip?: (id: string, at: number, skipped: boolean) => void;
+  managed?: boolean;
+  loading?: boolean;
+  labels?: AgentSchedulesLabels;
+  headerAction?: ReactNode;
+  editor?: ReactNode;
+  extraInspectorActions?: ReactNode;
+  inspectorError?: ReactNode;
+  runDisabled?: boolean;
+  actionsDisabled?: boolean;
+  now?: number;
+};
+
+/** Full Agent / Schedules screen with AppShell, Around Now timeline, schedule list, and right-rail ScheduleInspector. */
+export function AgentSchedulesScreen({
+  workspace = "Fieldwork",
+  schedules: schedulesProp,
+  defaultSchedules,
+  onSchedulesChange,
+  selected: selectedProp,
+  defaultSelected = "scan",
+  onSelectedChange,
+  onSelect,
+  onPause,
+  onRunNow,
+  onSkip,
+  managed = false,
+  loading = false,
+  labels,
+  headerAction,
+  editor,
+  extraInspectorActions,
+  inspectorError,
+  runDisabled,
+  actionsDisabled,
+  now: nowProp,
+  panelOpen: panelProp,
+  defaultPanelOpen = true,
+  onPanelOpenChange,
+  onNavigate,
+  className,
+  style,
+  ...shellProps
+}: AgentSchedulesScreenProps) {
+  const [initialSchedules] = useState(() => defaultSchedules ?? schedulesProp ?? createDefaultAgentSchedules());
+  const [schedules, setSchedules] = useControllable(schedulesProp, initialSchedules, onSchedulesChange);
+  const [selected, setSelected] = useControllable<string | null>(selectedProp, defaultSelected, onSelectedChange);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const [notice, setNotice] = useState("");
+  const [clock, setClock] = useState(() => Date.now());
+  const [panelOpen, setPanelOpen] = useControllable(panelProp, defaultPanelOpen, onPanelOpenChange);
+
+  const now = safeNumber(nowProp, clock);
+  const mergedLabels = mergeScheduleLabels(labels);
+  const current = schedules.find((s) => s.id === selected) ?? null;
+
+  const announce = (text: string) => {
+    setNotice("");
+    window.setTimeout(() => setNotice(text), 30);
+  };
+
+  const handlePause = (id: string, paused: boolean) => {
+    const target = schedules.find((s) => s.id === id);
+    if (!target) return;
+    if (!managed) {
+      setSchedules(schedules.map((s) => (s.id === id ? { ...s, paused } : s)));
+      announce(`${target.name}: ${paused ? mergedLabels.paused : mergedLabels.resume}`);
+    }
+    onPause?.(id, paused);
+  };
+
+  const handleRunNow = (id: string) => {
+    const target = schedules.find((s) => s.id === id);
+    if (!target) return;
+    if (!managed) {
+      const ts = Date.now();
+      setSchedules(
+        schedules.map((s) => (s.id === id ? { ...s, runs: [...s.runs, ts], duration: s.duration ?? 8000 } : s)),
+      );
+      setClock(ts);
+      announce(`${target.name}: ${mergedLabels.runningNow}`);
+    }
+    onRunNow?.(id);
+  };
+
+  const handleSkip = (id: string, at: number) => {
+    const key = scheduleSkipKey(id, at);
+    const wasSkipped = skipped.includes(key);
+    if (!managed) {
+      setSkipped((prev) => (wasSkipped ? prev.filter((item) => item !== key) : [...prev, key]));
+    }
+    onSkip?.(id, at, !wasSkipped);
+  };
+
+  const handleSelect = (id: string) => {
+    setSelected(id);
+    setPanelOpen(true);
+    onSelect?.(id);
+  };
+
+  const navigation: AppRailItem[] = [
+    { label: "Thread", icon: <Icon name="chat" /> },
+    { label: "Inbox", icon: <Icon name="inbox" />, count: 5 },
+    { label: "Tasks", icon: <Icon name="tasks" /> },
+    { label: "Memory", icon: <Icon name="memory" /> },
+    { label: "Schedules", icon: <Icon name="calendar" />, section: "Workspace" },
+    { label: "Activity", icon: <Icon name="tasks" />, section: "Workspace" },
+    { label: "Usage", icon: <Icon name="chart" />, section: "Workspace" },
+    { label: "Permissions", icon: <Icon name="shield" />, section: "Workspace" },
+    { label: "Settings", icon: <Icon name="settings" />, section: "Workspace" },
+  ];
+
+  const tabs: ArtifactWorkspaceTab[] = [
+    {
+      id: "schedule",
+      label: (!loading && current?.name) || mergedLabels.schedules,
+      icon: <Icon name="repeat" size={14} />,
+      content: (
+        <ScheduleInspector
+          key={current?.id ?? "empty"}
+          schedule={current}
+          loading={loading}
+          skipped={skipped}
+          labels={mergedLabels}
+          runDisabled={runDisabled}
+          actionsDisabled={actionsDisabled}
+          extraActions={extraInspectorActions}
+          error={inspectorError}
+          now={now}
+          onPause={current ? (paused) => handlePause(current.id, paused) : undefined}
+          onRunNow={current ? () => handleRunNow(current.id) : undefined}
+          onSkip={current ? (at) => handleSkip(current.id, at) : undefined}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <div className={["ui-sbs__frame", className].filter(Boolean).join(" ")} style={style}>
+      <style href="ui-agent-schedules" precedence="default">{css}</style>
+      <AppShell
+        {...shellProps}
+        workspace={workspace}
+        className="ui-sbs__shell"
+        defaultChats={shellProps.defaultChats ?? []}
+        defaultActive={shellProps.defaultActive ?? "Schedules"}
+        navigation={navigation}
+        onNavigate={onNavigate}
+        panelOpen={panelOpen}
+        onPanelOpenChange={setPanelOpen}
+        defaultPanelWidth={shellProps.defaultPanelWidth ?? 380}
+        panelTitle="Schedule"
+        panel={
+          <ArtifactWorkspace
+            files={[]}
+            openFiles={["schedule"]}
+            activeFile="schedule"
+            tabs={tabs}
+            onClose={() => setPanelOpen(false)}
+            closeLabel="Close schedule"
+          />
+        }
+      >
+        <ScheduleBoard
+          schedules={schedules}
+          selected={selected}
+          onSelect={handleSelect}
+          onPause={handlePause}
+          skipped={skipped}
+          labels={mergedLabels}
+          loading={loading}
+          now={nowProp}
+          headerAction={headerAction}
+          editor={editor}
+          notice={notice}
+        />
+      </AppShell>
+    </div>
+  );
+}
+
+/* ---------- Styles ---------- */
+.ui-sbs__frame{width:100%;height:100%;min-height:0;container:ui-sbs-frame / inline-size;font-family:"Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.ui-sbs__frame,.ui-sbs__frame *,.ui-sbs__frame *::before,.ui-sbs__frame *::after{box-sizing:border-box}
+.ui-sbs__shell{height:100%}
+@media(prefers-reduced-motion:reduce){.ui-sbs__frame,.ui-sbs__frame *{scroll-behavior:auto!important}}

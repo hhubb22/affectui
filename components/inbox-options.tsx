@@ -92,7 +92,8 @@ export function InboxOptions({
       event.preventDefault();
       event.stopPropagation();
       choose(index);
-      onConfirm?.(options[index].id);
+      const opt = options[index];
+      if (opt) onConfirm?.(opt.id);
     }
   };
   const focused = options.some((option) => option.id === value) ? value : options[0]?.id;

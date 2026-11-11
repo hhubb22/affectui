@@ -1,0 +1,53 @@
+export type SettingsMembersScreenProps = Omit<AppShellProps, "children"> & {
+  loading?: boolean;
+  panelProps?: SettingsMembersPanelProps;
+};
+
+export function SettingsMembersScreen({
+  loading = false,
+  panelProps,
+  ...shellProps
+}: SettingsMembersScreenProps) {
+  const [toast, notify] = useSettingsToast();
+
+  return (
+    <AppShell
+      rail={false}
+      showChatHistory={false}
+      navigation={defaultSettingsNavigation}
+      active="Members"
+      workspace="Acme"
+      user={{ name: "Alex Morgan", email: "alex@acme.com" }}
+      {...shellProps}
+    >
+      <style href="ui-settings-members" precedence="default">{css}</style>
+      <div className="ui-smb">
+        <SettingsPage
+          maxWidth={880}
+          title="Members & teams"
+          subtitle="Invite people, set what they can do and group them into teams."
+        >
+          <SettingsMembersPanel
+            seatLimit={10}
+            loading={loading}
+            onNotice={notify}
+            {...panelProps}
+          />
+        </SettingsPage>
+        {toast}
+      </div>
+    </AppShell>
+  );
+}
+
+/* ---------- Styles ---------- */
+.ui-smb {
+  min-height: 100%;
+  overflow-y: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-smb * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

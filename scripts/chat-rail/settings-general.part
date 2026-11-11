@@ -1,0 +1,308 @@
+export type SettingsGeneralData = {
+  name: string;
+  slug: string;
+  context: string;
+};
+
+export type SettingsGeneralScreenProps = Omit<AppShellProps, "children"> & {
+  general?: SettingsGeneralData;
+  defaultGeneral?: SettingsGeneralData;
+  loading?: boolean;
+  onGeneralChange?: (data: SettingsGeneralData) => void;
+  onDeleteWorkspace?: () => void;
+};
+
+export const defaultSettingsGeneral: SettingsGeneralData = {
+  name: "Acme",
+  slug: "acme",
+  context:
+    "We build B2B workflow software across three units: Product, Revenue and Operations. Regional leads escalate customer SLAs to the COO.",
+};
+
+function slugifyWorkspace(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 36);
+}
+
+export function SettingsGeneralScreen({
+  general: generalProp,
+  defaultGeneral = defaultSettingsGeneral,
+  loading = false,
+  onGeneralChange,
+  onDeleteWorkspace,
+  ...shellProps
+}: SettingsGeneralScreenProps) {
+  const [general, setGeneral] = useControllable(generalProp, defaultGeneral, onGeneralChange);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [toast, notify] = useSettingsToast();
+  const maxContext = 1200;
+  const approxTokens = Math.max(1, Math.round(general.context.length / 4));
+
+  return (
+    <AppShell
+      rail={false}
+      showChatHistory={false}
+      navigation={defaultSettingsNavigation}
+      active="General"
+      workspace={general.name || "Acme"}
+      user={{ name: "Alex Morgan", email: "alex@acme.com" }}
+      {...shellProps}
+    >
+      <style href="ui-settings-general" precedence="default">{css}</style>
+      <div className="ui-sgn">
+        <SettingsPage
+          title="General"
+          subtitle="Manage your workspace name, shared URL and assistant context."
+        >
+          <SettingsCard alone loading={loading} loadingLabel="Loading workspace" aria-label="Workspace identity">
+            <SettingsRow
+              title="Workspace icon"
+              description="Shown in the workspace switcher and invites"
+              skeleton={loading}
+              leading={
+                <span className="ui-sgn__icon" aria-hidden="true">
+                  {initials(general.name || "A").slice(0, 1)}
+                </span>
+              }
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 96, height: 28, borderRadius: 6 }} />
+              ) : (
+                <SettingsButton variant="secondary" onClick={() => notify("Icon updated")}>
+                  Upload icon
+                </SettingsButton>
+              )}
+            </SettingsRow>
+
+            <SettingsRow
+              title="Workspace name"
+              description="Visible to every member in this workspace"
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 240, height: 32, borderRadius: 7 }} />
+              ) : (
+                <input
+                  className="ui-stp__input ui-sgn__field"
+                  aria-label="Workspace name"
+                  value={general.name}
+                  onChange={(event) => setGeneral({ ...general, name: event.target.value })}
+                  onBlur={() => {
+                    const nextName = general.name.trim() || "Acme";
+                    setGeneral({ ...general, name: nextName });
+                    notify("Workspace name saved");
+                  }}
+                />
+              )}
+            </SettingsRow>
+
+            <SettingsRow
+              title="Workspace URL"
+              description="Changing it breaks links people have saved"
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 240, height: 32, borderRadius: 7 }} />
+              ) : (
+                <div className="ui-sgn__slug">
+                  <span>acme.app/</span>
+                  <input
+                    aria-label="Workspace URL"
+                    spellCheck={false}
+                    value={general.slug}
+                    onChange={(event) => setGeneral({ ...general, slug: slugifyWorkspace(event.target.value) })}
+                    onBlur={() => {
+                      const nextSlug = general.slug || slugifyWorkspace(general.name) || "workspace";
+                      setGeneral({ ...general, slug: nextSlug });
+                      notify("Address updated");
+                    }}
+                  />
+                </div>
+              )}
+            </SettingsRow>
+          </SettingsCard>
+
+          <SettingsSection
+            title="Company context"
+            description="Added to every chat in this workspace, so the assistant already knows how your company works. Keep it short – it counts toward every message."
+          >
+            <div className="ui-sgn__context">
+              {loading ? (
+                <SettingsCard loading loadingLabel="Loading company context">
+                  <div style={{ padding: 16, display: "grid", gap: 8 }} data-skel="">
+                    <span className="ui-stp__skel" style={{ width: "90%", height: 12 }} />
+                    <span className="ui-stp__skel" style={{ width: "80%", height: 12 }} />
+                    <span className="ui-stp__skel" style={{ width: "56%", height: 12 }} />
+                  </div>
+                </SettingsCard>
+              ) : (
+                <>
+                  <textarea
+                    className="ui-sgn__textarea"
+                    aria-label="Company context"
+                    rows={5}
+                    maxLength={maxContext}
+                    value={general.context}
+                    placeholder="E.g. We have three business units – Sales, Operations and Finance..."
+                    onChange={(event) => setGeneral({ ...general, context: event.target.value })}
+                    onBlur={() => notify("Context saved")}
+                  />
+                  <div className="ui-sgn__hint">
+                    <span>
+                      {general.context.length > 0 ? `About ${approxTokens} tokens per message. ` : ""}
+                      Two or three short paragraphs work best.
+                    </span>
+                    <small>
+                      {general.context.length}/{maxContext}
+                    </small>
+                  </div>
+                </>
+              )}
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Danger zone">
+            <SettingsCard tone="danger" aria-label="Danger zone">
+              <SettingsRow
+                title="Delete workspace"
+                description={`All chats, files and agents of ${general.name || "Acme"} go for good, for every member.`}
+                skeleton={loading}
+                footer={
+                  confirmingDelete ? (
+                    <SettingsDangerConfirm
+                      name={general.name || "Acme"}
+                      onCancel={() => setConfirmingDelete(false)}
+                      onConfirm={() => {
+                        onDeleteWorkspace?.();
+                        setConfirmingDelete(false);
+                        notify(`${general.name || "Acme"} deleted`);
+                      }}
+                    />
+                  ) : undefined
+                }
+              >
+                {!confirmingDelete && (
+                  <SettingsButton
+                    variant="danger"
+                    icon="trash"
+                    disabled={loading}
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    Delete workspace
+                  </SettingsButton>
+                )}
+              </SettingsRow>
+            </SettingsCard>
+          </SettingsSection>
+        </SettingsPage>
+        {toast}
+      </div>
+    </AppShell>
+  );
+}
+
+/* ---------- Styles ---------- */
+.ui-sgn {
+  min-height: 100%;
+  overflow-y: auto;
+}
+.ui-sgn__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--ui-stp-card, #ffffff);
+  box-shadow: var(--ui-stp-shadow, 0 0 0 0.5px rgba(0, 0, 0, 0.1));
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-stp-strong, #000000);
+}
+.ui-sgn__field {
+  width: 260px;
+}
+.ui-sgn__slug {
+  display: inline-flex;
+  align-items: center;
+  width: 260px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: var(--ui-stp-card, #ffffff);
+  box-shadow: var(--ui-stp-shadow, 0 0 0 0.5px rgba(0, 0, 0, 0.08));
+  font-size: 13px;
+}
+.ui-sgn__slug > span {
+  flex: none;
+  color: var(--ui-stp-muted, rgba(0, 0, 0, 0.48));
+  user-select: none;
+}
+.ui-sgn__slug > input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ui-stp-ink, rgba(0, 0, 0, 0.88));
+  outline: none;
+}
+.ui-sgn__slug:focus-within {
+  box-shadow: 0 0 0 1.5px var(--ui-stp-focus, rgba(0, 96, 226, 0.7));
+}
+.ui-sgn__context {
+  margin-top: 12px;
+}
+.ui-sgn__textarea {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--ui-stp-card, #ffffff);
+  box-shadow: var(--ui-stp-shadow, 0 0 0 0.5px rgba(0, 0, 0, 0.08));
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ui-stp-ink, rgba(0, 0, 0, 0.88));
+  resize: vertical;
+}
+.ui-sgn__textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 1.5px var(--ui-stp-focus, rgba(0, 96, 226, 0.7));
+}
+.ui-sgn__hint {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ui-stp-muted, rgba(0, 0, 0, 0.48));
+}
+.ui-sgn__hint small {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@container ui-stp (max-width: 600px) {
+  .ui-sgn__field,
+  .ui-sgn__slug {
+    width: 100%;
+  }
+}
+@media (pointer: coarse) {
+  .ui-sgn__slug {
+    height: 38px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-sgn * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

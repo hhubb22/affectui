@@ -27,6 +27,11 @@ type IconName =
   | "chat"
   | "tasks"
   | "play"
+  | "pause"
+  | "repeat"
+  | "calendar"
+  | "shield"
+  | "chart"
   | "folder"
   | "folder-open"
   | "plug"
@@ -81,6 +86,32 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="17" rx="3" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z" />,
+  chart: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
@@ -311,6 +342,7 @@ export type InboxItem = {
   id: string;
   kind: "decision" | "pick" | "approval" | "question";
   question: string;
+  listTitle?: string;
   context?: string;
   task: string;
   at: number;
@@ -444,7 +476,8 @@ export function InboxOptions({
       event.preventDefault();
       event.stopPropagation();
       choose(index);
-      onConfirm?.(options[index].id);
+      const opt = options[index];
+      if (opt) onConfirm?.(opt.id);
     }
   };
   const focused = options.some((option) => option.id === value) ? value : options[0]?.id;
@@ -714,6 +747,7 @@ export type InboxItemLabels = {
   reply?: string;
   answer?: string;
   sent?: string;
+  submitting?: string;
   approval?: string;
   done?: string;
   since?: string;
@@ -727,8 +761,12 @@ export type InboxItemViewProps = {
   onLater?: () => void;
   onReopen?: () => void;
   onOpenArtifact?: (name: string) => void;
-  phase?: "answer" | "sent";
+  phase?: "answer" | "submitting" | "sent";
   sentAnswer?: InboxAnswer;
+  managed?: boolean;
+  allowFreeText?: boolean;
+  error?: ReactNode;
+  extraActions?: ReactNode;
   focusRequest?: number;
   shortcuts?: boolean;
   labels?: InboxItemLabels;
@@ -748,6 +786,10 @@ export function InboxItemView({
   onOpenArtifact,
   phase = "answer",
   sentAnswer,
+  managed = false,
+  allowFreeText,
+  error,
+  extraActions,
   focusRequest,
   shortcuts = true,
   labels = {},
@@ -755,7 +797,9 @@ export function InboxItemView({
   className,
 }: InboxItemViewProps) {
   const options = (Array.isArray(item.options) ? item.options : []).filter(Boolean),
-    kind = inboxKind(item.kind);
+    kind = inboxKind(item.kind),
+    freeText = allowFreeText ?? (!managed || kind === "question"),
+    showLater = !managed || !!onLater;
   const [draft, setDraft] = useControllable<InboxDraft>(
     draftProp,
     defaultDraft ?? { option: options.find((option) => option.recommended)?.id, text: "" },
@@ -769,7 +813,9 @@ export function InboxItemView({
   draftRef.current = draft;
   const choice = options.some((option) => option.id === draft.option) ? draft.option : undefined,
     text = draft.text ?? "",
-    busy = phase === "sent";
+    sent = phase === "sent",
+    submitting = phase === "submitting",
+    busy = sent || submitting;
   useEffect(() => {
     if (previous.current === item.id) return;
     previous.current = item.id;
@@ -785,7 +831,7 @@ export function InboxItemView({
   const submit = (optionId?: string) => {
     if (busy || item.done) return;
     const draft = draftRef.current,
-      words = draft.text?.trim() ?? "",
+      words = freeText ? (draft.text?.trim() ?? "") : "",
       option = optionId ?? (options.some((option) => option.id === draft.option) ? draft.option : undefined);
     if (kind !== "approval" && !words && !option) return;
     const answer: InboxAnswer =
@@ -802,8 +848,8 @@ export function InboxItemView({
     field.current?.blur();
     heading.current?.focus({ preventScroll: true });
   };
-  const keyboard = useRef({ item, kind, options, busy, submit, onLater, change, blurField });
-  keyboard.current = { item, kind, options, busy, submit, onLater, change, blurField };
+  const keyboard = useRef({ item, kind, options, busy, showLater, freeText, submit, onLater, change, blurField });
+  keyboard.current = { item, kind, options, busy, showLater, freeText, submit, onLater, change, blurField };
   useEffect(() => {
     if (!shortcuts) return;
     const key = (event: globalThis.KeyboardEvent) => {
@@ -835,15 +881,16 @@ export function InboxItemView({
           );
           target?.focus({ preventScroll: true });
         }
-      } else if (value === "l") {
+      } else if (value === "l" && state.showLater) {
         event.preventDefault();
         state.onLater?.();
-      } else if (value === "r" || value === "/") {
+      } else if ((value === "r" || value === "/") && state.freeText) {
         event.preventDefault();
         field.current?.focus();
       } else if (
         event.key === "Enter" &&
-        (!(event.target as HTMLElement).closest("button") || (event.target as HTMLElement).closest("[data-inbox-row]"))
+        (!(event.target as HTMLElement).closest("button,a") ||
+          (event.target as HTMLElement).closest("[data-inbox-row]"))
       ) {
         event.preventDefault();
         state.submit();
@@ -865,13 +912,14 @@ export function InboxItemView({
   };
   const answer = item.done?.answer,
     savedOption = typeof answer === "object" ? options.find((option) => option.id === answer.option) : undefined;
-  const canSubmit = kind === "approval" || !!choice || !!text.trim();
+  const canSubmit = !submitting && (kind === "approval" || !!choice || (freeText && !!text.trim()));
   return (
     <section
       ref={root}
       data-inbox-view=""
       className={["ui-ibv", className].filter(Boolean).join(" ")}
-      data-phase={busy ? "sent" : item.done ? "done" : "answer"}
+      data-phase={sent ? "sent" : submitting ? "submitting" : item.done ? "done" : "answer"}
+      aria-busy={submitting || undefined}
     >
       <style href="ui-inbox-item-view" precedence="default">
         {css}
@@ -890,12 +938,12 @@ export function InboxItemView({
       <h2 ref={heading} className="ui-ibv__question" tabIndex={-1} dir="auto">
         {item.question}
       </h2>
-      {!busy && item.context && (
+      {!sent && item.context && (
         <p className="ui-ibv__context" dir="auto">
           {item.context}
         </p>
       )}
-      {busy ? (
+      {sent ? (
         <div className="ui-ibv__answer">
           <InboxConfirmation
             answer={inboxAnswerLabel(item, sentAnswer ?? (kind === "approval" ? "approve" : {}))}
@@ -993,10 +1041,12 @@ export function InboxItemView({
             </div>
           )}
           <div className="ui-ibv__done-actions">
-            <button type="button" className="ui-ibv__button" onClick={onReopen}>
-              <Icon name="undo" size={13} />
-              {labels.reopen ?? "Reopen"}
-            </button>
+            {onReopen && (
+              <button type="button" className="ui-ibv__button" onClick={onReopen}>
+                <Icon name="undo" size={13} />
+                {labels.reopen ?? "Reopen"}
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -1011,18 +1061,21 @@ export function InboxItemView({
                 onConfirm={submit}
                 label={item.question}
                 recommendedLabel={labels.recommended}
+                disabled={submitting}
               />
             ) : kind === "approval" ? (
-              <dl className="ui-ibv__facts">
-                {item.facts?.map((fact) => (
-                  <div key={fact.label}>
-                    <dt>{fact.label}</dt>
-                    <dd dir="auto" title={fact.value}>
-                      {fact.value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              item.facts?.length ? (
+                <dl className="ui-ibv__facts">
+                  {item.facts.map((fact) => (
+                    <div key={fact.label}>
+                      <dt>{fact.label}</dt>
+                      <dd dir="auto" title={fact.value}>
+                        {fact.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null
             ) : (
               <div className="ui-ibv__free">
                 <textarea
@@ -1031,6 +1084,7 @@ export function InboxItemView({
                   aria-label="Your answer"
                   placeholder={labels.answer ?? "Write your answer…"}
                   value={text}
+                  disabled={submitting}
                   onChange={(event) => change({ ...draftRef.current, text: event.target.value })}
                   onKeyDown={fieldKey}
                 />
@@ -1040,6 +1094,7 @@ export function InboxItemView({
                       <button
                         type="button"
                         aria-pressed={text === suggestion}
+                        disabled={submitting}
                         key={suggestion}
                         title={suggestion}
                         onClick={() => {
@@ -1055,25 +1110,45 @@ export function InboxItemView({
               </div>
             )}
           </div>
+          {error != null && (
+            <div className="ui-ibv__error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="ui-ibv__footer">
-            {kind !== "question" && (
+            {kind !== "question" && freeText && (
               <input
                 ref={field as RefObject<HTMLInputElement | null>}
                 className="ui-ibv__reply"
                 aria-label="Tell it something else"
                 placeholder={labels.reply ?? "Or tell it something else…"}
                 value={text}
+                disabled={submitting}
                 onChange={(event) => change({ ...draftRef.current, text: event.target.value })}
                 onKeyDown={fieldKey}
               />
             )}
             <div className="ui-ibv__actions">
-              <button type="button" className="ui-ibv__button ui-ibv__later" aria-keyshortcuts="L" onClick={onLater}>
-                {labels.later ?? "Later"}
-                <kbd>L</kbd>
-              </button>
+              {extraActions}
+              {showLater && (
+                <button
+                  type="button"
+                  className="ui-ibv__button ui-ibv__later"
+                  disabled={submitting}
+                  aria-keyshortcuts="L"
+                  onClick={onLater}
+                >
+                  {labels.later ?? "Later"}
+                  <kbd aria-hidden={managed || undefined}>L</kbd>
+                </button>
+              )}
               {kind === "approval" && (
-                <button type="button" className="ui-ibv__button" onClick={() => onSubmit?.("decline")}>
+                <button
+                  type="button"
+                  className="ui-ibv__button"
+                  disabled={submitting}
+                  onClick={() => onSubmit?.("decline")}
+                >
                   {labels.decline ?? "Decline"}
                 </button>
               )}
@@ -1084,8 +1159,12 @@ export function InboxItemView({
                 aria-keyshortcuts="Enter"
                 onClick={() => submit()}
               >
-                {kind === "approval" && !text.trim() ? (labels.approve ?? "Approve") : (labels.send ?? "Send")}
-                <kbd>↵</kbd>
+                {submitting && labels.submitting
+                  ? labels.submitting
+                  : kind === "approval" && (!freeText || !text.trim())
+                    ? (labels.approve ?? "Approve")
+                    : (labels.send ?? "Send")}
+                <kbd aria-hidden={managed || undefined}>↵</kbd>
               </button>
             </div>
           </div>
@@ -1576,12 +1655,16 @@ const css = /* css */ `
   background: none;
   cursor: pointer;
 }
-.ui-ibv button:focus-visible {
+.ui-ibv :where(button, a.ui-ibv__button):focus-visible {
   outline: 2px solid var(--ui-ibv-focus);
   outline-offset: -2px;
 }
-.ui-ibv button:active:not(:disabled) {
+.ui-ibv :where(button, a.ui-ibv__button):active:not(:disabled) {
   transform: scale(0.97);
+}
+.ui-ibv a.ui-ibv__button {
+  color: inherit;
+  text-decoration: none;
 }
 .ui-ibv__meta {
   display: flex;
@@ -1749,6 +1832,12 @@ const css = /* css */ `
 .ui-ibv__chips button[aria-pressed="true"] {
   color: var(--ui-ibv-ink);
   box-shadow: inset 0 0 0 0.5px var(--ui-ibv-line);
+}
+.ui-ibv__error {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--aui-danger, #c4320a);
 }
 .ui-ibv__footer {
   display: flex;
@@ -2017,6 +2106,9 @@ const css = /* css */ `
 :where(.dark, [data-theme="dark"]) .ui-ibv__badge {
   background: rgba(251, 106, 0, 0.15);
   color: #ffa057;
+}
+:where(.dark, [data-theme="dark"]) .ui-ibv__error {
+  color: var(--aui-danger, #ff8a7a);
 }
 .ui-ibo {
   --ui-ibo-ink: #171717;

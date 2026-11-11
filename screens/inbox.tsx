@@ -30,6 +30,11 @@ type IconName =
   | "chat"
   | "tasks"
   | "play"
+  | "pause"
+  | "repeat"
+  | "calendar"
+  | "shield"
+  | "chart"
   | "folder"
   | "folder-open"
   | "plug"
@@ -84,6 +89,32 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="17" rx="3" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z" />,
+  chart: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
@@ -466,6 +497,7 @@ export type InboxItem = {
   id: string;
   kind: "decision" | "pick" | "approval" | "question";
   question: string;
+  listTitle?: string;
   context?: string;
   task: string;
   at: number;
@@ -814,6 +846,18 @@ export function CommandMenu({
 export type AppRailItem = { label: string; icon?: ReactNode; count?: number; disabled?: boolean; section?: string };
 export type AppChat = { id: string; title: string; project?: string; pinned?: boolean; unread?: boolean };
 export type AppShellUser = { name: string; email?: string; avatar?: string };
+export type AppShellWorkspace = { id: string; name: string; subtitle?: string };
+export type AppShellMenuItem =
+  | {
+      kind?: "item";
+      id?: string;
+      label: string;
+      icon?: ReactNode;
+      danger?: boolean;
+      disabled?: boolean;
+      onSelect?: () => void;
+    }
+  | { kind: "separator"; id?: string };
 const defaultAppShellLabels = {
   sidebar: "Sidebar",
   openSidebar: "Open sidebar",
@@ -866,7 +910,15 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   header?: ReactNode;
   labels?: Partial<AppShellLabels>;
   workspace?: string;
-  user?: AppShellUser;
+  workspaceId?: string;
+  workspaces?: AppShellWorkspace[];
+  onSelectWorkspace?: (id: string) => void;
+  onCreateWorkspace?: () => void;
+  workspaceMenuItems?: AppShellMenuItem[];
+  user?: AppShellUser | null;
+  accountMenuItems?: AppShellMenuItem[];
+  showLanguageMenu?: boolean;
+  showAppearanceMenu?: boolean;
   rail?: false | { items: AppRailItem[]; bottom?: AppRailItem[]; active?: string };
   active?: string;
   defaultActive?: string;
@@ -1400,7 +1452,15 @@ export function AppShell({
   header,
   labels: labelsProp,
   workspace = "Fieldwork",
+  workspaceId,
+  workspaces,
+  onSelectWorkspace,
+  onCreateWorkspace,
+  workspaceMenuItems,
   user = { name: "Alex Morgan", email: "alex@fieldwork.com" },
+  accountMenuItems,
+  showLanguageMenu = true,
+  showAppearanceMenu = true,
   rail = false,
   active: activeProp,
   defaultActive = "Chats",
@@ -1480,6 +1540,9 @@ export function AppShell({
   const [menu, setMenu] = useState<"workspace" | "account" | "projects" | "chat" | "chat-project" | null>(null);
   const [wsOpen, setWsOpen] = useState<string | null>(null);
   useEffect(() => setWsOpen(null), [menu]);
+  useEffect(() => {
+    if (!user && menu === "account") setMenu(null);
+  }, [user, menu]);
   const [menuChat, setMenuChat] = useState<string | null>(null),
     [renaming, setRenaming] = useState<string | null>(null),
     [renameValue, setRenameValue] = useState("");
@@ -1506,12 +1569,13 @@ export function AppShell({
   const hasPanel = panel != null,
     railWidth = rail ? 52 : 0;
   const iconSidebar = !!navigation && !rail && sidebarContent === undefined;
-  const userAvatar =
+  const userAvatar = user ? (
     user.avatar && !brokenAvatar ? (
       <img src={user.avatar} alt="" onError={() => setBrokenAvatar(true)} />
     ) : (
       initials(user.name)
-    );
+    )
+  ) : null;
   const visiblePanel = hasPanel && panelOpen;
   const drawer = narrow && (sidebarOpen || visiblePanel);
   useEffect(() => {
@@ -1521,7 +1585,7 @@ export function AppShell({
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
-  useEffect(() => setBrokenAvatar(false), [user.avatar]);
+  useEffect(() => setBrokenAvatar(false), [user?.avatar]);
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -1814,6 +1878,30 @@ export function AppShell({
     setMenu(null);
     anchor.current?.focus({ preventScroll: true });
   };
+  const customMenuItem = (item: AppShellMenuItem, index: number) =>
+    item.kind === "separator" ? (
+      <span className="ui-as__wsm-sep" role="separator" key={item.id ?? `sep-${index}`} />
+    ) : (
+      <button
+        type="button"
+        role="menuitem"
+        className="ui-as__wsm-item"
+        data-danger={item.danger || undefined}
+        disabled={item.disabled}
+        key={item.id ?? item.label}
+        onClick={() => {
+          setMenu(null);
+          anchor.current?.focus({ preventScroll: true });
+          if (item.onSelect) item.onSelect();
+          else onNavigate?.(item.label);
+        }}
+      >
+        {item.icon}
+        <span className="ui-as__wsm-label" title={item.label}>
+          {labels.action(item.label)}
+        </span>
+      </button>
+    );
   const wsItem = (label: string, icon: keyof typeof wsGlyphs) => (
     <button type="button" role="menuitem" className="ui-as__wsm-item" key={label} onClick={() => menuAction(label)}>
       <WsGlyph name={icon} />
@@ -1863,6 +1951,116 @@ export function AppShell({
       </span>
     </span>
   );
+  const switchWorkspaceMenu = workspaces
+    ? workspaces.length > 0 || onCreateWorkspace
+      ? wsSub(
+          "Switch workspace",
+          "switch",
+          <>
+            {workspaces.map((item) => {
+              const checked = workspaceId !== undefined ? item.id === workspaceId : item.name === workspace;
+              return (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={checked}
+                  className="ui-as__wsm-item"
+                  data-rich={item.subtitle ? "" : undefined}
+                  key={item.id}
+                  onClick={() => {
+                    if (onSelectWorkspace) {
+                      setMenu(null);
+                      anchor.current?.focus({ preventScroll: true });
+                      onSelectWorkspace(item.id);
+                    } else menuAction(`Switch workspace: ${item.name}`);
+                  }}
+                >
+                  <span className="ui-as__wsm-label" title={item.name}>
+                    {item.subtitle ? (
+                      <>
+                        <span>{item.name}</span>
+                        <small>{item.subtitle}</small>
+                      </>
+                    ) : (
+                      item.name
+                    )}
+                  </span>
+                  {checked && <WsGlyph name="check" size={14} />}
+                </button>
+              );
+            })}
+            {onCreateWorkspace && (
+              <>
+                {workspaces.length > 0 && <span className="ui-as__wsm-sep" role="separator" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="ui-as__wsm-item"
+                  onClick={() => {
+                    setMenu(null);
+                    anchor.current?.focus({ preventScroll: true });
+                    onCreateWorkspace();
+                  }}
+                >
+                  <WsGlyph name="plus" />
+                  <span className="ui-as__wsm-label" title="Create workspace">
+                    {labels.action("Create workspace")}
+                  </span>
+                </button>
+              </>
+            )}
+          </>,
+        )
+      : null
+    : wsSub(
+        "Switch workspace",
+        "switch",
+        <>
+          {[
+            [workspace, "Pro · 8 members"],
+            ["Personal", "Free"],
+          ]
+            .filter((entry, index, all) => all.findIndex((other) => other[0] === entry[0]) === index)
+            .map(([name, plan]) => (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={name === workspace}
+                className="ui-as__wsm-item"
+                data-rich=""
+                key={name}
+                onClick={() => menuAction(`Switch workspace: ${name}`)}
+              >
+                <span className="ui-as__wsm-label" title={name}>
+                  <span>{name}</span>
+                  <small>{plan}</small>
+                </span>
+                {name === workspace && <WsGlyph name="check" size={14} />}
+              </button>
+            ))}
+          <span className="ui-as__wsm-sep" role="separator" />
+          {onCreateWorkspace ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="ui-as__wsm-item"
+              onClick={() => {
+                setMenu(null);
+                anchor.current?.focus({ preventScroll: true });
+                onCreateWorkspace();
+              }}
+            >
+              <WsGlyph name="plus" />
+              <span className="ui-as__wsm-label" title="Create workspace">
+                {labels.action("Create workspace")}
+              </span>
+            </button>
+          ) : (
+            wsItem("Create workspace", "plus")
+          )}
+        </>,
+      );
+  const hasWorkspaceMenu = workspaceMenuItems ? workspaceMenuItems.length > 0 || !!switchWorkspaceMenu : true;
   const commandGroups: CommandMenuGroup[] =
     commandGroupsProp ??
     (navigation
@@ -1981,10 +2179,10 @@ export function AppShell({
                 className="ui-as__logo"
                 aria-label={workspace}
                 title={workspace}
-                aria-haspopup="menu"
-                aria-expanded={menu === "workspace"}
+                aria-haspopup={hasWorkspaceMenu ? "menu" : undefined}
+                aria-expanded={hasWorkspaceMenu ? menu === "workspace" : undefined}
                 aria-controls={menu === "workspace" ? `${id}-menu` : undefined}
-                {...trigger("workspace")}
+                {...(hasWorkspaceMenu ? trigger("workspace") : {})}
               >
                 {initials(workspace).slice(0, 1)}
               </button>
@@ -2021,22 +2219,20 @@ export function AppShell({
                   {!!item.count && <i className="ui-as__notification-dot" />}
                 </button>
               ))}
-              <button
-                type="button"
-                className="ui-as__user"
-                aria-label={user.name}
-                title={user.name}
-                aria-haspopup="menu"
-                aria-expanded={menu === "account"}
-                aria-controls={menu === "account" ? `${id}-menu` : undefined}
-                {...trigger("account")}
-              >
-                {user.avatar && !brokenAvatar ? (
-                  <img src={user.avatar} alt="" onError={() => setBrokenAvatar(true)} />
-                ) : (
-                  initials(user.name)
-                )}
-              </button>
+              {user && (
+                <button
+                  type="button"
+                  className="ui-as__user"
+                  aria-label={user.name}
+                  title={user.name}
+                  aria-haspopup="menu"
+                  aria-expanded={menu === "account"}
+                  aria-controls={menu === "account" ? `${id}-menu` : undefined}
+                  {...trigger("account")}
+                >
+                  {userAvatar}
+                </button>
+              )}
             </nav>
           )}
           <div
@@ -2055,24 +2251,26 @@ export function AppShell({
                         type="button"
                         className="ui-as__nav-workspace"
                         aria-label={workspace}
-                        aria-haspopup="menu"
-                        aria-expanded={menu === "workspace"}
-                        {...trigger("workspace")}
+                        aria-haspopup={hasWorkspaceMenu ? "menu" : undefined}
+                        aria-expanded={hasWorkspaceMenu ? menu === "workspace" : undefined}
+                        {...(hasWorkspaceMenu ? trigger("workspace") : {})}
                       >
                         <span>{initials(workspace).slice(0, 1)}</span>
                         <strong>{workspace}</strong>
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M18 9s-4.42 6-6 6-6-6-6-6" />
-                        </svg>
+                        {hasWorkspaceMenu && (
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M18 9s-4.42 6-6 6-6-6-6-6" />
+                          </svg>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -2229,7 +2427,7 @@ export function AppShell({
                   </nav>
                 )}
                 {sidebarFooter}
-                {!rail && (
+                {!rail && user && (
                   <button
                     type="button"
                     className="ui-as__account-row"
@@ -2328,58 +2526,38 @@ export function AppShell({
           }
           onClose={() => setMenu(null)}
         >
-          {menu === "workspace" && (
-            <>
-              {wsItem("Invite people", "invite")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Workspace settings", "settings")}
-              {wsItem("Analytics", "analytics")}
-              {wsItem("Billing", "billing")}
-              {wsItem("Usage & limits", "usage")}
-              {wsItem("Members", "members")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsSub(
-                "Learn more",
-                "info",
-                <>
-                  {wsItem("Documentation", "docs")}
-                  {wsItem("Changelog", "changelog")}
-                  {wsItem("Help & feedback", "help")}
-                </>,
-              )}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsSub(
-                "Switch workspace",
-                "switch",
-                <>
-                  {[
-                    [workspace, "Pro · 8 members"],
-                    ["Personal", "Free"],
-                  ]
-                    .filter((entry, index, all) => all.findIndex((other) => other[0] === entry[0]) === index)
-                    .map(([name, plan]) => (
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={name === workspace}
-                        className="ui-as__wsm-item"
-                        data-rich=""
-                        key={name}
-                        onClick={() => menuAction(`Switch workspace: ${name}`)}
-                      >
-                        <span className="ui-as__wsm-label" title={name}>
-                          <span>{name}</span>
-                          <small>{plan}</small>
-                        </span>
-                        {name === workspace && <WsGlyph name="check" size={14} />}
-                      </button>
-                    ))}
+          {menu === "workspace" &&
+            (workspaceMenuItems ? (
+              <>
+                {workspaceMenuItems.map(customMenuItem)}
+                {workspaceMenuItems.length > 0 && switchWorkspaceMenu && (
                   <span className="ui-as__wsm-sep" role="separator" />
-                  {wsItem("Create workspace", "plus")}
-                </>,
-              )}
-            </>
-          )}
+                )}
+                {switchWorkspaceMenu}
+              </>
+            ) : (
+              <>
+                {wsItem("Invite people", "invite")}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {wsItem("Workspace settings", "settings")}
+                {wsItem("Analytics", "analytics")}
+                {wsItem("Billing", "billing")}
+                {wsItem("Usage & limits", "usage")}
+                {wsItem("Members", "members")}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {wsSub(
+                  "Learn more",
+                  "info",
+                  <>
+                    {wsItem("Documentation", "docs")}
+                    {wsItem("Changelog", "changelog")}
+                    {wsItem("Help & feedback", "help")}
+                  </>,
+                )}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {switchWorkspaceMenu}
+              </>
+            ))}
           {menu === "projects" && (
             <>
               <div className="ui-as__menu-label">{labels.projects}</div>
@@ -2433,7 +2611,7 @@ export function AppShell({
               )}
             </>
           )}
-          {menu === "account" && (
+          {menu === "account" && user && (
             <>
               <div className="ui-as__menu-user">
                 <span className="ui-as__user-initials">{userAvatar}</span>
@@ -2442,107 +2620,115 @@ export function AppShell({
                   {user.email && <small>{user.email}</small>}
                 </span>
               </div>
-              {wsSub(
-                labels.language,
-                "language",
+              {showLanguageMenu &&
+                wsSub(
+                  labels.language,
+                  "language",
+                  <>
+                    {(
+                      [
+                        [
+                          "English",
+                          <>
+                            <rect width="20" height="14" fill="#012169" />
+                            <path d="M0 0 20 14M20 0 0 14" stroke="#fff" strokeWidth="2.8" />
+                            <path d="M0 0 20 14M20 0 0 14" stroke="#c8102e" />
+                            <path d="M10 0v14M0 7h20" stroke="#fff" strokeWidth="4.2" />
+                            <path d="M10 0v14M0 7h20" stroke="#c8102e" strokeWidth="2.4" />
+                          </>,
+                        ],
+                        [
+                          "Deutsch",
+                          <>
+                            <rect width="20" height="4.67" fill="#1f1f1f" />
+                            <rect y="4.67" width="20" height="4.67" fill="#dd0000" />
+                            <rect y="9.33" width="20" height="4.67" fill="#ffce00" />
+                          </>,
+                        ],
+                        [
+                          "Français",
+                          <>
+                            <rect width="6.67" height="14" fill="#002395" />
+                            <rect x="6.67" width="6.67" height="14" fill="#fff" />
+                            <rect x="13.33" width="6.67" height="14" fill="#ed2939" />
+                          </>,
+                        ],
+                        [
+                          "Español",
+                          <>
+                            <rect width="20" height="14" fill="#aa151b" />
+                            <rect y="3.5" width="20" height="7" fill="#f1bf00" />
+                          </>,
+                        ],
+                      ] as const
+                    ).map(([label, flag]) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={language === label}
+                        className="ui-as__wsm-item"
+                        key={label}
+                        onClick={() => {
+                          setLanguage(label);
+                          menuAction(`Language: ${label}`);
+                        }}
+                      >
+                        <svg className="ui-as__wsm-flag" viewBox="0 0 20 14" aria-hidden="true">
+                          {flag}
+                        </svg>
+                        <span className="ui-as__wsm-label">{label}</span>
+                        {language === label && <WsGlyph name="check" size={14} />}
+                      </button>
+                    ))}
+                  </>,
+                )}
+              {showAppearanceMenu &&
+                wsSub(
+                  labels.appearance,
+                  "appearance",
+                  <>
+                    {(["system", "light", "dark"] as const).map((value) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={theme === value}
+                        className="ui-as__wsm-item"
+                        key={value}
+                        onClick={() => {
+                          setTheme(value);
+                          setMenu(null);
+                          anchor.current?.focus();
+                        }}
+                      >
+                        <WsGlyph name={value} />
+                        <span className="ui-as__wsm-label">{labels.theme(value)}</span>
+                        {theme === value && <WsGlyph name="check" size={14} />}
+                      </button>
+                    ))}
+                  </>,
+                )}
+              {accountMenuItems ? (
+                accountMenuItems.map(customMenuItem)
+              ) : (
                 <>
-                  {(
-                    [
-                      [
-                        "English",
-                        <>
-                          <rect width="20" height="14" fill="#012169" />
-                          <path d="M0 0 20 14M20 0 0 14" stroke="#fff" strokeWidth="2.8" />
-                          <path d="M0 0 20 14M20 0 0 14" stroke="#c8102e" />
-                          <path d="M10 0v14M0 7h20" stroke="#fff" strokeWidth="4.2" />
-                          <path d="M10 0v14M0 7h20" stroke="#c8102e" strokeWidth="2.4" />
-                        </>,
-                      ],
-                      [
-                        "Deutsch",
-                        <>
-                          <rect width="20" height="4.67" fill="#1f1f1f" />
-                          <rect y="4.67" width="20" height="4.67" fill="#dd0000" />
-                          <rect y="9.33" width="20" height="4.67" fill="#ffce00" />
-                        </>,
-                      ],
-                      [
-                        "Français",
-                        <>
-                          <rect width="6.67" height="14" fill="#002395" />
-                          <rect x="6.67" width="6.67" height="14" fill="#fff" />
-                          <rect x="13.33" width="6.67" height="14" fill="#ed2939" />
-                        </>,
-                      ],
-                      [
-                        "Español",
-                        <>
-                          <rect width="20" height="14" fill="#aa151b" />
-                          <rect y="3.5" width="20" height="7" fill="#f1bf00" />
-                        </>,
-                      ],
-                    ] as const
-                  ).map(([label, flag]) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={language === label}
-                      className="ui-as__wsm-item"
-                      key={label}
-                      onClick={() => {
-                        setLanguage(label);
-                        menuAction(`Language: ${label}`);
-                      }}
-                    >
-                      <svg className="ui-as__wsm-flag" viewBox="0 0 20 14" aria-hidden="true">
-                        {flag}
-                      </svg>
-                      <span className="ui-as__wsm-label">{label}</span>
-                      {language === label && <WsGlyph name="check" size={14} />}
-                    </button>
-                  ))}
-                </>,
+                  {wsItem("Integrations", "integrations")}
+                  {wsItem("Settings", "settings")}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Download apps", "download")}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Changelog", "changelog")}
+                  {wsSub(
+                    "Learn more",
+                    "info",
+                    <>
+                      {wsItem("Documentation", "docs")}
+                      {wsItem("Help & feedback", "help")}
+                    </>,
+                  )}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Log out", "logout")}
+                </>
               )}
-              {wsSub(
-                labels.appearance,
-                "appearance",
-                <>
-                  {(["system", "light", "dark"] as const).map((value) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={theme === value}
-                      className="ui-as__wsm-item"
-                      key={value}
-                      onClick={() => {
-                        setTheme(value);
-                        setMenu(null);
-                        anchor.current?.focus();
-                      }}
-                    >
-                      <WsGlyph name={value} />
-                      <span className="ui-as__wsm-label">{labels.theme(value)}</span>
-                      {theme === value && <WsGlyph name="check" size={14} />}
-                    </button>
-                  ))}
-                </>,
-              )}
-              {wsItem("Integrations", "integrations")}
-              {wsItem("Settings", "settings")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Download apps", "download")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Changelog", "changelog")}
-              {wsSub(
-                "Learn more",
-                "info",
-                <>
-                  {wsItem("Documentation", "docs")}
-                  {wsItem("Help & feedback", "help")}
-                </>,
-              )}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Log out", "logout")}
             </>
           )}
           {menu === "chat" &&
@@ -2757,7 +2943,7 @@ export function ArtifactFolder({
               : event.key === "End"
                 ? list.length - 1
                 : null;
-    if (next !== null) {
+    if (next !== null && list[next]) {
       event.preventDefault();
       setSelected([list[next].name]);
       root.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')[next]?.focus();
@@ -2833,10 +3019,10 @@ export function ArtifactFolder({
             <button
               type="button"
               key={field}
-              aria-label={`${field[0].toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
+              aria-label={`${field.charAt(0).toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
               onClick={() => changeSort(field)}
             >
-              {field[0].toUpperCase() + field.slice(1)}
+              {field.charAt(0).toUpperCase() + field.slice(1)}
               {sort.key === field && <span aria-hidden="true">{sort.direction === "asc" ? "⌃" : "⌄"}</span>}
             </button>
           ))}
@@ -2949,7 +3135,7 @@ export function ArtifactFolder({
                   setMenu(null);
                 }}
               >
-                {field[0].toUpperCase() + field.slice(1)}
+                {field.charAt(0).toUpperCase() + field.slice(1)}
                 {sort.key === field && <Icon name="check" size={13} />}
               </button>
             ))
@@ -3168,10 +3354,18 @@ export function ArtifactWorkspace({
   const updateDirectory = (directory: ArtifactDirectory, entries: ArtifactFolderEntry[]) => {
     const removed = directory.entries.filter((entry) => !entries.some((next) => next.name === entry.name));
     const added = entries.filter((entry) => !directory.entries.some((previous) => previous.name === entry.name));
+    const [removedEntry] = removed,
+      [addedEntry] = added;
     let nextList = list;
-    if (directory.entries.length === entries.length && removed.length === 1 && added.length === 1) {
-      nextList = list.map((item) => (item.name === removed[0].name ? { ...item, name: added[0].name } : item));
-      setOpened(opened.map((name) => (name === removed[0].name ? added[0].name : name)));
+    if (
+      directory.entries.length === entries.length &&
+      removed.length === 1 &&
+      added.length === 1 &&
+      removedEntry &&
+      addedEntry
+    ) {
+      nextList = list.map((item) => (item.name === removedEntry.name ? { ...item, name: addedEntry.name } : item));
+      setOpened(opened.map((name) => (name === removedEntry.name ? addedEntry.name : name)));
     }
     update({ ...directory, entries }, nextList);
   };
@@ -3243,7 +3437,7 @@ export function ArtifactWorkspace({
             : event.key === "End"
               ? names.length - 1
               : null;
-    if (next !== null) {
+    if (next !== null && names[next] !== undefined) {
       event.preventDefault();
       setActive(names[next]);
       tabs.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
@@ -3585,8 +3779,9 @@ function SpreadsheetEditor({
   const write = (text: string, row = cell.row, column = cell.column) => {
     const next = rows.map((row) => [...row]);
     while (next.length <= row) next.push([]);
-    while (next[row].length <= column) next[row].push("");
-    next[row][column] = text;
+    const target = next[row]!; // The loop fills through the nonnegative selection row.
+    while (target.length <= column) target.push("");
+    target[column] = text;
     onChange({ ...file, rows: next, updated: "Just now" });
   };
   const commit = () => {
@@ -3625,7 +3820,7 @@ function SpreadsheetEditor({
   };
   const key = (event: KeyboardEvent<HTMLTableCellElement>) => {
     if (editing || event.nativeEvent.isComposing) return;
-    const next =
+    const next: [number, number] | null =
       event.key === "ArrowDown"
         ? [cell.row + 1, cell.column]
         : event.key === "ArrowUp"
@@ -3750,7 +3945,7 @@ function SpreadsheetEditor({
           onKeyDown={(event) => {
             if (event.key !== "Enter") return;
             const match = /^([a-z]+)([1-9]\d*)$/i.exec(reference.trim());
-            if (match) {
+            if (match && match[1] && match[2]) {
               const column =
                 [...match[1].toUpperCase()].reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
               select(Number(match[2]) - 1, column);
@@ -3870,8 +4065,9 @@ function SpreadsheetEditor({
                         .map((line) => line.split("\t"));
                       pasted.forEach((line, offset) => {
                         while (next.length <= row + offset) next.push([]);
-                        line.forEach((text, index) => {
-                          next[row + offset][column + index] = text;
+                        const target = next[row + offset]!;
+                        /* The loop fills through this nonnegative destination row. */ line.forEach((text, index) => {
+                          target[column + index] = text;
                         });
                       });
                       onChange({ ...file, rows: next });
@@ -4055,8 +4251,9 @@ function DocumentEditor({
       } else {
         list = null;
         const match = /^(#{1,3})\s+(.*)/.exec(line);
-        const block = document.createElement(match ? `h${match[1].length}` : "p");
-        block.textContent = match ? match[2] : line;
+        // Both captures participate in every match; the heading text may be empty.
+        const block = document.createElement(match ? `h${match[1]!.length}` : "p");
+        block.textContent = match ? match[2]! : line;
         fragment.appendChild(block);
       }
     }
@@ -4417,6 +4614,7 @@ export type InboxListProps = {
   onSelect?: (id: string) => void;
   sendingId?: string;
   collapsingId?: string;
+  showTabs?: boolean;
   disabled?: boolean;
   labels?: InboxListLabels;
   now?: number;
@@ -4435,6 +4633,7 @@ export function InboxList({
   onSelect,
   sendingId,
   collapsingId,
+  showTabs = true,
   disabled = false,
   labels = {},
   now: nowProp,
@@ -4523,7 +4722,7 @@ export function InboxList({
             : event.key === "End"
               ? list.length - 1
               : null;
-    if (next !== null) {
+    if (next !== null && list[next]) {
       event.preventDefault();
       choose(list[next], true);
     }
@@ -4550,32 +4749,34 @@ export function InboxList({
           {labels.inbox ?? "Inbox"}
           <span>{items.filter((item) => !item.done).length || null}</span>
         </h1>
-        <div className="ui-ibl__tabs" role="tablist" aria-label="Inbox status">
-          {(["open", "done"] as const).map((value) => (
-            <button
-              type="button"
-              role="tab"
-              id={`${id}-${value}`}
-              aria-selected={tab === value}
-              aria-controls={`${id}-items`}
-              data-inbox-tab={value}
-              tabIndex={tab === value ? 0 : -1}
-              disabled={disabled}
-              key={value}
-              onClick={() => setTab(value)}
-              onKeyDown={tabKey}
-            >
-              {value === "open" ? (labels.open ?? "Open") : (labels.done ?? "Done")}
-            </button>
-          ))}
-        </div>
+        {showTabs && (
+          <div className="ui-ibl__tabs" role="tablist" aria-label="Inbox status">
+            {(["open", "done"] as const).map((value) => (
+              <button
+                type="button"
+                role="tab"
+                id={`${id}-${value}`}
+                aria-selected={tab === value}
+                aria-controls={`${id}-items`}
+                data-inbox-tab={value}
+                tabIndex={tab === value ? 0 : -1}
+                disabled={disabled}
+                key={value}
+                onClick={() => setTab(value)}
+                onKeyDown={tabKey}
+              >
+                {value === "open" ? (labels.open ?? "Open") : (labels.done ?? "Done")}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
       <div
         className="ui-ibl__rows"
         role="listbox"
         aria-label={tab === "open" ? "Open inbox items" : "Answered inbox items"}
         id={`${id}-items`}
-        aria-labelledby={`${id}-${tab}`}
+        aria-labelledby={showTabs ? `${id}-${tab}` : undefined}
       >
         {list.map((item) => {
           const age = inboxAge(item.done?.at ?? item.at, now),
@@ -4583,7 +4784,8 @@ export function InboxList({
             kindLabel =
               inboxKind(item.kind) === "pick"
                 ? "Variant"
-                : `${inboxKind(item.kind)[0].toUpperCase()}${inboxKind(item.kind).slice(1)}`;
+                : `${inboxKind(item.kind)[0]?.toUpperCase() ?? ""}${inboxKind(item.kind).slice(1)}`,
+            rowTitle = item.listTitle ?? item.question;
           return (
             <div
               className="ui-ibl__wrap"
@@ -4597,8 +4799,8 @@ export function InboxList({
                 role="option"
                 data-inbox-row={item.id}
                 aria-selected={active === item.id}
-                aria-label={`${item.done ? "Answered" : kindLabel}: ${item.question}. ${item.task}, ${age.long}${item.unread && !item.done ? ", unread" : ""}`}
-                title={item.question}
+                aria-label={`${item.done ? "Answered" : kindLabel}: ${rowTitle}. ${item.task}, ${age.long}${item.unread && !item.done ? ", unread" : ""}`}
+                title={rowTitle}
                 tabIndex={focusId === item.id ? 0 : -1}
                 disabled={disabled}
                 className="ui-ibl__row"
@@ -4611,7 +4813,7 @@ export function InboxList({
                 </span>
                 <span className="ui-ibl__text">
                   <span className="ui-ibl__question" dir="auto">
-                    {item.question}
+                    {rowTitle}
                   </span>
                   <span className="ui-ibl__meta">
                     <span title={item.task} dir="auto">
@@ -4701,7 +4903,8 @@ export function InboxOptions({
       event.preventDefault();
       event.stopPropagation();
       choose(index);
-      onConfirm?.(options[index].id);
+      const opt = options[index];
+      if (opt) onConfirm?.(opt.id);
     }
   };
   const focused = options.some((option) => option.id === value) ? value : options[0]?.id;
@@ -4971,6 +5174,7 @@ export type InboxItemLabels = {
   reply?: string;
   answer?: string;
   sent?: string;
+  submitting?: string;
   approval?: string;
   done?: string;
   since?: string;
@@ -4984,8 +5188,12 @@ export type InboxItemViewProps = {
   onLater?: () => void;
   onReopen?: () => void;
   onOpenArtifact?: (name: string) => void;
-  phase?: "answer" | "sent";
+  phase?: "answer" | "submitting" | "sent";
   sentAnswer?: InboxAnswer;
+  managed?: boolean;
+  allowFreeText?: boolean;
+  error?: ReactNode;
+  extraActions?: ReactNode;
   focusRequest?: number;
   shortcuts?: boolean;
   labels?: InboxItemLabels;
@@ -5005,6 +5213,10 @@ export function InboxItemView({
   onOpenArtifact,
   phase = "answer",
   sentAnswer,
+  managed = false,
+  allowFreeText,
+  error,
+  extraActions,
   focusRequest,
   shortcuts = true,
   labels = {},
@@ -5012,7 +5224,9 @@ export function InboxItemView({
   className,
 }: InboxItemViewProps) {
   const options = (Array.isArray(item.options) ? item.options : []).filter(Boolean),
-    kind = inboxKind(item.kind);
+    kind = inboxKind(item.kind),
+    freeText = allowFreeText ?? (!managed || kind === "question"),
+    showLater = !managed || !!onLater;
   const [draft, setDraft] = useControllable<InboxDraft>(
     draftProp,
     defaultDraft ?? { option: options.find((option) => option.recommended)?.id, text: "" },
@@ -5026,7 +5240,9 @@ export function InboxItemView({
   draftRef.current = draft;
   const choice = options.some((option) => option.id === draft.option) ? draft.option : undefined,
     text = draft.text ?? "",
-    busy = phase === "sent";
+    sent = phase === "sent",
+    submitting = phase === "submitting",
+    busy = sent || submitting;
   useEffect(() => {
     if (previous.current === item.id) return;
     previous.current = item.id;
@@ -5042,7 +5258,7 @@ export function InboxItemView({
   const submit = (optionId?: string) => {
     if (busy || item.done) return;
     const draft = draftRef.current,
-      words = draft.text?.trim() ?? "",
+      words = freeText ? (draft.text?.trim() ?? "") : "",
       option = optionId ?? (options.some((option) => option.id === draft.option) ? draft.option : undefined);
     if (kind !== "approval" && !words && !option) return;
     const answer: InboxAnswer =
@@ -5059,8 +5275,8 @@ export function InboxItemView({
     field.current?.blur();
     heading.current?.focus({ preventScroll: true });
   };
-  const keyboard = useRef({ item, kind, options, busy, submit, onLater, change, blurField });
-  keyboard.current = { item, kind, options, busy, submit, onLater, change, blurField };
+  const keyboard = useRef({ item, kind, options, busy, showLater, freeText, submit, onLater, change, blurField });
+  keyboard.current = { item, kind, options, busy, showLater, freeText, submit, onLater, change, blurField };
   useEffect(() => {
     if (!shortcuts) return;
     const key = (event: globalThis.KeyboardEvent) => {
@@ -5092,15 +5308,16 @@ export function InboxItemView({
           );
           target?.focus({ preventScroll: true });
         }
-      } else if (value === "l") {
+      } else if (value === "l" && state.showLater) {
         event.preventDefault();
         state.onLater?.();
-      } else if (value === "r" || value === "/") {
+      } else if ((value === "r" || value === "/") && state.freeText) {
         event.preventDefault();
         field.current?.focus();
       } else if (
         event.key === "Enter" &&
-        (!(event.target as HTMLElement).closest("button") || (event.target as HTMLElement).closest("[data-inbox-row]"))
+        (!(event.target as HTMLElement).closest("button,a") ||
+          (event.target as HTMLElement).closest("[data-inbox-row]"))
       ) {
         event.preventDefault();
         state.submit();
@@ -5122,13 +5339,14 @@ export function InboxItemView({
   };
   const answer = item.done?.answer,
     savedOption = typeof answer === "object" ? options.find((option) => option.id === answer.option) : undefined;
-  const canSubmit = kind === "approval" || !!choice || !!text.trim();
+  const canSubmit = !submitting && (kind === "approval" || !!choice || (freeText && !!text.trim()));
   return (
     <section
       ref={root}
       data-inbox-view=""
       className={["ui-ibv", className].filter(Boolean).join(" ")}
-      data-phase={busy ? "sent" : item.done ? "done" : "answer"}
+      data-phase={sent ? "sent" : submitting ? "submitting" : item.done ? "done" : "answer"}
+      aria-busy={submitting || undefined}
     >
       <style href="ui-inbox" precedence="default">
         {css}
@@ -5147,12 +5365,12 @@ export function InboxItemView({
       <h2 ref={heading} className="ui-ibv__question" tabIndex={-1} dir="auto">
         {item.question}
       </h2>
-      {!busy && item.context && (
+      {!sent && item.context && (
         <p className="ui-ibv__context" dir="auto">
           {item.context}
         </p>
       )}
-      {busy ? (
+      {sent ? (
         <div className="ui-ibv__answer">
           <InboxConfirmation
             answer={inboxAnswerLabel(item, sentAnswer ?? (kind === "approval" ? "approve" : {}))}
@@ -5250,10 +5468,12 @@ export function InboxItemView({
             </div>
           )}
           <div className="ui-ibv__done-actions">
-            <button type="button" className="ui-ibv__button" onClick={onReopen}>
-              <Icon name="undo" size={13} />
-              {labels.reopen ?? "Reopen"}
-            </button>
+            {onReopen && (
+              <button type="button" className="ui-ibv__button" onClick={onReopen}>
+                <Icon name="undo" size={13} />
+                {labels.reopen ?? "Reopen"}
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -5268,18 +5488,21 @@ export function InboxItemView({
                 onConfirm={submit}
                 label={item.question}
                 recommendedLabel={labels.recommended}
+                disabled={submitting}
               />
             ) : kind === "approval" ? (
-              <dl className="ui-ibv__facts">
-                {item.facts?.map((fact) => (
-                  <div key={fact.label}>
-                    <dt>{fact.label}</dt>
-                    <dd dir="auto" title={fact.value}>
-                      {fact.value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              item.facts?.length ? (
+                <dl className="ui-ibv__facts">
+                  {item.facts.map((fact) => (
+                    <div key={fact.label}>
+                      <dt>{fact.label}</dt>
+                      <dd dir="auto" title={fact.value}>
+                        {fact.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null
             ) : (
               <div className="ui-ibv__free">
                 <textarea
@@ -5288,6 +5511,7 @@ export function InboxItemView({
                   aria-label="Your answer"
                   placeholder={labels.answer ?? "Write your answer…"}
                   value={text}
+                  disabled={submitting}
                   onChange={(event) => change({ ...draftRef.current, text: event.target.value })}
                   onKeyDown={fieldKey}
                 />
@@ -5297,6 +5521,7 @@ export function InboxItemView({
                       <button
                         type="button"
                         aria-pressed={text === suggestion}
+                        disabled={submitting}
                         key={suggestion}
                         title={suggestion}
                         onClick={() => {
@@ -5312,25 +5537,45 @@ export function InboxItemView({
               </div>
             )}
           </div>
+          {error != null && (
+            <div className="ui-ibv__error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="ui-ibv__footer">
-            {kind !== "question" && (
+            {kind !== "question" && freeText && (
               <input
                 ref={field as RefObject<HTMLInputElement | null>}
                 className="ui-ibv__reply"
                 aria-label="Tell it something else"
                 placeholder={labels.reply ?? "Or tell it something else…"}
                 value={text}
+                disabled={submitting}
                 onChange={(event) => change({ ...draftRef.current, text: event.target.value })}
                 onKeyDown={fieldKey}
               />
             )}
             <div className="ui-ibv__actions">
-              <button type="button" className="ui-ibv__button ui-ibv__later" aria-keyshortcuts="L" onClick={onLater}>
-                {labels.later ?? "Later"}
-                <kbd>L</kbd>
-              </button>
+              {extraActions}
+              {showLater && (
+                <button
+                  type="button"
+                  className="ui-ibv__button ui-ibv__later"
+                  disabled={submitting}
+                  aria-keyshortcuts="L"
+                  onClick={onLater}
+                >
+                  {labels.later ?? "Later"}
+                  <kbd aria-hidden={managed || undefined}>L</kbd>
+                </button>
+              )}
               {kind === "approval" && (
-                <button type="button" className="ui-ibv__button" onClick={() => onSubmit?.("decline")}>
+                <button
+                  type="button"
+                  className="ui-ibv__button"
+                  disabled={submitting}
+                  onClick={() => onSubmit?.("decline")}
+                >
                   {labels.decline ?? "Decline"}
                 </button>
               )}
@@ -5341,8 +5586,12 @@ export function InboxItemView({
                 aria-keyshortcuts="Enter"
                 onClick={() => submit()}
               >
-                {kind === "approval" && !text.trim() ? (labels.approve ?? "Approve") : (labels.send ?? "Send")}
-                <kbd>↵</kbd>
+                {submitting && labels.submitting
+                  ? labels.submitting
+                  : kind === "approval" && (!freeText || !text.trim())
+                    ? (labels.approve ?? "Approve")
+                    : (labels.send ?? "Send")}
+                <kbd aria-hidden={managed || undefined}>↵</kbd>
               </button>
             </div>
           </div>
@@ -6250,6 +6499,14 @@ export type InboxScreenProps = Omit<AppShellProps, "children" | "panel" | "panel
   onDecide?: (id: string, answer: InboxAnswer) => void;
   onLater?: (id: string) => void;
   onReopen?: (id: string) => void;
+  managed?: boolean;
+  submittingId?: string;
+  confirmedId?: string;
+  confirmedAnswer?: InboxAnswer;
+  collapsingId?: string;
+  allowFreeText?: boolean;
+  showTabs?: boolean;
+  error?: ReactNode;
   tasks?: Record<string, InboxTask>;
   running?: number;
   files?: ArtifactFile[];
@@ -6289,6 +6546,14 @@ export function InboxScreen({
   onDecide,
   onLater,
   onReopen,
+  managed = false,
+  submittingId,
+  confirmedId,
+  confirmedAnswer,
+  collapsingId: collapsingProp,
+  allowFreeText,
+  showTabs = true,
+  error,
   tasks = defaultInboxTasks,
   running = 3,
   files: filesProp,
@@ -6483,7 +6748,11 @@ export function InboxScreen({
   };
   const decide = (answer: InboxAnswer) => {
     const item = current;
-    if (!item || item.done || sending.current) return;
+    if (!item || item.done || sending.current || submittingId || confirmedId) return;
+    if (managed) {
+      onDecide?.(item.id, answer);
+      return;
+    }
     sending.current = true;
     const position = itemsRef.current.filter((entry) => !entry.done).findIndex((entry) => entry.id === item.id),
       snapshot = { ...item, done: undefined };
@@ -6518,7 +6787,11 @@ export function InboxScreen({
     );
   };
   const later = () => {
-    if (!current || current.done || sending.current) return;
+    if (!current || current.done || sending.current || submittingId || confirmedId) return;
+    if (managed) {
+      onLater?.(current.id);
+      return;
+    }
     const open = items.filter((item) => !item.done),
       index = open.findIndex((item) => item.id === current.id),
       remaining = open.filter((item) => item.id !== current.id);
@@ -6530,7 +6803,11 @@ export function InboxScreen({
     showToast(message);
   };
   const reopen = () => {
-    if (!current?.done || sending.current) return;
+    if (!current?.done || sending.current || submittingId || confirmedId) return;
+    if (managed) {
+      onReopen?.(current.id);
+      return;
+    }
     const item = { ...current, done: undefined, unread: false },
       nextDrafts = { ...draftsRef.current };
     delete nextDrafts[item.id];
@@ -6691,6 +6968,15 @@ export function InboxScreen({
       })),
     },
   ];
+  const busy = !!pending || !!submittingId || !!confirmedId,
+    activeSending = pending?.item.id ?? submittingId ?? confirmedId,
+    activeCollapsing = pending?.collapsing ? pending.item.id : collapsingProp,
+    itemPhase =
+      pending || (shown && confirmedId === shown.id)
+        ? "sent"
+        : shown && submittingId === shown.id
+          ? "submitting"
+          : "answer";
   return (
     <div ref={root} className={["ui-ibs__frame", className].filter(Boolean).join(" ")} style={style}>
       <style href="ui-inbox" precedence="default">
@@ -6724,13 +7010,7 @@ export function InboxScreen({
           />
         }
       >
-        <div
-          ref={canvas}
-          className="ui-ibs"
-          data-inbox-scope=""
-          data-detail={detail || undefined}
-          aria-busy={!!pending}
-        >
+        <div ref={canvas} className="ui-ibs" data-inbox-scope="" data-detail={detail || undefined} aria-busy={busy}>
           <div className="ui-ibs__list">
             <InboxList
               items={items}
@@ -6738,9 +7018,10 @@ export function InboxScreen({
               onTabChange={changeTab}
               selected={selected}
               onSelect={(id) => choose(id)}
-              sendingId={pending?.item.id}
-              collapsingId={pending?.collapsing ? pending.item.id : undefined}
-              disabled={!!pending}
+              sendingId={activeSending}
+              collapsingId={activeCollapsing}
+              showTabs={showTabs}
+              disabled={busy}
               labels={labels}
               now={clock}
             />
@@ -6762,11 +7043,14 @@ export function InboxScreen({
                   }
                   onDraftChange={changeDraft}
                   onSubmit={decide}
-                  onLater={later}
+                  onLater={!managed || onLater ? later : undefined}
                   onReopen={reopen}
                   onOpenArtifact={(name) => openArtifact(name)}
-                  phase={pending ? "sent" : "answer"}
-                  sentAnswer={pending?.answer}
+                  phase={itemPhase}
+                  sentAnswer={pending?.answer ?? confirmedAnswer}
+                  managed={managed}
+                  allowFreeText={allowFreeText}
+                  error={error}
                   focusRequest={focusRequest}
                   labels={labels}
                   now={clock}
@@ -8142,6 +8426,10 @@ const css = /* css */ `
   min-height: 44px;
   padding: 6px 10px;
 }
+.ui-as__menu .ui-as__wsm-item[data-danger],
+.ui-as__menu .ui-as__wsm-item[data-danger] > svg {
+  color: #e5484d;
+}
 .ui-as__wsm-item > svg {
   flex: none;
   color: var(--ui-as-muted);
@@ -8322,6 +8610,10 @@ const css = /* css */ `
 :where(.dark, [data-theme="dark"]) .ui-as__menu.ui-as__ws-menu {
   --ui-as-wsm-hover: rgba(255, 255, 255, 0.05);
   --ui-as-wsm-ring: rgba(255, 255, 255, 0.14);
+}
+:where(.dark, [data-theme="dark"]) .ui-as__menu .ui-as__wsm-item[data-danger],
+:where(.dark, [data-theme="dark"]) .ui-as__menu .ui-as__wsm-item[data-danger] > svg {
+  color: #ff6369;
 }
 :where(.dark, [data-theme="dark"]) :is(.ui-as__nav-workspace, .ui-as__account-row):hover {
   background: rgba(255, 255, 255, 0.05);
@@ -10709,12 +11001,16 @@ const css = /* css */ `
   background: none;
   cursor: pointer;
 }
-.ui-ibv button:focus-visible {
+.ui-ibv :where(button, a.ui-ibv__button):focus-visible {
   outline: 2px solid var(--ui-ibv-focus);
   outline-offset: -2px;
 }
-.ui-ibv button:active:not(:disabled) {
+.ui-ibv :where(button, a.ui-ibv__button):active:not(:disabled) {
   transform: scale(0.97);
+}
+.ui-ibv a.ui-ibv__button {
+  color: inherit;
+  text-decoration: none;
 }
 .ui-ibv__meta {
   display: flex;
@@ -10882,6 +11178,12 @@ const css = /* css */ `
 .ui-ibv__chips button[aria-pressed="true"] {
   color: var(--ui-ibv-ink);
   box-shadow: inset 0 0 0 0.5px var(--ui-ibv-line);
+}
+.ui-ibv__error {
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--aui-danger, #c4320a);
 }
 .ui-ibv__footer {
   display: flex;
@@ -11150,6 +11452,9 @@ const css = /* css */ `
 :where(.dark, [data-theme="dark"]) .ui-ibv__badge {
   background: rgba(251, 106, 0, 0.15);
   color: #ffa057;
+}
+:where(.dark, [data-theme="dark"]) .ui-ibv__error {
+  color: var(--aui-danger, #ff8a7a);
 }
 
 .ui-ibx {

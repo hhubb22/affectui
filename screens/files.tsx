@@ -30,6 +30,11 @@ type IconName =
   | "chat"
   | "tasks"
   | "play"
+  | "pause"
+  | "repeat"
+  | "calendar"
+  | "shield"
+  | "chart"
   | "folder"
   | "folder-open"
   | "plug"
@@ -84,6 +89,32 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="17" rx="3" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z" />,
+  chart: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
@@ -712,6 +743,18 @@ export function CommandMenu({
 export type AppRailItem = { label: string; icon?: ReactNode; count?: number; disabled?: boolean; section?: string };
 export type AppChat = { id: string; title: string; project?: string; pinned?: boolean; unread?: boolean };
 export type AppShellUser = { name: string; email?: string; avatar?: string };
+export type AppShellWorkspace = { id: string; name: string; subtitle?: string };
+export type AppShellMenuItem =
+  | {
+      kind?: "item";
+      id?: string;
+      label: string;
+      icon?: ReactNode;
+      danger?: boolean;
+      disabled?: boolean;
+      onSelect?: () => void;
+    }
+  | { kind: "separator"; id?: string };
 const defaultAppShellLabels = {
   sidebar: "Sidebar",
   openSidebar: "Open sidebar",
@@ -764,7 +807,15 @@ export type AppShellProps = Omit<ComponentPropsWithoutRef<"div">, "onChange"> & 
   header?: ReactNode;
   labels?: Partial<AppShellLabels>;
   workspace?: string;
-  user?: AppShellUser;
+  workspaceId?: string;
+  workspaces?: AppShellWorkspace[];
+  onSelectWorkspace?: (id: string) => void;
+  onCreateWorkspace?: () => void;
+  workspaceMenuItems?: AppShellMenuItem[];
+  user?: AppShellUser | null;
+  accountMenuItems?: AppShellMenuItem[];
+  showLanguageMenu?: boolean;
+  showAppearanceMenu?: boolean;
   rail?: false | { items: AppRailItem[]; bottom?: AppRailItem[]; active?: string };
   active?: string;
   defaultActive?: string;
@@ -1298,7 +1349,15 @@ export function AppShell({
   header,
   labels: labelsProp,
   workspace = "Fieldwork",
+  workspaceId,
+  workspaces,
+  onSelectWorkspace,
+  onCreateWorkspace,
+  workspaceMenuItems,
   user = { name: "Alex Morgan", email: "alex@fieldwork.com" },
+  accountMenuItems,
+  showLanguageMenu = true,
+  showAppearanceMenu = true,
   rail = false,
   active: activeProp,
   defaultActive = "Chats",
@@ -1378,6 +1437,9 @@ export function AppShell({
   const [menu, setMenu] = useState<"workspace" | "account" | "projects" | "chat" | "chat-project" | null>(null);
   const [wsOpen, setWsOpen] = useState<string | null>(null);
   useEffect(() => setWsOpen(null), [menu]);
+  useEffect(() => {
+    if (!user && menu === "account") setMenu(null);
+  }, [user, menu]);
   const [menuChat, setMenuChat] = useState<string | null>(null),
     [renaming, setRenaming] = useState<string | null>(null),
     [renameValue, setRenameValue] = useState("");
@@ -1404,12 +1466,13 @@ export function AppShell({
   const hasPanel = panel != null,
     railWidth = rail ? 52 : 0;
   const iconSidebar = !!navigation && !rail && sidebarContent === undefined;
-  const userAvatar =
+  const userAvatar = user ? (
     user.avatar && !brokenAvatar ? (
       <img src={user.avatar} alt="" onError={() => setBrokenAvatar(true)} />
     ) : (
       initials(user.name)
-    );
+    )
+  ) : null;
   const visiblePanel = hasPanel && panelOpen;
   const drawer = narrow && (sidebarOpen || visiblePanel);
   useEffect(() => {
@@ -1419,7 +1482,7 @@ export function AppShell({
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
-  useEffect(() => setBrokenAvatar(false), [user.avatar]);
+  useEffect(() => setBrokenAvatar(false), [user?.avatar]);
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
@@ -1712,6 +1775,30 @@ export function AppShell({
     setMenu(null);
     anchor.current?.focus({ preventScroll: true });
   };
+  const customMenuItem = (item: AppShellMenuItem, index: number) =>
+    item.kind === "separator" ? (
+      <span className="ui-as__wsm-sep" role="separator" key={item.id ?? `sep-${index}`} />
+    ) : (
+      <button
+        type="button"
+        role="menuitem"
+        className="ui-as__wsm-item"
+        data-danger={item.danger || undefined}
+        disabled={item.disabled}
+        key={item.id ?? item.label}
+        onClick={() => {
+          setMenu(null);
+          anchor.current?.focus({ preventScroll: true });
+          if (item.onSelect) item.onSelect();
+          else onNavigate?.(item.label);
+        }}
+      >
+        {item.icon}
+        <span className="ui-as__wsm-label" title={item.label}>
+          {labels.action(item.label)}
+        </span>
+      </button>
+    );
   const wsItem = (label: string, icon: keyof typeof wsGlyphs) => (
     <button type="button" role="menuitem" className="ui-as__wsm-item" key={label} onClick={() => menuAction(label)}>
       <WsGlyph name={icon} />
@@ -1761,6 +1848,116 @@ export function AppShell({
       </span>
     </span>
   );
+  const switchWorkspaceMenu = workspaces
+    ? workspaces.length > 0 || onCreateWorkspace
+      ? wsSub(
+          "Switch workspace",
+          "switch",
+          <>
+            {workspaces.map((item) => {
+              const checked = workspaceId !== undefined ? item.id === workspaceId : item.name === workspace;
+              return (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={checked}
+                  className="ui-as__wsm-item"
+                  data-rich={item.subtitle ? "" : undefined}
+                  key={item.id}
+                  onClick={() => {
+                    if (onSelectWorkspace) {
+                      setMenu(null);
+                      anchor.current?.focus({ preventScroll: true });
+                      onSelectWorkspace(item.id);
+                    } else menuAction(`Switch workspace: ${item.name}`);
+                  }}
+                >
+                  <span className="ui-as__wsm-label" title={item.name}>
+                    {item.subtitle ? (
+                      <>
+                        <span>{item.name}</span>
+                        <small>{item.subtitle}</small>
+                      </>
+                    ) : (
+                      item.name
+                    )}
+                  </span>
+                  {checked && <WsGlyph name="check" size={14} />}
+                </button>
+              );
+            })}
+            {onCreateWorkspace && (
+              <>
+                {workspaces.length > 0 && <span className="ui-as__wsm-sep" role="separator" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="ui-as__wsm-item"
+                  onClick={() => {
+                    setMenu(null);
+                    anchor.current?.focus({ preventScroll: true });
+                    onCreateWorkspace();
+                  }}
+                >
+                  <WsGlyph name="plus" />
+                  <span className="ui-as__wsm-label" title="Create workspace">
+                    {labels.action("Create workspace")}
+                  </span>
+                </button>
+              </>
+            )}
+          </>,
+        )
+      : null
+    : wsSub(
+        "Switch workspace",
+        "switch",
+        <>
+          {[
+            [workspace, "Pro · 8 members"],
+            ["Personal", "Free"],
+          ]
+            .filter((entry, index, all) => all.findIndex((other) => other[0] === entry[0]) === index)
+            .map(([name, plan]) => (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={name === workspace}
+                className="ui-as__wsm-item"
+                data-rich=""
+                key={name}
+                onClick={() => menuAction(`Switch workspace: ${name}`)}
+              >
+                <span className="ui-as__wsm-label" title={name}>
+                  <span>{name}</span>
+                  <small>{plan}</small>
+                </span>
+                {name === workspace && <WsGlyph name="check" size={14} />}
+              </button>
+            ))}
+          <span className="ui-as__wsm-sep" role="separator" />
+          {onCreateWorkspace ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="ui-as__wsm-item"
+              onClick={() => {
+                setMenu(null);
+                anchor.current?.focus({ preventScroll: true });
+                onCreateWorkspace();
+              }}
+            >
+              <WsGlyph name="plus" />
+              <span className="ui-as__wsm-label" title="Create workspace">
+                {labels.action("Create workspace")}
+              </span>
+            </button>
+          ) : (
+            wsItem("Create workspace", "plus")
+          )}
+        </>,
+      );
+  const hasWorkspaceMenu = workspaceMenuItems ? workspaceMenuItems.length > 0 || !!switchWorkspaceMenu : true;
   const commandGroups: CommandMenuGroup[] =
     commandGroupsProp ??
     (navigation
@@ -1879,10 +2076,10 @@ export function AppShell({
                 className="ui-as__logo"
                 aria-label={workspace}
                 title={workspace}
-                aria-haspopup="menu"
-                aria-expanded={menu === "workspace"}
+                aria-haspopup={hasWorkspaceMenu ? "menu" : undefined}
+                aria-expanded={hasWorkspaceMenu ? menu === "workspace" : undefined}
                 aria-controls={menu === "workspace" ? `${id}-menu` : undefined}
-                {...trigger("workspace")}
+                {...(hasWorkspaceMenu ? trigger("workspace") : {})}
               >
                 {initials(workspace).slice(0, 1)}
               </button>
@@ -1919,22 +2116,20 @@ export function AppShell({
                   {!!item.count && <i className="ui-as__notification-dot" />}
                 </button>
               ))}
-              <button
-                type="button"
-                className="ui-as__user"
-                aria-label={user.name}
-                title={user.name}
-                aria-haspopup="menu"
-                aria-expanded={menu === "account"}
-                aria-controls={menu === "account" ? `${id}-menu` : undefined}
-                {...trigger("account")}
-              >
-                {user.avatar && !brokenAvatar ? (
-                  <img src={user.avatar} alt="" onError={() => setBrokenAvatar(true)} />
-                ) : (
-                  initials(user.name)
-                )}
-              </button>
+              {user && (
+                <button
+                  type="button"
+                  className="ui-as__user"
+                  aria-label={user.name}
+                  title={user.name}
+                  aria-haspopup="menu"
+                  aria-expanded={menu === "account"}
+                  aria-controls={menu === "account" ? `${id}-menu` : undefined}
+                  {...trigger("account")}
+                >
+                  {userAvatar}
+                </button>
+              )}
             </nav>
           )}
           <div
@@ -1953,24 +2148,26 @@ export function AppShell({
                         type="button"
                         className="ui-as__nav-workspace"
                         aria-label={workspace}
-                        aria-haspopup="menu"
-                        aria-expanded={menu === "workspace"}
-                        {...trigger("workspace")}
+                        aria-haspopup={hasWorkspaceMenu ? "menu" : undefined}
+                        aria-expanded={hasWorkspaceMenu ? menu === "workspace" : undefined}
+                        {...(hasWorkspaceMenu ? trigger("workspace") : {})}
                       >
                         <span>{initials(workspace).slice(0, 1)}</span>
                         <strong>{workspace}</strong>
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          aria-hidden="true"
-                        >
-                          <path d="M18 9s-4.42 6-6 6-6-6-6-6" />
-                        </svg>
+                        {hasWorkspaceMenu && (
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M18 9s-4.42 6-6 6-6-6-6-6" />
+                          </svg>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -2127,7 +2324,7 @@ export function AppShell({
                   </nav>
                 )}
                 {sidebarFooter}
-                {!rail && (
+                {!rail && user && (
                   <button
                     type="button"
                     className="ui-as__account-row"
@@ -2226,58 +2423,38 @@ export function AppShell({
           }
           onClose={() => setMenu(null)}
         >
-          {menu === "workspace" && (
-            <>
-              {wsItem("Invite people", "invite")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Workspace settings", "settings")}
-              {wsItem("Analytics", "analytics")}
-              {wsItem("Billing", "billing")}
-              {wsItem("Usage & limits", "usage")}
-              {wsItem("Members", "members")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsSub(
-                "Learn more",
-                "info",
-                <>
-                  {wsItem("Documentation", "docs")}
-                  {wsItem("Changelog", "changelog")}
-                  {wsItem("Help & feedback", "help")}
-                </>,
-              )}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsSub(
-                "Switch workspace",
-                "switch",
-                <>
-                  {[
-                    [workspace, "Pro · 8 members"],
-                    ["Personal", "Free"],
-                  ]
-                    .filter((entry, index, all) => all.findIndex((other) => other[0] === entry[0]) === index)
-                    .map(([name, plan]) => (
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={name === workspace}
-                        className="ui-as__wsm-item"
-                        data-rich=""
-                        key={name}
-                        onClick={() => menuAction(`Switch workspace: ${name}`)}
-                      >
-                        <span className="ui-as__wsm-label" title={name}>
-                          <span>{name}</span>
-                          <small>{plan}</small>
-                        </span>
-                        {name === workspace && <WsGlyph name="check" size={14} />}
-                      </button>
-                    ))}
+          {menu === "workspace" &&
+            (workspaceMenuItems ? (
+              <>
+                {workspaceMenuItems.map(customMenuItem)}
+                {workspaceMenuItems.length > 0 && switchWorkspaceMenu && (
                   <span className="ui-as__wsm-sep" role="separator" />
-                  {wsItem("Create workspace", "plus")}
-                </>,
-              )}
-            </>
-          )}
+                )}
+                {switchWorkspaceMenu}
+              </>
+            ) : (
+              <>
+                {wsItem("Invite people", "invite")}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {wsItem("Workspace settings", "settings")}
+                {wsItem("Analytics", "analytics")}
+                {wsItem("Billing", "billing")}
+                {wsItem("Usage & limits", "usage")}
+                {wsItem("Members", "members")}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {wsSub(
+                  "Learn more",
+                  "info",
+                  <>
+                    {wsItem("Documentation", "docs")}
+                    {wsItem("Changelog", "changelog")}
+                    {wsItem("Help & feedback", "help")}
+                  </>,
+                )}
+                <span className="ui-as__wsm-sep" role="separator" />
+                {switchWorkspaceMenu}
+              </>
+            ))}
           {menu === "projects" && (
             <>
               <div className="ui-as__menu-label">{labels.projects}</div>
@@ -2331,7 +2508,7 @@ export function AppShell({
               )}
             </>
           )}
-          {menu === "account" && (
+          {menu === "account" && user && (
             <>
               <div className="ui-as__menu-user">
                 <span className="ui-as__user-initials">{userAvatar}</span>
@@ -2340,107 +2517,115 @@ export function AppShell({
                   {user.email && <small>{user.email}</small>}
                 </span>
               </div>
-              {wsSub(
-                labels.language,
-                "language",
+              {showLanguageMenu &&
+                wsSub(
+                  labels.language,
+                  "language",
+                  <>
+                    {(
+                      [
+                        [
+                          "English",
+                          <>
+                            <rect width="20" height="14" fill="#012169" />
+                            <path d="M0 0 20 14M20 0 0 14" stroke="#fff" strokeWidth="2.8" />
+                            <path d="M0 0 20 14M20 0 0 14" stroke="#c8102e" />
+                            <path d="M10 0v14M0 7h20" stroke="#fff" strokeWidth="4.2" />
+                            <path d="M10 0v14M0 7h20" stroke="#c8102e" strokeWidth="2.4" />
+                          </>,
+                        ],
+                        [
+                          "Deutsch",
+                          <>
+                            <rect width="20" height="4.67" fill="#1f1f1f" />
+                            <rect y="4.67" width="20" height="4.67" fill="#dd0000" />
+                            <rect y="9.33" width="20" height="4.67" fill="#ffce00" />
+                          </>,
+                        ],
+                        [
+                          "Français",
+                          <>
+                            <rect width="6.67" height="14" fill="#002395" />
+                            <rect x="6.67" width="6.67" height="14" fill="#fff" />
+                            <rect x="13.33" width="6.67" height="14" fill="#ed2939" />
+                          </>,
+                        ],
+                        [
+                          "Español",
+                          <>
+                            <rect width="20" height="14" fill="#aa151b" />
+                            <rect y="3.5" width="20" height="7" fill="#f1bf00" />
+                          </>,
+                        ],
+                      ] as const
+                    ).map(([label, flag]) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={language === label}
+                        className="ui-as__wsm-item"
+                        key={label}
+                        onClick={() => {
+                          setLanguage(label);
+                          menuAction(`Language: ${label}`);
+                        }}
+                      >
+                        <svg className="ui-as__wsm-flag" viewBox="0 0 20 14" aria-hidden="true">
+                          {flag}
+                        </svg>
+                        <span className="ui-as__wsm-label">{label}</span>
+                        {language === label && <WsGlyph name="check" size={14} />}
+                      </button>
+                    ))}
+                  </>,
+                )}
+              {showAppearanceMenu &&
+                wsSub(
+                  labels.appearance,
+                  "appearance",
+                  <>
+                    {(["system", "light", "dark"] as const).map((value) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={theme === value}
+                        className="ui-as__wsm-item"
+                        key={value}
+                        onClick={() => {
+                          setTheme(value);
+                          setMenu(null);
+                          anchor.current?.focus();
+                        }}
+                      >
+                        <WsGlyph name={value} />
+                        <span className="ui-as__wsm-label">{labels.theme(value)}</span>
+                        {theme === value && <WsGlyph name="check" size={14} />}
+                      </button>
+                    ))}
+                  </>,
+                )}
+              {accountMenuItems ? (
+                accountMenuItems.map(customMenuItem)
+              ) : (
                 <>
-                  {(
-                    [
-                      [
-                        "English",
-                        <>
-                          <rect width="20" height="14" fill="#012169" />
-                          <path d="M0 0 20 14M20 0 0 14" stroke="#fff" strokeWidth="2.8" />
-                          <path d="M0 0 20 14M20 0 0 14" stroke="#c8102e" />
-                          <path d="M10 0v14M0 7h20" stroke="#fff" strokeWidth="4.2" />
-                          <path d="M10 0v14M0 7h20" stroke="#c8102e" strokeWidth="2.4" />
-                        </>,
-                      ],
-                      [
-                        "Deutsch",
-                        <>
-                          <rect width="20" height="4.67" fill="#1f1f1f" />
-                          <rect y="4.67" width="20" height="4.67" fill="#dd0000" />
-                          <rect y="9.33" width="20" height="4.67" fill="#ffce00" />
-                        </>,
-                      ],
-                      [
-                        "Français",
-                        <>
-                          <rect width="6.67" height="14" fill="#002395" />
-                          <rect x="6.67" width="6.67" height="14" fill="#fff" />
-                          <rect x="13.33" width="6.67" height="14" fill="#ed2939" />
-                        </>,
-                      ],
-                      [
-                        "Español",
-                        <>
-                          <rect width="20" height="14" fill="#aa151b" />
-                          <rect y="3.5" width="20" height="7" fill="#f1bf00" />
-                        </>,
-                      ],
-                    ] as const
-                  ).map(([label, flag]) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={language === label}
-                      className="ui-as__wsm-item"
-                      key={label}
-                      onClick={() => {
-                        setLanguage(label);
-                        menuAction(`Language: ${label}`);
-                      }}
-                    >
-                      <svg className="ui-as__wsm-flag" viewBox="0 0 20 14" aria-hidden="true">
-                        {flag}
-                      </svg>
-                      <span className="ui-as__wsm-label">{label}</span>
-                      {language === label && <WsGlyph name="check" size={14} />}
-                    </button>
-                  ))}
-                </>,
+                  {wsItem("Integrations", "integrations")}
+                  {wsItem("Settings", "settings")}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Download apps", "download")}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Changelog", "changelog")}
+                  {wsSub(
+                    "Learn more",
+                    "info",
+                    <>
+                      {wsItem("Documentation", "docs")}
+                      {wsItem("Help & feedback", "help")}
+                    </>,
+                  )}
+                  <span className="ui-as__wsm-sep" role="separator" />
+                  {wsItem("Log out", "logout")}
+                </>
               )}
-              {wsSub(
-                labels.appearance,
-                "appearance",
-                <>
-                  {(["system", "light", "dark"] as const).map((value) => (
-                    <button
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={theme === value}
-                      className="ui-as__wsm-item"
-                      key={value}
-                      onClick={() => {
-                        setTheme(value);
-                        setMenu(null);
-                        anchor.current?.focus();
-                      }}
-                    >
-                      <WsGlyph name={value} />
-                      <span className="ui-as__wsm-label">{labels.theme(value)}</span>
-                      {theme === value && <WsGlyph name="check" size={14} />}
-                    </button>
-                  ))}
-                </>,
-              )}
-              {wsItem("Integrations", "integrations")}
-              {wsItem("Settings", "settings")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Download apps", "download")}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Changelog", "changelog")}
-              {wsSub(
-                "Learn more",
-                "info",
-                <>
-                  {wsItem("Documentation", "docs")}
-                  {wsItem("Help & feedback", "help")}
-                </>,
-              )}
-              <span className="ui-as__wsm-sep" role="separator" />
-              {wsItem("Log out", "logout")}
             </>
           )}
           {menu === "chat" &&
@@ -3434,7 +3619,7 @@ export function FilesScreen({
       </style>
       <div className="ui-fls__scroll">
         <FilesBrowser
-          currentUser={user.name}
+          currentUser={user?.name}
           onOpenFolder={(folder) => onNavigate?.(folder.name)}
           onOpenTemplate={(template) => onNavigate?.(template.name)}
           {...browserProps}
@@ -4780,6 +4965,10 @@ const css = /* css */ `
   min-height: 44px;
   padding: 6px 10px;
 }
+.ui-as__menu .ui-as__wsm-item[data-danger],
+.ui-as__menu .ui-as__wsm-item[data-danger] > svg {
+  color: #e5484d;
+}
 .ui-as__wsm-item > svg {
   flex: none;
   color: var(--ui-as-muted);
@@ -4960,6 +5149,10 @@ const css = /* css */ `
 :where(.dark, [data-theme="dark"]) .ui-as__menu.ui-as__ws-menu {
   --ui-as-wsm-hover: rgba(255, 255, 255, 0.05);
   --ui-as-wsm-ring: rgba(255, 255, 255, 0.14);
+}
+:where(.dark, [data-theme="dark"]) .ui-as__menu .ui-as__wsm-item[data-danger],
+:where(.dark, [data-theme="dark"]) .ui-as__menu .ui-as__wsm-item[data-danger] > svg {
+  color: #ff6369;
 }
 :where(.dark, [data-theme="dark"]) :is(.ui-as__nav-workspace, .ui-as__account-row):hover {
   background: rgba(255, 255, 255, 0.05);

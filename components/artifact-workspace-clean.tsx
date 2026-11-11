@@ -27,6 +27,11 @@ type IconName =
   | "chat"
   | "tasks"
   | "play"
+  | "pause"
+  | "repeat"
+  | "calendar"
+  | "shield"
+  | "chart"
   | "folder"
   | "folder-open"
   | "plug"
@@ -81,6 +86,32 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="17" rx="3" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z" />,
+  chart: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
@@ -578,7 +609,7 @@ export function ArtifactFolder({
               : event.key === "End"
                 ? list.length - 1
                 : null;
-    if (next !== null) {
+    if (next !== null && list[next]) {
       event.preventDefault();
       setSelected([list[next].name]);
       root.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')[next]?.focus();
@@ -654,10 +685,10 @@ export function ArtifactFolder({
             <button
               type="button"
               key={field}
-              aria-label={`${field[0].toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
+              aria-label={`${field.charAt(0).toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
               onClick={() => changeSort(field)}
             >
-              {field[0].toUpperCase() + field.slice(1)}
+              {field.charAt(0).toUpperCase() + field.slice(1)}
               {sort.key === field && <span aria-hidden="true">{sort.direction === "asc" ? "⌃" : "⌄"}</span>}
             </button>
           ))}
@@ -770,7 +801,7 @@ export function ArtifactFolder({
                   setMenu(null);
                 }}
               >
-                {field[0].toUpperCase() + field.slice(1)}
+                {field.charAt(0).toUpperCase() + field.slice(1)}
                 {sort.key === field && <Icon name="check" size={13} />}
               </button>
             ))
@@ -989,10 +1020,18 @@ export function ArtifactWorkspace({
   const updateDirectory = (directory: ArtifactDirectory, entries: ArtifactFolderEntry[]) => {
     const removed = directory.entries.filter((entry) => !entries.some((next) => next.name === entry.name));
     const added = entries.filter((entry) => !directory.entries.some((previous) => previous.name === entry.name));
+    const [removedEntry] = removed,
+      [addedEntry] = added;
     let nextList = list;
-    if (directory.entries.length === entries.length && removed.length === 1 && added.length === 1) {
-      nextList = list.map((item) => (item.name === removed[0].name ? { ...item, name: added[0].name } : item));
-      setOpened(opened.map((name) => (name === removed[0].name ? added[0].name : name)));
+    if (
+      directory.entries.length === entries.length &&
+      removed.length === 1 &&
+      added.length === 1 &&
+      removedEntry &&
+      addedEntry
+    ) {
+      nextList = list.map((item) => (item.name === removedEntry.name ? { ...item, name: addedEntry.name } : item));
+      setOpened(opened.map((name) => (name === removedEntry.name ? addedEntry.name : name)));
     }
     update({ ...directory, entries }, nextList);
   };
@@ -1064,7 +1103,7 @@ export function ArtifactWorkspace({
             : event.key === "End"
               ? names.length - 1
               : null;
-    if (next !== null) {
+    if (next !== null && names[next] !== undefined) {
       event.preventDefault();
       setActive(names[next]);
       tabs.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
@@ -1406,8 +1445,9 @@ function SpreadsheetEditor({
   const write = (text: string, row = cell.row, column = cell.column) => {
     const next = rows.map((row) => [...row]);
     while (next.length <= row) next.push([]);
-    while (next[row].length <= column) next[row].push("");
-    next[row][column] = text;
+    const target = next[row]!; // The loop fills through the nonnegative selection row.
+    while (target.length <= column) target.push("");
+    target[column] = text;
     onChange({ ...file, rows: next, updated: "Just now" });
   };
   const commit = () => {
@@ -1446,7 +1486,7 @@ function SpreadsheetEditor({
   };
   const key = (event: KeyboardEvent<HTMLTableCellElement>) => {
     if (editing || event.nativeEvent.isComposing) return;
-    const next =
+    const next: [number, number] | null =
       event.key === "ArrowDown"
         ? [cell.row + 1, cell.column]
         : event.key === "ArrowUp"
@@ -1571,7 +1611,7 @@ function SpreadsheetEditor({
           onKeyDown={(event) => {
             if (event.key !== "Enter") return;
             const match = /^([a-z]+)([1-9]\d*)$/i.exec(reference.trim());
-            if (match) {
+            if (match && match[1] && match[2]) {
               const column =
                 [...match[1].toUpperCase()].reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
               select(Number(match[2]) - 1, column);
@@ -1691,8 +1731,9 @@ function SpreadsheetEditor({
                         .map((line) => line.split("\t"));
                       pasted.forEach((line, offset) => {
                         while (next.length <= row + offset) next.push([]);
-                        line.forEach((text, index) => {
-                          next[row + offset][column + index] = text;
+                        const target = next[row + offset]!;
+                        /* The loop fills through this nonnegative destination row. */ line.forEach((text, index) => {
+                          target[column + index] = text;
                         });
                       });
                       onChange({ ...file, rows: next });
@@ -1876,8 +1917,9 @@ function DocumentEditor({
       } else {
         list = null;
         const match = /^(#{1,3})\s+(.*)/.exec(line);
-        const block = document.createElement(match ? `h${match[1].length}` : "p");
-        block.textContent = match ? match[2] : line;
+        // Both captures participate in every match; the heading text may be empty.
+        const block = document.createElement(match ? `h${match[1]!.length}` : "p");
+        block.textContent = match ? match[2]! : line;
         fragment.appendChild(block);
       }
     }

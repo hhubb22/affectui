@@ -47,6 +47,7 @@ export type InboxItem = {
   id: string;
   kind: "decision" | "pick" | "approval" | "question";
   question: string;
+  listTitle?: string;
   context?: string;
   task: string;
   at: number;
@@ -121,6 +122,7 @@ export type InboxListProps = {
   onSelect?: (id: string) => void;
   sendingId?: string;
   collapsingId?: string;
+  showTabs?: boolean;
   disabled?: boolean;
   labels?: InboxListLabels;
   now?: number;
@@ -139,6 +141,7 @@ export function InboxList({
   onSelect,
   sendingId,
   collapsingId,
+  showTabs = true,
   disabled = false,
   labels = {},
   now: nowProp,
@@ -227,7 +230,7 @@ export function InboxList({
             : event.key === "End"
               ? list.length - 1
               : null;
-    if (next !== null) {
+    if (next !== null && list[next]) {
       event.preventDefault();
       choose(list[next], true);
     }
@@ -254,32 +257,34 @@ export function InboxList({
           {labels.inbox ?? "Inbox"}
           <span>{items.filter((item) => !item.done).length || null}</span>
         </h1>
-        <div className="ui-iblc__tabs" role="tablist" aria-label="Inbox status">
-          {(["open", "done"] as const).map((value) => (
-            <button
-              type="button"
-              role="tab"
-              id={`${id}-${value}`}
-              aria-selected={tab === value}
-              aria-controls={`${id}-items`}
-              data-inbox-tab={value}
-              tabIndex={tab === value ? 0 : -1}
-              disabled={disabled}
-              key={value}
-              onClick={() => setTab(value)}
-              onKeyDown={tabKey}
-            >
-              {value === "open" ? (labels.open ?? "Open") : (labels.done ?? "Done")}
-            </button>
-          ))}
-        </div>
+        {showTabs && (
+          <div className="ui-iblc__tabs" role="tablist" aria-label="Inbox status">
+            {(["open", "done"] as const).map((value) => (
+              <button
+                type="button"
+                role="tab"
+                id={`${id}-${value}`}
+                aria-selected={tab === value}
+                aria-controls={`${id}-items`}
+                data-inbox-tab={value}
+                tabIndex={tab === value ? 0 : -1}
+                disabled={disabled}
+                key={value}
+                onClick={() => setTab(value)}
+                onKeyDown={tabKey}
+              >
+                {value === "open" ? (labels.open ?? "Open") : (labels.done ?? "Done")}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
       <div
         className="ui-iblc__rows"
         role="listbox"
         aria-label={tab === "open" ? "Open inbox items" : "Answered inbox items"}
         id={`${id}-items`}
-        aria-labelledby={`${id}-${tab}`}
+        aria-labelledby={showTabs ? `${id}-${tab}` : undefined}
       >
         {list.map((item) => {
           const age = inboxAge(item.done?.at ?? item.at, now),
@@ -287,7 +292,8 @@ export function InboxList({
             kindLabel =
               inboxKind(item.kind) === "pick"
                 ? "Variant"
-                : `${inboxKind(item.kind)[0].toUpperCase()}${inboxKind(item.kind).slice(1)}`;
+                : `${inboxKind(item.kind)[0]?.toUpperCase() ?? ""}${inboxKind(item.kind).slice(1)}`,
+            rowTitle = item.listTitle ?? item.question;
           return (
             <div
               className="ui-iblc__wrap"
@@ -301,8 +307,8 @@ export function InboxList({
                 role="option"
                 data-inbox-row={item.id}
                 aria-selected={active === item.id}
-                aria-label={`${item.done ? "Answered" : kindLabel}: ${item.question}. ${item.task}, ${age.long}${item.unread && !item.done ? ", unread" : ""}`}
-                title={item.question}
+                aria-label={`${item.done ? "Answered" : kindLabel}: ${rowTitle}. ${item.task}, ${age.long}${item.unread && !item.done ? ", unread" : ""}`}
+                title={rowTitle}
                 tabIndex={focusId === item.id ? 0 : -1}
                 disabled={disabled}
                 className="ui-iblc__row"
@@ -315,7 +321,7 @@ export function InboxList({
                 </span>
                 <span className="ui-iblc__text">
                   <span className="ui-iblc__question" dir="auto">
-                    {item.question}
+                    {rowTitle}
                   </span>
                   <span className="ui-iblc__meta">
                     <span title={item.task} dir="auto">

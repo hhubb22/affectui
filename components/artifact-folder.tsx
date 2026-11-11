@@ -26,6 +26,11 @@ type IconName =
   | "chat"
   | "tasks"
   | "play"
+  | "pause"
+  | "repeat"
+  | "calendar"
+  | "shield"
+  | "chart"
   | "folder"
   | "folder-open"
   | "plug"
@@ -80,6 +85,32 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="m10 8 6 4-6 4Z" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  repeat: (
+    <>
+      <path d="m17 2 4 4-4 4" />
+      <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+      <path d="m7 22-4-4 4-4" />
+      <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="4" width="18" height="17" rx="3" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z" />,
+  chart: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
     </>
   ),
   folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
@@ -565,7 +596,7 @@ export function ArtifactFolder({
               : event.key === "End"
                 ? list.length - 1
                 : null;
-    if (next !== null) {
+    if (next !== null && list[next]) {
       event.preventDefault();
       setSelected([list[next].name]);
       root.current?.querySelectorAll<HTMLButtonElement>('[role="option"]')[next]?.focus();
@@ -641,10 +672,10 @@ export function ArtifactFolder({
             <button
               type="button"
               key={field}
-              aria-label={`${field[0].toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
+              aria-label={`${field.charAt(0).toUpperCase() + field.slice(1)}${sort.key === field ? `, sorted ${sort.direction === "asc" ? "ascending" : "descending"}` : ""}`}
               onClick={() => changeSort(field)}
             >
-              {field[0].toUpperCase() + field.slice(1)}
+              {field.charAt(0).toUpperCase() + field.slice(1)}
               {sort.key === field && <span aria-hidden="true">{sort.direction === "asc" ? "⌃" : "⌄"}</span>}
             </button>
           ))}
@@ -757,7 +788,7 @@ export function ArtifactFolder({
                   setMenu(null);
                 }}
               >
-                {field[0].toUpperCase() + field.slice(1)}
+                {field.charAt(0).toUpperCase() + field.slice(1)}
                 {sort.key === field && <Icon name="check" size={13} />}
               </button>
             ))

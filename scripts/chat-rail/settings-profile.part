@@ -1,0 +1,262 @@
+export type SettingsProfileData = {
+  name: string;
+  email: string;
+  role: string;
+  language: string;
+  appearance: "System" | "Light" | "Dark";
+  hasPassword: boolean;
+  avatar?: string;
+};
+
+export type SettingsProfileScreenProps = Omit<AppShellProps, "children"> & {
+  profile?: SettingsProfileData;
+  defaultProfile?: SettingsProfileData;
+  loading?: boolean;
+  onProfileChange?: (profile: SettingsProfileData) => void;
+  onPasswordAction?: (profile: SettingsProfileData) => void;
+};
+
+export const defaultSettingsProfile: SettingsProfileData = {
+  name: "Alex Morgan",
+  email: "alex@acme.com",
+  role: "Product & Design",
+  language: "English (US)",
+  appearance: "System",
+  hasPassword: true,
+};
+
+const profileRoles = ["Product & Design", "Engineering", "Operations", "Marketing", "Leadership"];
+const profileLanguages = ["English (US)", "Deutsch", "日本語", "简体中文"];
+
+export function SettingsProfileScreen({
+  profile: profileProp,
+  defaultProfile = defaultSettingsProfile,
+  loading = false,
+  onProfileChange,
+  onPasswordAction,
+  ...shellProps
+}: SettingsProfileScreenProps) {
+  const [profile, setProfile] = useControllable(profileProp, defaultProfile, onProfileChange);
+  const [toast, notify] = useSettingsToast();
+
+  const update = <K extends keyof SettingsProfileData>(key: K, value: SettingsProfileData[K], notice?: string) => {
+    setProfile({ ...profile, [key]: value });
+    if (notice) notify(notice);
+  };
+
+  return (
+    <AppShell
+      rail={false}
+      showChatHistory={false}
+      navigation={defaultSettingsNavigation}
+      active="Profile"
+      workspace="Acme"
+      user={{ name: profile.name, email: profile.email }}
+      {...shellProps}
+    >
+      <style href="ui-settings-profile" precedence="default">{css}</style>
+      <div className="ui-spf">
+        <SettingsPage
+          title="Profile"
+          subtitle="How teammates see you across chats, files and approvals."
+        >
+          <SettingsCard alone loading={loading} loadingLabel="Loading profile" aria-label="Profile details">
+            <SettingsRow
+              title="Profile picture"
+              description="PNG or JPG up to 4 MB"
+              skeleton={loading}
+              leading={
+                <span className="ui-spf__avatar" aria-hidden="true">
+                  {initials(profile.name)}
+                </span>
+              }
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 96, height: 28, borderRadius: 6 }} />
+              ) : (
+                <SettingsButton
+                  variant="secondary"
+                  onClick={() => notify("Profile photo updated")}
+                >
+                  Upload photo
+                </SettingsButton>
+              )}
+            </SettingsRow>
+
+            <SettingsRow
+              title="Full name"
+              description="Shown on messages, shared threads and decisions"
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 220, height: 32, borderRadius: 7 }} />
+              ) : (
+                <input
+                  className="ui-stp__input ui-spf__field"
+                  aria-label="Full name"
+                  value={profile.name}
+                  onChange={(event) => update("name", event.target.value)}
+                  onBlur={() => notify("Name saved")}
+                />
+              )}
+            </SettingsRow>
+
+            <SettingsRow
+              title="Email address"
+              description="Used for sign-in and workspace invites"
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 220, height: 32, borderRadius: 7 }} />
+              ) : (
+                <input
+                  className="ui-stp__input ui-spf__field"
+                  type="email"
+                  aria-label="Email address"
+                  value={profile.email}
+                  onChange={(event) => update("email", event.target.value)}
+                  onBlur={() => notify("Email updated")}
+                />
+              )}
+            </SettingsRow>
+
+            <SettingsRow
+              title="What best describes your work?"
+              description="Helps tailor starter prompts and workspace defaults"
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 190, height: 32, borderRadius: 7 }} />
+              ) : (
+                <select
+                  className="ui-stp__role-select ui-spf__field"
+                  aria-label="Work function"
+                  value={profile.role}
+                  onChange={(event) => update("role", event.target.value, "Role updated")}
+                >
+                  {profileRoles.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
+                </select>
+              )}
+            </SettingsRow>
+          </SettingsCard>
+
+          <SettingsSection
+            title="Preferences"
+            description="Interface theme and display language on this device."
+          >
+            <SettingsCard loading={loading} loadingLabel="Loading preferences" aria-label="Preferences">
+              <SettingsRow
+                title="Appearance"
+                description="Match system dark mode or lock a theme"
+                skeleton={loading}
+              >
+                {loading ? (
+                  <span className="ui-stp__skel" style={{ width: 164, height: 28, borderRadius: 7 }} />
+                ) : (
+                  <SettingsTabs
+                    aria-label="Appearance"
+                    items={[
+                      { id: "System", label: "System" },
+                      { id: "Light", label: "Light" },
+                      { id: "Dark", label: "Dark" },
+                    ]}
+                    value={profile.appearance}
+                    onChange={(id) =>
+                      update(
+                        "appearance",
+                        id === "Light" || id === "Dark" ? id : "System",
+                        `Appearance set to ${id}`,
+                      )
+                    }
+                  />
+                )}
+              </SettingsRow>
+
+              <SettingsRow
+                title="Language"
+                description="Menus, timestamps and system labels"
+                skeleton={loading}
+              >
+                {loading ? (
+                  <span className="ui-stp__skel" style={{ width: 180, height: 32, borderRadius: 7 }} />
+                ) : (
+                  <select
+                    className="ui-stp__role-select ui-spf__field"
+                    aria-label="Language"
+                    value={profile.language}
+                    onChange={(event) => update("language", event.target.value, "Language saved")}
+                  >
+                    {profileLanguages.map((lang) => (
+                      <option key={lang} value={lang}>{lang}</option>
+                    ))}
+                  </select>
+                )}
+              </SettingsRow>
+            </SettingsCard>
+          </SettingsSection>
+
+          <SettingsCard alone loading={loading} loadingLabel="Loading password" aria-label="Password">
+            <SettingsRow
+              title="Password"
+              description={
+                profile.hasPassword
+                  ? "Last changed 3 months ago"
+                  : "You sign in with a link sent to your email"
+              }
+              skeleton={loading}
+            >
+              {loading ? (
+                <span className="ui-stp__skel" style={{ width: 118, height: 28, borderRadius: 6 }} />
+              ) : (
+                <SettingsButton
+                  variant="secondary"
+                  onClick={() => {
+                    onPasswordAction?.(profile);
+                    notify(`Check ${profile.email} to ${profile.hasPassword ? "change" : "set"} your password`);
+                  }}
+                >
+                  {profile.hasPassword ? "Change password" : "Add password"}
+                </SettingsButton>
+              )}
+            </SettingsRow>
+          </SettingsCard>
+        </SettingsPage>
+        {toast}
+      </div>
+    </AppShell>
+  );
+}
+
+/* ---------- Styles ---------- */
+.ui-spf {
+  min-height: 100%;
+  overflow-y: auto;
+}
+.ui-spf__avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ui-stp-accent-soft, rgba(1, 119, 251, 0.12));
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-stp-accent, #0177fb);
+}
+.ui-spf__field {
+  width: 240px;
+}
+@container ui-stp (max-width: 600px) {
+  .ui-spf__field {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-spf * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

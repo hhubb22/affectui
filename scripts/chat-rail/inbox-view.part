@@ -1,0 +1,290 @@
+export type InboxViewLabels = InboxListLabels & InboxItemLabels & {
+  caughtUp?: string;
+  tasks?: string;
+  running?: (count: number) => string;
+  noAnswers?: string;
+  noAnswersDescription?: string;
+  back?: string;
+  notice?: string;
+};
+export type InboxViewProps = {
+  items: InboxItem[];
+  tab?: InboxTab;
+  defaultTab?: InboxTab;
+  onTabChange?: (tab: InboxTab) => void;
+  selected?: string | null;
+  defaultSelected?: string | null;
+  onSelectedChange?: (id: string | null) => void;
+  onSelect?: (id: string | null) => void;
+  drafts?: Record<string, InboxDraft>;
+  defaultDrafts?: Record<string, InboxDraft>;
+  onDraftsChange?: (drafts: Record<string, InboxDraft>) => void;
+  onDecide?: (id: string, answer: InboxAnswer) => void;
+  onLater?: (id: string) => void;
+  onReopen?: (id: string) => void;
+  onOpenTasks?: () => void;
+  onOpenArtifact?: (id: string, name: string) => void;
+  managed?: boolean;
+  submittingId?: string;
+  confirmedId?: string;
+  confirmedAnswer?: InboxAnswer;
+  collapsingId?: string;
+  allowFreeText?: boolean;
+  showTabs?: boolean;
+  shortcuts?: boolean;
+  error?: ReactNode;
+  renderExtraActions?: (item: InboxItem) => ReactNode;
+  itemLabels?: (item: InboxItem) => InboxItemLabels | undefined;
+  running?: number;
+  labels?: InboxViewLabels;
+  now?: number;
+  className?: string;
+};
+
+/** Split-pane Inbox list and reading pane without AppShell, supporting caller-managed confirmation. */
+export function InboxView({
+  items: rawItems,
+  tab: tabProp,
+  defaultTab = "open",
+  onTabChange,
+  selected: selectedProp,
+  defaultSelected,
+  onSelectedChange,
+  onSelect,
+  drafts: draftsProp,
+  defaultDrafts = {},
+  onDraftsChange,
+  onDecide,
+  onLater,
+  onReopen,
+  onOpenTasks,
+  onOpenArtifact,
+  managed = false,
+  submittingId,
+  confirmedId,
+  confirmedAnswer,
+  collapsingId,
+  allowFreeText,
+  showTabs = true,
+  shortcuts = true,
+  error,
+  renderExtraActions,
+  itemLabels,
+  running = 0,
+  labels = {},
+  now: nowProp,
+  className,
+}: InboxViewProps) {
+  const items = (Array.isArray(rawItems) ? rawItems : []).filter(Boolean);
+  const [tabValue, setTab] = useControllable<InboxTab>(tabProp, defaultTab, onTabChange);
+  const tab = tabValue === "done" ? "done" : "open";
+  const list = items.filter((item) => Boolean(item.done) === (tab === "done"));
+  const [selected, setSelected] = useControllable<string | null>(
+    selectedProp,
+    defaultSelected === null ? null : defaultSelected ?? list[0]?.id ?? null,
+    onSelectedChange,
+  );
+  const [drafts, setDrafts] = useControllable(draftsProp, defaultDrafts, onDraftsChange);
+  const [detail, setDetail] = useState(Boolean(defaultSelected || selectedProp));
+  const [focusRequest, setFocusRequest] = useState(0);
+  const [clock, setClock] = useState(() => Date.now());
+  const now = safeNumber(nowProp, clock);
+
+  const canvas = useRef<HTMLDivElement>(null);
+  const narrow = useRef(false);
+  const selectedRef = useRef(selected);
+  const draftsRef = useRef(drafts);
+  selectedRef.current = selected;
+  draftsRef.current = drafts;
+
+  const busy = Boolean(submittingId || confirmedId);
+  const activeId = list.some((item) => item.id === selected) ? selected : selectedProp === null ? null : list[0]?.id ?? null;
+  const shown = list.find((item) => item.id === activeId) ?? null;
+
+  useEffect(() => {
+    if (nowProp !== undefined) return;
+    const timer = setInterval(() => setClock(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, [nowProp]);
+
+  useEffect(() => {
+    if (busy) return;
+    if (selectedProp === undefined && selected !== activeId) {
+      selectedRef.current = activeId;
+      setSelected(activeId);
+    }
+  }, [activeId, busy, selected, selectedProp]);
+
+  useLayoutEffect(() => {
+    const body = canvas.current;
+    if (!body) return;
+    const measure = () => {
+      narrow.current = body.getBoundingClientRect().width < 640;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, []);
+
+  const select = (id: string | null, focus = false) => {
+    if (selectedRef.current !== id) {
+      selectedRef.current = id;
+      setSelected(id);
+      onSelect?.(id);
+    }
+    if (id) setDetail(true);
+    setFocusRequest((value) => (focus ? value + 1 : 0));
+  };
+
+  const back = () => {
+    setDetail(false);
+    requestAnimationFrame(() =>
+      [...(canvas.current?.querySelectorAll<HTMLButtonElement>("[data-inbox-row]") ?? [])]
+        .find((row) => row.dataset.inboxRow === selectedRef.current)
+        ?.focus({ preventScroll: true }),
+    );
+  };
+  const backRef = useRef(back);
+  backRef.current = back;
+
+  useEffect(() => {
+    const key = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key !== "Escape" ||
+        !narrow.current ||
+        isEditing(event.target) ||
+        (event.target as HTMLElement)?.closest('[role="menu"],[role="dialog"]') ||
+        (document.activeElement === document.body
+          ? document.querySelector("[data-inbox-scope]") !== canvas.current
+          : !canvas.current?.contains(event.target as Node)) ||
+        canvas.current?.closest("[inert]")
+      )
+        return;
+      event.preventDefault();
+      backRef.current();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+
+  const changeDraft = (value: InboxDraft) => {
+    if (!shown) return;
+    const next = { ...draftsRef.current, [shown.id]: value };
+    draftsRef.current = next;
+    setDrafts(next);
+  };
+
+  const itemPhase = shown && confirmedId === shown.id ? "sent" : shown && submittingId === shown.id ? "submitting" : "answer";
+  const mergedItemLabels = shown ? { ...labels, ...itemLabels?.(shown) } : labels;
+
+  return (
+    <div
+      ref={canvas}
+      className={["ui-ibp", className].filter(Boolean).join(" ")}
+      data-inbox-scope=""
+      data-detail={detail || undefined}
+      aria-busy={busy || undefined}
+    >
+      <style href="ui-inbox-view" precedence="default">{css}</style>
+      <div className="ui-ibp__list">
+        <InboxList
+          items={items}
+          tab={tab}
+          onTabChange={(next) => {
+            if (busy) return;
+            setTab(next);
+            select(items.find((item) => Boolean(item.done) === (next === "done"))?.id ?? null);
+            setDetail(false);
+          }}
+          selected={activeId}
+          onSelect={(id) => {
+            if (!busy) select(id);
+          }}
+          sendingId={submittingId ?? confirmedId}
+          collapsingId={collapsingId}
+          showTabs={showTabs}
+          disabled={busy}
+          labels={labels}
+          now={now}
+        />
+      </div>
+      <div className="ui-ibp__reading">
+        <header className="ui-ibp__mobile-head">
+          <button type="button" onClick={back}>
+            <Icon name="chevron" size={14} />
+            {labels.back ?? labels.inbox ?? "Inbox"}
+          </button>
+        </header>
+        <div className="ui-ibp__scroll">
+          {shown ? (
+            <InboxItemView
+              key={`${shown.id}:${shown.done ? "done" : "open"}`}
+              item={shown}
+              draft={drafts[shown.id] ?? { option: shown.options?.find((option) => option.recommended)?.id, text: "" }}
+              onDraftChange={changeDraft}
+              onSubmit={(answer) => onDecide?.(shown.id, answer)}
+              onLater={!managed || onLater ? () => onLater?.(shown.id) : undefined}
+              onReopen={onReopen ? () => onReopen(shown.id) : undefined}
+              onOpenArtifact={onOpenArtifact ? (name) => onOpenArtifact(shown.id, name) : undefined}
+              phase={itemPhase}
+              sentAnswer={confirmedAnswer}
+              managed={managed}
+              allowFreeText={allowFreeText}
+              error={error}
+              extraActions={renderExtraActions?.(shown)}
+              focusRequest={focusRequest}
+              shortcuts={shortcuts}
+              labels={mergedItemLabels}
+              now={now}
+            />
+          ) : (
+            <div className="ui-ibp__empty">
+              <InboxEmptyState
+                variant={tab}
+                running={running}
+                title={tab === "open" ? labels.caughtUp : labels.noAnswers}
+                description={
+                  tab === "open"
+                    ? labels.running
+                      ? labels.running(running)
+                      : running > 0
+                        ? `${running} ${running === 1 ? "task keeps" : "tasks keep"} running in the background`
+                        : "Nothing needs your attention right now."
+                    : labels.noAnswersDescription
+                }
+                tasksLabel={labels.tasks}
+                onOpenTasks={onOpenTasks}
+                focusRequest={focusRequest}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+      {labels.notice != null && (
+        <span className="ui-ibp__sr" role="status" aria-live="polite">
+          {labels.notice}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Styles ---------- */
+.ui-ibp{--ui-ibp-ink:rgba(0,0,0,.88);--ui-ibp-muted:rgba(0,0,0,.45);--ui-ibp-line:rgba(0,0,0,.06);--ui-ibp-focus:rgba(0,96,226,.7);position:relative;height:100%;min-height:0;width:100%;container:ui-ibs / inline-size;display:flex;color:var(--ui-ibp-ink);font-family:"Inter","InterVariable",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.ui-ibp,.ui-ibp *,.ui-ibp *::before,.ui-ibp *::after{box-sizing:border-box}
+.ui-ibp__list{flex:none;width:320px;min-height:0}
+.ui-ibp__reading{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
+.ui-ibp__scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--ui-ibp-line) transparent}
+.ui-ibp__mobile-head{display:none;height:48px;flex:none;align-items:center;padding:0 48px}
+.ui-ibp__mobile-head button{display:flex;align-items:center;gap:8px;height:32px;padding:0 4px;border:0;background:none;color:var(--ui-ibp-muted);font:500 13px/20px "Inter",ui-sans-serif,system-ui,sans-serif;cursor:pointer}
+.ui-ibp__mobile-head button>svg{transform:rotate(180deg)}
+.ui-ibp__mobile-head button:active{transform:scale(.97)}
+.ui-ibp__mobile-head button:focus-visible{outline:2px solid var(--ui-ibp-focus);outline-offset:2px}
+.ui-ibp__empty{display:grid;place-items:center;min-height:100%;padding-bottom:48px}
+.ui-ibp__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@container ui-ibs (max-width:639.99px){.ui-ibp__list{width:100%}.ui-ibp__reading{display:none}.ui-ibp[data-detail] .ui-ibp__list{display:none}.ui-ibp[data-detail] .ui-ibp__reading{display:flex}.ui-ibp__mobile-head{display:flex}.ui-ibp__empty{padding-bottom:0}}
+@media(pointer:coarse){.ui-ibp__mobile-head button{min-height:36px}}
+@media(prefers-reduced-motion:reduce){.ui-ibp,.ui-ibp *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+:where(.dark,[data-theme="dark"]) .ui-ibp{--ui-ibp-ink:rgba(255,255,255,.9);--ui-ibp-muted:rgba(255,255,255,.46);--ui-ibp-line:rgba(255,255,255,.08);--ui-ibp-focus:rgba(77,141,255,.8)}

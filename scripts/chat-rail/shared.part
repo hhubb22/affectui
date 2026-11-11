@@ -1,10 +1,15 @@
 // These primitives are embedded into each distribution file; there are no runtime imports between components.
-type IconName = "terminal" | "image" | "inbox" | "memory" | "video" | "chat" | "tasks" | "play" | "folder" | "folder-open" | "plug" | "bell" | "settings" | "search" | "compose" | "chevron" | "check" | "close" | "plus" | "more" | "pin" | "unpin" | "panel" | "mic" | "send" | "hand" | "globe" | "table" | "document" | "undo" | "redo" | "bold" | "italic" | "underline" | "link" | "sort" | "row" | "column" | "trash" | "copy" | "download" | "arrow" | "stop" | "warning" | "spark";
+type IconName = "terminal" | "image" | "inbox" | "memory" | "video" | "chat" | "tasks" | "play" | "pause" | "repeat" | "calendar" | "shield" | "chart" | "folder" | "folder-open" | "plug" | "bell" | "settings" | "search" | "compose" | "chevron" | "check" | "close" | "plus" | "more" | "pin" | "unpin" | "panel" | "mic" | "send" | "hand" | "globe" | "table" | "document" | "undo" | "redo" | "bold" | "italic" | "underline" | "link" | "sort" | "row" | "column" | "trash" | "copy" | "download" | "arrow" | "stop" | "warning" | "spark";
 
 const iconPaths: Record<IconName, ReactNode> = {
     chat: <><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-1 1v-8.5A8.5 8.5 0 1 1 21 11.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></>,
     tasks: <><path d="m3 6 1.5 1.5L8 4M11 6h10M3 13l1.5 1.5L8 11M11 13h10M4 20h3M11 20h10"/></>,
     play: <><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4Z"/></>,
+    pause: <><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></>,
+    repeat: <><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></>,
+    calendar: <><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 10h18"/></>,
+    shield: <path d="M12 3 5 6v6c0 4.5 3 7.8 7 9 4-1.2 7-4.5 7-9V6Z"/>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
     folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>,
     "folder-open": <><path d="M3 10V7a2 2 0 0 1 2-2h5l2 2h7v3M3 12h18l-3 9H2Z"/></>,
     plug: <><path d="M8 3v5M16 3v5M6 8h12v4a6 6 0 0 1-12 0ZM12 18v4"/></>,
@@ -150,7 +155,7 @@ function agentTaskStatus(task: AgentTask, now: number) {
 export type InboxAnswer = { option?: string; text?: string } | "approve" | "decline";
 export type InboxDraft = { option?: string; text?: string };
 export type InboxOption = { id: string; title: string; summary?: string; recommended?: boolean; pros?: string[]; cons?: string[]; wireframe?: "illustration" | "checklist" | "data" | "bars" | "line" | ReactNode; preview?: ReactNode };
-export type InboxItem = { id: string; kind: "decision" | "pick" | "approval" | "question"; question: string; context?: string; task: string; at: number; unread?: boolean; options?: InboxOption[]; facts?: { label: string; value: string }[]; suggestions?: string[]; done?: { answer: InboxAnswer; at: number; label?: string; history?: string[]; artifacts?: string[] } };
+export type InboxItem = { id: string; kind: "decision" | "pick" | "approval" | "question"; question: string; listTitle?: string; context?: string; task: string; at: number; unread?: boolean; options?: InboxOption[]; facts?: { label: string; value: string }[]; suggestions?: string[]; done?: { answer: InboxAnswer; at: number; label?: string; history?: string[]; artifacts?: string[] } };
 export type InboxTask = { goal?: string; project?: string; status?: string; started?: string; steps?: { label: string; done?: boolean }[]; artifacts?: string[] };
 
 function InboxGlyph({kind,size=14}:{kind:InboxItem["kind"]|"done";size?:number}) {

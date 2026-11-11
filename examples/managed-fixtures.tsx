@@ -95,6 +95,8 @@ export default function ManagedFixtures({
     [emptySlots, setEmptySlots] = useState(false);
   const [customBounds, setCustomBounds] = useState(false);
   const [shellShortcut, setShellShortcut] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState("eng");
+  const [hideUser, setHideUser] = useState(false);
   const [timelineMode, setTimelineMode] = useState<
     "builtin" | "caller" | "hidden"
   >(variant === "managed-timeline" ? "caller" : "builtin");
@@ -495,6 +497,11 @@ export default function ManagedFixtures({
         <button onClick={() => setEmptySlots((value) => !value)}>
           Empty slots
         </button>
+        {variant === "managed-workspaces" && (
+          <button onClick={() => setHideUser((value) => !value)}>
+            Toggle user
+          </button>
+        )}
         {variant === "managed-timeline" && (
           <>
             <button onClick={() => setTimelineMode("caller")}>
@@ -538,6 +545,56 @@ export default function ManagedFixtures({
           <div style={{ maxWidth: 680, margin: "120px auto", padding: 12 }}>
             <UI.ChatComposer {...composerProps} onSend={send} />
           </div>
+        ) : variant === "managed-workspaces" ? (
+          <UI.AppShell
+            defaultTheme={theme}
+            workspace={workspaceId === "eng" ? "Engineering" : "Design"}
+            workspaceId={workspaceId}
+            workspaces={[
+              { id: "eng", name: "Engineering", subtitle: "Admin" },
+              { id: "design", name: "Design", subtitle: "Member" },
+            ]}
+            onSelectWorkspace={(id) => {
+              setWorkspaceId(id);
+              record(`workspace:${id}`);
+            }}
+            onCreateWorkspace={() => record("create-workspace")}
+            workspaceMenuItems={[
+              {
+                id: "members",
+                label: "Members",
+                onSelect: () => record("workspace-menu:members"),
+              },
+            ]}
+            navigation={[
+              { label: "Overview" },
+              { label: "Schedules" },
+            ]}
+            active="Overview"
+            user={
+              hideUser
+                ? null
+                : { name: "Ada Lovelace", email: "ada@example.com" }
+            }
+            showLanguageMenu={false}
+            showAppearanceMenu
+            accountMenuItems={[
+              {
+                id: "password",
+                label: "Change password",
+                onSelect: () => record("account:password"),
+              },
+              { kind: "separator" },
+              {
+                id: "signout",
+                label: "Sign out",
+                danger: true,
+                onSelect: () => record("account:signout"),
+              },
+            ]}
+          >
+            <p style={{ padding: 48 }}>Workspace {workspaceId}</p>
+          </UI.AppShell>
         ) : variant === "managed-shell" ? (
           <UI.AppShell
             {...shellProps}

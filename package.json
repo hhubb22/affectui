@@ -7,7 +7,7 @@
     "check:generated": "node scripts/sync-chat-rail.mjs --check",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "typecheck:consumer": "tsc --ignoreConfig --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --target ES2023 --module ESNext --moduleResolution Bundler --jsx react-jsx components/app-shell.tsx components/app-shell-clean.tsx components/agent-thread.tsx components/agent-thread-clean.tsx",
+    "typecheck:consumer": "tsc --ignoreConfig --noEmit --strict --noUncheckedIndexedAccess --skipLibCheck --target ES2023 --module ESNext --moduleResolution Bundler --jsx react-jsx components/app-shell.tsx components/app-shell-clean.tsx components/agent-thread.tsx components/agent-thread-clean.tsx components/artifact-workspace.tsx components/artifact-workspace-clean.tsx components/overview-cards.tsx components/overview-cards-clean.tsx components/workspace-start.tsx components/workspace-start-clean.tsx components/text-field.tsx components/text-field-clean.tsx components/select.tsx components/select-clean.tsx components/switch.tsx components/switch-clean.tsx components/inbox-view.tsx components/inbox-view-clean.tsx components/schedule-board.tsx components/schedule-board-clean.tsx components/running-now.tsx components/running-now-clean.tsx components/settings-panel.tsx components/settings-panel-clean.tsx",
     "build": "npm run check:generated && npm run typecheck && npm run typecheck:consumer && vite build",
     "test": "node --test --test-concurrency=1 tests/*.test.mjs"
   },

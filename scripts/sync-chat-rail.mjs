@@ -19,9 +19,9 @@ const dependencies = {
 Object.assign(dependencies, { "inbox-options": [], "inbox-feedback": [], "inbox-list": [], "inbox-item-view": ["inbox-options","inbox-feedback"], "inbox-task-context": [], "inbox": ["app-shell","artifact-workspace","workspace-start","inbox-list","inbox-item-view","inbox-task-context"] , "overview-cards": [], "assistant-overview": ["app-shell","artifact-workspace","workspace-start","chat-composer","overview-cards"] });
 Object.assign(dependencies, { "files-browser": [], "files": ["app-shell", "files-browser", "workspace-sidebar"], "workspace-sidebar": [], "campaign-brief": [], "agent-chat": ["app-shell", "workspace-sidebar", "chat-composer", "artifact-workspace", "workspace-start", "campaign-brief"] });
 const prefixes = ["ui-ta", "ui-cm", "ui-cc", "ui-aw", "ui-as", "ui-th", "ui-acr", "ui-tk", "ui-dd", "ui-cn", "ui-ay", "ui-up", "ui-td", "ui-tsr", "ui-tpr", "ui-tcr", "ui-tls", "ui-tin", "ui-afd", "ui-aiv", "ui-wst", "ui-ats", "ui-ibo", "ui-ibf", "ui-ibl", "ui-ibv", "ui-ibx", "ui-ibs", "ui-ovc", "ui-aov", "ui-fbr", "ui-fls", "ui-wsf", "ui-cbr", "ui-agc"];
-names.push("integration-card", "integration-request", "app-directory", "integrations");
-prefixes.push("ui-icd", "ui-irq", "ui-apd", "ui-igs");
-Object.assign(dependencies, { "integration-card": [], "integration-request": [], "app-directory": ["integration-card", "integration-request"], "integrations": ["app-shell", "workspace-sidebar", "app-directory"] });
+names.push("integration-card", "integration-request", "app-directory", "integrations", "inbox-view", "schedule-board", "agent-schedules", "settings-panel", "settings-profile", "settings-general", "settings-members");
+prefixes.push("ui-icd", "ui-irq", "ui-apd", "ui-igs", "ui-ibp", "ui-ags", "ui-sbs", "ui-stp", "ui-spf", "ui-sgn", "ui-smb");
+Object.assign(dependencies, { "integration-card": [], "integration-request": [], "app-directory": ["integration-card", "integration-request"], "integrations": ["app-shell", "workspace-sidebar", "app-directory"], "inbox-view": ["inbox-list", "inbox-item-view"], "schedule-board": [], "agent-schedules": ["app-shell", "artifact-workspace", "workspace-start", "schedule-board"], "settings-panel": [], "settings-profile": ["app-shell", "settings-panel"], "settings-general": ["app-shell", "settings-panel"], "settings-members": ["app-shell", "settings-panel"] });
 function dependenciesFor(name, seen = new Set()) {
   for (const dependency of dependencies[name]) if (!seen.has(dependency)) dependenciesFor(dependency, seen);
   seen.add(name); return [...seen];
@@ -112,6 +112,12 @@ const classic = `
 :where(.dark,[data-theme="dark"]) .ui-aw{--ui-aw-card:#232326;--ui-aw-ink:#ededed;--ui-aw-text:#c4c4c4;--ui-aw-muted:#8f8f8f;--ui-aw-faint:#6b6b70;--ui-aw-line:rgba(255,255,255,.1);--ui-aw-fill:#2a2a2d;--ui-aw-focus:#6b95ff}
 :where(.dark,[data-theme="dark"]) .ui-cm{--ui-cm-card:#232326;--ui-cm-ink:#ededed;--ui-cm-text:#c4c4c4;--ui-cm-muted:#8f8f8f;--ui-cm-line:rgba(255,255,255,.1);--ui-cm-fill:#2a2a2d;--ui-cm-focus:#6b95ff}
 :where(.dark,[data-theme="dark"]) .ui-ta{--ui-ta-card:#232326;--ui-ta-ink:#ededed;--ui-ta-text:#8f8f8f;--ui-ta-faint:#6b6b70;--ui-ta-focus:#6b95ff}
+.ui-ibp{--ui-ibp-ink:#171717;--ui-ibp-muted:#737373;--ui-ibp-line:#e5e5e5;--ui-ibp-focus:#2f6bff}
+:where(.dark,[data-theme="dark"]) .ui-ibp{--ui-ibp-ink:#ededed;--ui-ibp-muted:#8f8f8f;--ui-ibp-line:rgba(255,255,255,.1);--ui-ibp-focus:#6b95ff}
+.ui-ags,.ui-ags__panel{--ui-ags-card:#fff;--ui-ags-panel:#f7f7f7;--ui-ags-ink:#171717;--ui-ags-text:#404040;--ui-ags-muted:#737373;--ui-ags-faint:#b5b5b5;--ui-ags-line:#e5e5e5;--ui-ags-chip-bg:#f5f5f5;--ui-ags-hover:#f0f0f0;--ui-ags-focus:#2f6bff;--ui-ags-card-shadow:0 0 0 1px var(--ui-ags-line),0 1px 2px rgba(0,0,0,.06);font-size:14px}.ui-ags__card{border-radius:14px}.ui-ags__btn{height:32px;border-radius:8px}.ui-ags__head{height:52px}
+:where(.dark,[data-theme="dark"]) .ui-ags,:where(.dark,[data-theme="dark"]) .ui-ags__panel{--ui-ags-card:#232326;--ui-ags-panel:#161618;--ui-ags-ink:#ededed;--ui-ags-text:#c4c4c4;--ui-ags-muted:#8f8f8f;--ui-ags-faint:#6b6b70;--ui-ags-line:rgba(255,255,255,.1);--ui-ags-chip-bg:#2a2a2d;--ui-ags-hover:#26262a;--ui-ags-focus:#6b95ff}
+.ui-stp,.ui-stp__card,.ui-stp__stats,.ui-stp__note,.ui-stp__members,.ui-stp__tabs,.ui-stp__copy,.ui-stp__badge,.ui-stp__btn,.ui-stp__toast{--ui-stp-card:#fff;--ui-stp-frame:#f7f7f7;--ui-stp-strong:#171717;--ui-stp-ink:#171717;--ui-stp-text:#404040;--ui-stp-muted:#737373;--ui-stp-faint:#b5b5b5;--ui-stp-line:#e5e5e5;--ui-stp-chip:#f5f5f5;--ui-stp-hover:#fafafa;--ui-stp-focus:#2f6bff;--ui-stp-shadow:0 0 0 1px var(--ui-stp-line),0 1px 2px rgba(0,0,0,.06);font-size:14px}.ui-stp__card,.ui-stp__stats,.ui-stp__table{border-radius:14px}.ui-stp__btn{height:32px;border-radius:8px}
+:where(.dark,[data-theme="dark"]) .ui-stp,:where(.dark,[data-theme="dark"]) .ui-stp__card,:where(.dark,[data-theme="dark"]) .ui-stp__stats,:where(.dark,[data-theme="dark"]) .ui-stp__members,:where(.dark,[data-theme="dark"]) .ui-stp__btn{--ui-stp-card:#232326;--ui-stp-frame:#161618;--ui-stp-strong:#fff;--ui-stp-ink:#ededed;--ui-stp-text:#c4c4c4;--ui-stp-muted:#8f8f8f;--ui-stp-faint:#6b6b70;--ui-stp-line:rgba(255,255,255,.1);--ui-stp-chip:#2a2a2d;--ui-stp-hover:#26262a;--ui-stp-focus:#6b95ff}
 `;
 const check = process.argv.includes("--check");
 let stale = false;
@@ -134,7 +140,7 @@ for (const name of names) {
     output = output.replaceAll('strokeWidth="1.4"', clean ? 'strokeWidth="1.25"' : 'strokeWidth="1.5"');
     if (clean) for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) output = output.replaceAll(prefix, `${prefix}c`);
     output = await format(output, { parser: "typescript", printWidth: 120 });
-    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox" || name === "assistant-overview" || name === "files" || name === "agent-chat" || name === "integrations";
+    const screen = name === "agent-chat-rail" || name === "agent-thread-screen" || name === "agent-tasks" || name === "inbox" || name === "assistant-overview" || name === "files" || name === "agent-chat" || name === "integrations" || name === "agent-schedules" || name === "settings-profile" || name === "settings-general" || name === "settings-members";
     const basename = name === "agent-thread-screen" ? "agent-thread" : name;
     const relative = `${screen ? "screens" : "components"}/${basename}${clean ? "-clean" : ""}.tsx`;
     const target = path.join(root, relative);
